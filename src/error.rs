@@ -16,4 +16,8 @@ pub enum DoryError {
     /// Invalid input parameters
     #[error("Invalid input: {0}")]
     InvalidInput(String),
+
+    /// Setup file not found or corrupted
+    #[error("Invalid or missing URS file: {0}")]
+    InvalidURS(String),
 }

@@ -17,6 +17,7 @@ exclude = [".github", "README.md"]
 
 [features]
 default = []
+backends = ["arkworks"]
 arkworks = [
     "dep:ark-bn254",
     "dep:ark-ec",
@@ -33,6 +34,8 @@ arkworks = [
 thiserror = "2.0"
 rand_core = "0.6"
 dory-derive = { path = "derive" }
+tracing = "0.1"
+dirs = "5.0"
 
 # Arkworks backend
 ark-bn254 = { version = "0.4", optional = true }

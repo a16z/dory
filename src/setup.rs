@@ -5,7 +5,11 @@
 //! - Verifier setup: precomputed values for efficient verification
 
 use crate::primitives::arithmetic::{Group, PairingCurve};
+use crate::primitives::serialization::{DoryDeserialize, DorySerialize, Valid};
 use rand_core::RngCore;
+use std::fs::{self, File};
+use std::io::{BufReader, BufWriter};
+use std::path::PathBuf;
 
 /// Prover setup parameters
 ///
@@ -14,7 +18,7 @@ use rand_core::RngCore;
 /// from public randomness.
 ///
 /// For square matrices: |Γ₁| = |Γ₂| = 2^((max_log_n+1)/2)
-#[derive(Clone)]
+#[derive(Clone, DorySerialize, DoryDeserialize, Valid)]
 pub struct ProverSetup<E: PairingCurve> {
     /// Γ₁ - column generators in G1
     pub g1_vec: Vec<E::G1>,
@@ -36,7 +40,7 @@ pub struct ProverSetup<E: PairingCurve> {
 ///
 /// Contains precomputed pairing values for efficient verification.
 /// Derived from the prover setup.
-#[derive(Clone)]
+#[derive(Clone, DorySerialize, DoryDeserialize, Valid)]
 pub struct VerifierSetup<E: PairingCurve> {
     /// Δ₁L[k] = e(Γ₁[..2^(k-1)], Γ₂[..2^(k-1)])
     pub delta_1l: Vec<E::GT>,
@@ -188,4 +192,105 @@ impl<E: PairingCurve> ProverSetup<E> {
     pub fn max_log_n(&self) -> usize {
         self.max_nu() * 2
     }
+}
+
+/// Get the storage directory for Dory setup files
+///
+/// Returns the appropriate storage directory based on the OS:
+/// - Linux: `~/.cache/dory/`
+/// - macOS: `~/Library/Caches/dory/`
+/// - Windows: `{FOLDERID_LocalAppData}\dory\`
+///
+/// Note: Uses XDG cache directory for persistent storage.
+fn get_storage_dir() -> Option<PathBuf> {
+    dirs::cache_dir().map(|mut path| {
+        path.push("dory");
+        path
+    })
+}
+
+/// Get the full path to the setup file for a given max_log_n
+fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
+    get_storage_dir().map(|mut path| {
+        path.push(format!("dory_{}.urs", max_log_n));
+        path
+    })
+}
+
+/// Save prover and verifier setups to disk
+///
+/// Serializes both setups to a `.urs` file in the storage directory.
+/// If the storage directory doesn't exist, it will be created.
+/// Panics if the save operation fails.
+pub fn save_setup<E: PairingCurve>(
+    prover: &ProverSetup<E>,
+    verifier: &VerifierSetup<E>,
+    max_log_n: usize,
+) where
+    ProverSetup<E>: DorySerialize,
+    VerifierSetup<E>: DorySerialize,
+{
+    let storage_path = get_storage_path(max_log_n).expect("Failed to determine storage directory");
+
+    if let Some(parent) = storage_path.parent() {
+        fs::create_dir_all(parent)
+            .unwrap_or_else(|e| panic!("Failed to create storage directory: {}", e));
+    }
+
+    tracing::info!("Saving setup to {}", storage_path.display());
+
+    let file = File::create(&storage_path)
+        .unwrap_or_else(|e| panic!("Failed to create setup file: {}", e));
+
+    let mut writer = BufWriter::new(file);
+
+    DorySerialize::serialize_compressed(prover, &mut writer)
+        .unwrap_or_else(|e| panic!("Failed to serialize prover setup: {}", e));
+
+    DorySerialize::serialize_compressed(verifier, &mut writer)
+        .unwrap_or_else(|e| panic!("Failed to serialize verifier setup: {}", e));
+
+    tracing::info!("Successfully saved setup to disk");
+}
+
+/// Load prover and verifier setups from disk
+///
+/// Attempts to deserialize both setups from the saved `.urs` file.
+/// Returns an error if the file doesn't exist, cannot be opened, or deserialization fails.
+pub fn load_setup<E: PairingCurve>(
+    max_log_n: usize,
+) -> Result<(ProverSetup<E>, VerifierSetup<E>), crate::DoryError>
+where
+    ProverSetup<E>: DoryDeserialize,
+    VerifierSetup<E>: DoryDeserialize,
+{
+    let storage_path = get_storage_path(max_log_n).ok_or_else(|| {
+        crate::DoryError::InvalidURS("Failed to determine storage directory".to_string())
+    })?;
+
+    if !storage_path.exists() {
+        return Err(crate::DoryError::InvalidURS(format!(
+            "Setup file not found at {}",
+            storage_path.display()
+        )));
+    }
+
+    tracing::info!("Looking for saved setup at {}", storage_path.display());
+
+    let file = File::open(&storage_path)
+        .map_err(|e| crate::DoryError::InvalidURS(format!("Failed to open setup file: {}", e)))?;
+
+    let mut reader = BufReader::new(file);
+
+    let prover = DoryDeserialize::deserialize_compressed(&mut reader).map_err(|e| {
+        crate::DoryError::InvalidURS(format!("Failed to deserialize prover setup: {}", e))
+    })?;
+
+    let verifier = DoryDeserialize::deserialize_compressed(&mut reader).map_err(|e| {
+        crate::DoryError::InvalidURS(format!("Failed to deserialize verifier setup: {}", e))
+    })?;
+
+    tracing::info!("Loaded setup for max_log_n={}", max_log_n);
+
+    Ok((prover, verifier))
 }

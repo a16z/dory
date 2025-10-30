@@ -6,6 +6,22 @@ use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields};
 pub fn derive_dory_serialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
+    let mut generics = input.generics.clone();
+
+    // Add DorySerialize bounds to all field types
+    if let Data::Struct(data) = &input.data {
+        if let Fields::Named(fields) = &data.fields {
+            for field in &fields.named {
+                let ty = &field.ty;
+                generics
+                    .make_where_clause()
+                    .predicates
+                    .push(syn::parse_quote! { #ty: DorySerialize });
+            }
+        }
+    }
+
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let serialize_fields = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -67,17 +83,19 @@ pub fn derive_dory_serialize(input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
-        impl DorySerialize for #name {
+        impl #impl_generics DorySerialize for #name #ty_generics #where_clause {
             fn serialize_with_mode<W: std::io::Write>(
                 &self,
                 mut writer: W,
-                compress: Compress,
-            ) -> Result<(), SerializationError> {
+                compress: crate::primitives::serialization::Compress,
+            ) -> Result<(), crate::primitives::serialization::SerializationError> {
+                use crate::primitives::serialization::DorySerialize;
                 #serialize_fields
                 Ok(())
             }
 
-            fn serialized_size(&self, compress: Compress) -> usize {
+            fn serialized_size(&self, compress: crate::primitives::serialization::Compress) -> usize {
+                use crate::primitives::serialization::DorySerialize;
                 let mut size = 0;
                 #size_fields
                 size
@@ -92,6 +110,22 @@ pub fn derive_dory_serialize(input: TokenStream) -> TokenStream {
 pub fn derive_dory_deserialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
+    let mut generics = input.generics.clone();
+
+    // Add DoryDeserialize bounds to all field types
+    if let Data::Struct(data) = &input.data {
+        if let Fields::Named(fields) = &data.fields {
+            for field in &fields.named {
+                let ty = &field.ty;
+                generics
+                    .make_where_clause()
+                    .predicates
+                    .push(syn::parse_quote! { #ty: DoryDeserialize });
+            }
+        }
+    }
+
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let deserialize_fields = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -142,12 +176,13 @@ pub fn derive_dory_deserialize(input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
-        impl DoryDeserialize for #name {
+        impl #impl_generics DoryDeserialize for #name #ty_generics #where_clause {
             fn deserialize_with_mode<R: std::io::Read>(
                 mut reader: R,
-                compress: Compress,
-                validate: Validate,
-            ) -> Result<Self, SerializationError> {
+                compress: crate::primitives::serialization::Compress,
+                validate: crate::primitives::serialization::Validate,
+            ) -> Result<Self, crate::primitives::serialization::SerializationError> {
+                use crate::primitives::serialization::DoryDeserialize;
                 #deserialize_fields
             }
         }
@@ -160,6 +195,22 @@ pub fn derive_dory_deserialize(input: TokenStream) -> TokenStream {
 pub fn derive_valid(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
+    let mut generics = input.generics.clone();
+
+    // Add Valid bounds to all field types
+    if let Data::Struct(data) = &input.data {
+        if let Fields::Named(fields) = &data.fields {
+            for field in &fields.named {
+                let ty = &field.ty;
+                generics
+                    .make_where_clause()
+                    .predicates
+                    .push(syn::parse_quote! { #ty: Valid });
+            }
+        }
+    }
+
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let check_fields = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -196,8 +247,9 @@ pub fn derive_valid(input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
-        impl Valid for #name {
-            fn check(&self) -> Result<(), SerializationError> {
+        impl #impl_generics Valid for #name #ty_generics #where_clause {
+            fn check(&self) -> Result<(), crate::primitives::serialization::SerializationError> {
+                use crate::primitives::serialization::Valid;
                 #check_fields
                 Ok(())
             }

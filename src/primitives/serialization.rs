@@ -130,3 +130,139 @@ pub trait DoryDeserialize: Valid {
         Self::deserialize_with_mode(reader, Compress::No, Validate::No)
     }
 }
+
+#[cfg(not(feature = "backends"))]
+mod primitive_impls {
+    use super::*;
+
+    macro_rules! impl_primitive_serialization {
+        ($t:ty, $size:expr) => {
+            impl Valid for $t {
+                fn check(&self) -> Result<(), SerializationError> {
+                    // Primitives are always valid
+                    Ok(())
+                }
+            }
+
+            impl DorySerialize for $t {
+                fn serialize_with_mode<W: Write>(
+                    &self,
+                    mut writer: W,
+                    _compress: Compress,
+                ) -> Result<(), SerializationError> {
+                    writer.write_all(&self.to_le_bytes())?;
+                    Ok(())
+                }
+
+                fn serialized_size(&self, _compress: Compress) -> usize {
+                    $size
+                }
+            }
+
+            impl DoryDeserialize for $t {
+                fn deserialize_with_mode<R: Read>(
+                    mut reader: R,
+                    _compress: Compress,
+                    _validate: Validate,
+                ) -> Result<Self, SerializationError> {
+                    let mut bytes = [0u8; $size];
+                    reader.read_exact(&mut bytes)?;
+                    Ok(<$t>::from_le_bytes(bytes))
+                }
+            }
+        };
+    }
+
+    impl_primitive_serialization!(u8, 1);
+    impl_primitive_serialization!(u16, 2);
+    impl_primitive_serialization!(u32, 4);
+    impl_primitive_serialization!(u64, 8);
+    impl_primitive_serialization!(usize, std::mem::size_of::<usize>());
+    impl_primitive_serialization!(i8, 1);
+    impl_primitive_serialization!(i16, 2);
+    impl_primitive_serialization!(i32, 4);
+    impl_primitive_serialization!(i64, 8);
+
+    impl Valid for bool {
+        fn check(&self) -> Result<(), SerializationError> {
+            Ok(())
+        }
+    }
+
+    impl DorySerialize for bool {
+        fn serialize_with_mode<W: Write>(
+            &self,
+            mut writer: W,
+            _compress: Compress,
+        ) -> Result<(), SerializationError> {
+            writer.write_all(&[*self as u8])?;
+            Ok(())
+        }
+
+        fn serialized_size(&self, _compress: Compress) -> usize {
+            1
+        }
+    }
+
+    impl DoryDeserialize for bool {
+        fn deserialize_with_mode<R: Read>(
+            mut reader: R,
+            _compress: Compress,
+            _validate: Validate,
+        ) -> Result<Self, SerializationError> {
+            let mut byte = [0u8; 1];
+            reader.read_exact(&mut byte)?;
+            match byte[0] {
+                0 => Ok(false),
+                1 => Ok(true),
+                _ => Err(SerializationError::InvalidData(
+                    "Invalid bool value".to_string(),
+                )),
+            }
+        }
+    }
+
+    impl<T: Valid> Valid for Vec<T> {
+        fn check(&self) -> Result<(), SerializationError> {
+            for item in self {
+                item.check()?;
+            }
+            Ok(())
+        }
+    }
+
+    impl<T: DorySerialize> DorySerialize for Vec<T> {
+        fn serialize_with_mode<W: Write>(
+            &self,
+            mut writer: W,
+            compress: Compress,
+        ) -> Result<(), SerializationError> {
+            (self.len() as u64).serialize_with_mode(&mut writer, compress)?;
+            for item in self {
+                item.serialize_with_mode(&mut writer, compress)?;
+            }
+            Ok(())
+        }
+
+        fn serialized_size(&self, compress: Compress) -> usize {
+            let len_size = 8;
+            let items_size: usize = self.iter().map(|item| item.serialized_size(compress)).sum();
+            len_size + items_size
+        }
+    }
+
+    impl<T: DoryDeserialize> DoryDeserialize for Vec<T> {
+        fn deserialize_with_mode<R: Read>(
+            mut reader: R,
+            compress: Compress,
+            validate: Validate,
+        ) -> Result<Self, SerializationError> {
+            let len = u64::deserialize_with_mode(&mut reader, compress, validate)? as usize;
+            let mut vec = Vec::with_capacity(len);
+            for _ in 0..len {
+                vec.push(T::deserialize_with_mode(&mut reader, compress, validate)?);
+            }
+            Ok(vec)
+        }
+    }
+}

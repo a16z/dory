@@ -59,18 +59,25 @@ pub use evaluation_proof::create_evaluation_proof;
 pub use messages::{FirstReduceMessage, ScalarProductMessage, SecondReduceMessage, VMVMessage};
 use primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 pub use primitives::poly::{DoryCommitment, MultilinearLagrange, Polynomial};
+use primitives::serialization::{DoryDeserialize, DorySerialize};
 pub use proof::DoryProof;
 pub use reduce_and_fold::{DoryProverState, DoryVerifierState};
 pub use setup::{ProverSetup, VerifierSetup};
 
-/// Generate prover and verifier setups
+/// Generate or load prover and verifier setups from disk
 ///
-/// Creates the transparent setup parameters for Dory PCS with square matrices.
+/// Creates or loads the transparent setup parameters for Dory PCS with square matrices.
+/// First attempts to load from disk; if not found, generates new setup and saves to disk.
 /// Supports polynomials up to 2^max_log_n coefficients arranged as n×n matrices
 /// where n = 2^((max_log_n+1)/2).
 ///
+/// Setup file location (OS-dependent):
+/// - Linux: `~/.cache/dory/dory_{max_log_n}.urs`
+/// - macOS: `~/Library/Caches/dory/dory_{max_log_n}.urs`
+/// - Windows: `{FOLDERID_LocalAppData}\dory\dory_{max_log_n}.urs`
+///
 /// # Parameters
-/// - `rng`: Random number generator for setup generation
+/// - `rng`: Random number generator for setup generation (used only if not found on disk)
 /// - `max_log_n`: Maximum log₂ of polynomial size
 ///
 /// # Returns
@@ -78,9 +85,69 @@ pub use setup::{ProverSetup, VerifierSetup};
 pub fn setup<E: PairingCurve, R: rand_core::RngCore>(
     rng: &mut R,
     max_log_n: usize,
-) -> (ProverSetup<E>, VerifierSetup<E>) {
+) -> (ProverSetup<E>, VerifierSetup<E>)
+where
+    ProverSetup<E>: DorySerialize + DoryDeserialize,
+    VerifierSetup<E>: DorySerialize + DoryDeserialize,
+{
+    // Try to load from disk
+    match setup::load_setup::<E>(max_log_n) {
+        Ok(saved) => return saved,
+        Err(DoryError::InvalidURS(msg)) if msg.contains("not found") => {
+            // File doesn't exist, we'll generate new setup
+            tracing::debug!("Setup file not found, will generate new one");
+        }
+        Err(e) => {
+            // File exists but is corrupted - unrecoverable
+            panic!("Failed to load setup from disk: {}", e);
+        }
+    }
+
+    // Setup not found on disk - generate new setup
+    tracing::info!(
+        "Setup not found on disk, generating new setup for max_log_n={}",
+        max_log_n
+    );
     let prover_setup = ProverSetup::new(rng, max_log_n);
     let verifier_setup = prover_setup.to_verifier_setup();
+
+    // Save to disk
+    setup::save_setup(&prover_setup, &verifier_setup, max_log_n);
+
+    (prover_setup, verifier_setup)
+}
+
+/// Force generate new prover and verifier setups and save to disk
+///
+/// Always generates fresh setup parameters, ignoring any saved values on disk.
+/// Saves the newly generated setup to disk, overwriting any existing setup file
+/// for the given max_log_n.
+///
+/// Use this when you want to explicitly regenerate the setup (e.g., for testing
+/// or when you suspect the saved setup file is corrupted).
+///
+/// # Parameters
+/// - `rng`: Random number generator for setup generation
+/// - `max_log_n`: Maximum log₂ of polynomial size
+///
+/// # Returns
+/// `(ProverSetup, VerifierSetup)` - Newly generated setup parameters
+pub fn generate_urs<E: PairingCurve, R: rand_core::RngCore>(
+    rng: &mut R,
+    max_log_n: usize,
+) -> (ProverSetup<E>, VerifierSetup<E>)
+where
+    ProverSetup<E>: DorySerialize + DoryDeserialize,
+    VerifierSetup<E>: DorySerialize + DoryDeserialize,
+{
+    tracing::info!("Force-generating new setup for max_log_n={}", max_log_n);
+
+    let prover_setup = ProverSetup::new(rng, max_log_n);
+    let verifier_setup = prover_setup.to_verifier_setup();
+
+    // Overwrites existing
+    setup::save_setup(&prover_setup, &verifier_setup, max_log_n);
+
     (prover_setup, verifier_setup)
 }
 

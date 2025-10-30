@@ -122,21 +122,21 @@ This implementation is optimized for performance:
 
 ```bash
 # Build with arkworks backend
-cargo build --release --features arkworks
+cargo build --release --features backends
 
 # Run tests
-cargo nextest run --features arkworks
+cargo nextest run --features backends
 
 # Run clippy
-cargo clippy --features arkworks -- -D warnings
+cargo clippy --features backends -- -D warnings
 
 # Generate documentation
-cargo doc --features arkworks --open
+cargo doc --features backends --open
 ```
 
 ## Features
 
-- `arkworks` - Enable Arkworks backend with BN254 curve
+- `backends` - Enable concrete backends. Currently supports Arkworks BN254.
 
 ## Project Structure
 
