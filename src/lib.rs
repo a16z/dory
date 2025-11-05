@@ -170,6 +170,7 @@ where
 /// # Returns
 /// `(commitment, evaluation, proof)` - The tier-2 commitment, polynomial evaluation, and its proof
 #[allow(clippy::type_complexity)]
+#[tracing::instrument(skip_all, name = "prove")]
 pub fn prove<F, E, M1, M2, P, T>(
     polynomial: &P,
     point: &[F],
@@ -231,6 +232,7 @@ where
 /// # Returns
 /// `Ok(())` if proof is valid, `Err(DoryError)` otherwise
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(skip_all, name = "verify")]
 pub fn verify<F, E, M1, M2, T>(
     commitment: E::GT,
     evaluation: F,

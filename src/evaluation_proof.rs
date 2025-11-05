@@ -46,6 +46,7 @@ use crate::setup::{ProverSetup, VerifierSetup};
 /// # Errors
 /// Returns error if dimensions are invalid or protocol fails
 #[allow(clippy::type_complexity)]
+#[tracing::instrument(skip_all, name = "create_evaluation_proof")]
 pub fn create_evaluation_proof<F, E, M1, M2, T, P>(
     polynomial: &P,
     point: &[F],
@@ -207,6 +208,7 @@ where
 /// # Returns
 /// `Ok(())` if proof is valid, `Err(DoryError)` otherwise
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(skip_all, name = "verify_evaluation_proof")]
 pub fn verify_evaluation_proof<F, E, M1, M2, T>(
     commitment: E::GT,
     evaluation: F,

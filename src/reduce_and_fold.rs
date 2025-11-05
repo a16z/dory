@@ -105,6 +105,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
     /// Compute first reduce message for current round
     ///
     /// Computes D1L, D1R, D2L, D2R, E1β, E2β based on current state.
+    #[tracing::instrument(skip_all, name = "DoryProverState::compute_first_message")]
     pub fn compute_first_message<M1, M2>(&self) -> FirstReduceMessage<E::G1, E::G2, E::GT>
     where
         M1: DoryRoutines<E::G1>,
@@ -152,6 +153,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
     /// Apply first challenge (beta) and combine vectors
     ///
     /// Updates the state by combining with generators scaled by beta.
+    #[tracing::instrument(skip_all, name = "DoryProverState::apply_first_challenge")]
     pub fn apply_first_challenge<M1, M2>(&mut self, beta: &<E::G1 as Group>::Scalar)
     where
         M1: DoryRoutines<E::G1>,
@@ -177,6 +179,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
     /// Compute second reduce message for current round
     ///
     /// Computes C+, C-, E1+, E1-, E2+, E2- based on current state.
+    #[tracing::instrument(skip_all, name = "DoryProverState::compute_second_message")]
     pub fn compute_second_message<M1, M2>(&self) -> SecondReduceMessage<E::G1, E::G2, E::GT>
     where
         M1: DoryRoutines<E::G1>,
@@ -220,6 +223,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
     /// Apply second challenge (alpha) and fold vectors
     ///
     /// Reduces the vector size by half using the alpha challenge.
+    #[tracing::instrument(skip_all, name = "DoryProverState::apply_second_challenge")]
     pub fn apply_second_challenge<M1, M2>(&mut self, alpha: &<E::G1 as Group>::Scalar)
     where
         M1: DoryRoutines<E::G1>,
@@ -262,6 +266,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
     ///
     /// Applies fold-scalars transformation and returns the final E1, E2 elements.
     /// Must be called when nu=0 (vectors are size 1).
+    #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
     pub fn compute_final_message<M1, M2>(
         self,
         gamma: &<E::G1 as Group>::Scalar,
@@ -336,6 +341,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     ///
     /// Takes both reduce messages and both challenges, updates all state values.
     /// This implements the extended Dory-Reduce algorithm from sections 3.2 & 4.2.
+    #[tracing::instrument(skip_all, name = "DoryVerifierState::process_round")]
     pub fn process_round(
         &mut self,
         first_msg: &FirstReduceMessage<E::G1, E::G2, E::GT>,
@@ -410,6 +416,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     ///
     /// Applies fold-scalars transformation and checks the final pairing equation.
     /// Must be called when nu=0 after all reduce rounds are complete.
+    #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
     pub fn verify_final(
         &mut self,
         msg: &ScalarProductMessage<E::G1, E::G2>,
