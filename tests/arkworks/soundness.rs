@@ -2,7 +2,6 @@
 
 use super::*;
 use ark_ff::UniformRand;
-use dory::primitives::arithmetic::Field;
 use dory::{prove, verify};
 
 fn create_valid_proof_components(

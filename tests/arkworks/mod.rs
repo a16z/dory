@@ -55,7 +55,5 @@ pub fn fresh_transcript() -> Blake2bTranscript<BN254> {
     Blake2bTranscript::new(b"dory-test")
 }
 
-/// Type aliases for convenience
-pub type TestProverSetup = ProverSetup<BN254>;
 pub type TestG1Routines = ArkG1Routines;
 pub type TestG2Routines = ArkG2Routines;

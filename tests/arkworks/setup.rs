@@ -1,7 +1,6 @@
 //! Setup generation tests
 
 use super::*;
-use dory::setup::ProverSetup;
 
 #[test]
 fn test_setup_generation_small() {
