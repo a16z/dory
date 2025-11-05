@@ -82,7 +82,7 @@ pub trait DorySerialize {
 }
 
 /// Deserializer in little endian format.
-pub trait DoryDeserialize: Valid {
+pub trait DoryDeserialize {
     /// Deserialize with customization flags.
     fn deserialize_with_mode<R: Read>(
         reader: R,

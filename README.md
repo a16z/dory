@@ -37,8 +37,13 @@ Dory is a transparent polynomial commitment scheme with excellent asymptotic per
 
 ### Backend Implementations
 
-- **`backends::arkworks`** - Arkworks backend with BN254 curve (requires `arkworks` feature)
-- **`backends::blake2b_transcript`** - Blake2b-based Fiat-Shamir transcript
+- **`backends::arkworks`** - Modular Arkworks backend with BN254 curve (requires `arkworks` feature)
+  - Field wrappers (`ArkFr`)
+  - Group wrappers (`ArkG1`, `ArkG2`, `ArkGT`)
+  - Polynomial implementation
+  - Optimized MSM routines
+  - Blake2b transcript
+  - Serialization bridge
 
 ## How It Works
 
@@ -105,6 +110,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Development Setup
+
+After cloning the repository, install Git hooks to ensure code quality:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+This installs a pre-commit hook that:
+- Auto-formats code with `cargo fmt`
+- Runs `cargo clippy` in strict mode
+
 ## Performance Considerations
 
 This implementation is optimized for performance:
@@ -149,8 +166,14 @@ src/
 │   ├── transcript.rs              # Fiat-Shamir transcript trait
 │   └── serialization.rs           # Serialization abstractions
 ├── backends/
-│   ├── arkworks.rs                # BN254 implementation
-│   └── blake2b_transcript.rs      # Blake2b transcript
+│   ├── mod.rs                     # Backend module exports
+│   └── arkworks/                  # Arkworks BN254 backend
+│       ├── mod.rs                 # Module exports
+│       ├── ark_field.rs           # Field wrapper (ArkFr)
+│       ├── ark_group.rs           # Group wrappers (ArkG1, ArkG2, ArkGT)
+│       ├── ark_poly.rs            # Polynomial implementation
+│       ├── ark_serde.rs           # Serialization bridge
+│       └── blake2b_transcript.rs  # Blake2b transcript
 ├── setup.rs                       # Transparent setup generation
 ├── evaluation_proof.rs            # Proof creation and verification
 ├── reduce_and_fold.rs             # Inner product protocol
@@ -159,6 +182,7 @@ src/
 └── error.rs                       # Error types
 
 tests/arkworks/
+├── mod.rs                         # Test utilities
 ├── setup.rs                       # Setup tests
 ├── commitment.rs                  # Commitment tests
 ├── evaluation.rs                  # Evaluation tests

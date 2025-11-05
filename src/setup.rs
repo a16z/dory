@@ -5,7 +5,7 @@
 //! - Verifier setup: precomputed values for efficient verification
 
 use crate::primitives::arithmetic::{Group, PairingCurve};
-use crate::primitives::serialization::{DoryDeserialize, DorySerialize, Valid};
+use crate::primitives::serialization::{DoryDeserialize, DorySerialize};
 use rand_core::RngCore;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
@@ -18,7 +18,7 @@ use std::path::PathBuf;
 /// from public randomness.
 ///
 /// For square matrices: |Γ₁| = |Γ₂| = 2^((max_log_n+1)/2)
-#[derive(Clone, DorySerialize, DoryDeserialize, Valid)]
+#[derive(Clone, DorySerialize, DoryDeserialize)]
 pub struct ProverSetup<E: PairingCurve> {
     /// Γ₁ - column generators in G1
     pub g1_vec: Vec<E::G1>,
@@ -40,7 +40,7 @@ pub struct ProverSetup<E: PairingCurve> {
 ///
 /// Contains precomputed pairing values for efficient verification.
 /// Derived from the prover setup.
-#[derive(Clone, DorySerialize, DoryDeserialize, Valid)]
+#[derive(Clone, DorySerialize, DoryDeserialize)]
 pub struct VerifierSetup<E: PairingCurve> {
     /// Δ₁L[k] = e(Γ₁[..2^(k-1)], Γ₂[..2^(k-1)])
     pub delta_1l: Vec<E::GT>,

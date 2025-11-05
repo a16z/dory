@@ -3,6 +3,7 @@
 use super::*;
 use ark_bn254::{Fq12, Fr, G1Projective, G2Projective};
 use ark_ff::UniformRand;
+use dory::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
 use dory::{prove, verify};
 use std::mem::swap;
 

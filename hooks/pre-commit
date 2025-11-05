@@ -1,0 +1,21 @@
+#!/bin/bash
+# Pre-commit hook for Dory
+# Runs cargo fmt (auto-fix) and cargo clippy (strict mode)
+
+set -e
+
+echo "Running pre-commit checks..."
+
+echo "  → Running cargo fmt..."
+cargo fmt --all
+
+git diff --name-only | grep '\.rs$' | xargs -r git add
+
+echo "  → Running cargo clippy (strict mode)..."
+if ! cargo clippy -q --message-format=short --all --all-targets --all-features -- -D warnings; then
+    echo "❌ Clippy failed with warnings or errors. Fix them before committing."
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"
+exit 0

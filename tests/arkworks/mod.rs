@@ -1,9 +1,8 @@
 //! Common test utilities for arkworks backend tests
 
 use dory::backends::arkworks::{
-    ArkFr, ArkG1, ArkG1Routines, ArkG2, ArkG2Routines, ArkGT, ArkworksPolynomial, BN254,
+    ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
 };
-use dory::backends::Blake2bTranscript;
 use dory::primitives::arithmetic::Field;
 use dory::primitives::poly::DoryCommitment;
 use dory::proof::DoryProof;
@@ -55,5 +54,5 @@ pub fn fresh_transcript() -> Blake2bTranscript<BN254> {
     Blake2bTranscript::new(b"dory-test")
 }
 
-pub type TestG1Routines = ArkG1Routines;
-pub type TestG2Routines = ArkG2Routines;
+pub type TestG1Routines = G1Routines;
+pub type TestG2Routines = G2Routines;
