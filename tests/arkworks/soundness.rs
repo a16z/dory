@@ -1,9 +1,12 @@
 //! Comprehensive soundness tests for Dory PCS
 
 use super::*;
+use ark_bn254::{Fq12, Fr, G1Projective, G2Projective};
 use ark_ff::UniformRand;
 use dory::{prove, verify};
+use std::mem::swap;
 
+#[allow(clippy::type_complexity)]
 fn create_valid_proof_components(
     size: usize,
     nu: usize,
@@ -50,9 +53,7 @@ fn test_soundness_tamper_vmv_c() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.vmv_message.c = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-        &mut rand::thread_rng(),
-    ));
+    proof.vmv_message.c = ArkGT(Fq12::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -74,9 +75,7 @@ fn test_soundness_tamper_vmv_d2() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.vmv_message.d2 = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-        &mut rand::thread_rng(),
-    ));
+    proof.vmv_message.d2 = ArkGT(Fq12::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -98,9 +97,7 @@ fn test_soundness_tamper_vmv_e1() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.vmv_message.e1 = ArkG1(<ark_bn254::G1Projective as UniformRand>::rand(
-        &mut rand::thread_rng(),
-    ));
+    proof.vmv_message.e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -123,9 +120,7 @@ fn test_soundness_tamper_d1_left() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d1_left = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.first_messages[0].d1_left = ArkGT(Fq12::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -149,9 +144,7 @@ fn test_soundness_tamper_d1_right() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d1_right = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.first_messages[0].d1_right = ArkGT(Fq12::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -175,9 +168,7 @@ fn test_soundness_tamper_d2_left() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d2_left = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.first_messages[0].d2_left = ArkGT(Fq12::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -201,9 +192,7 @@ fn test_soundness_tamper_d2_right() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d2_right = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.first_messages[0].d2_right = ArkGT(Fq12::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -227,9 +216,7 @@ fn test_soundness_tamper_e1_beta() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].e1_beta = ArkG1(<ark_bn254::G1Projective as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.first_messages[0].e1_beta = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -253,9 +240,7 @@ fn test_soundness_tamper_e2_beta() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].e2_beta = ArkG2(<ark_bn254::G2Projective as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.first_messages[0].e2_beta = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -279,9 +264,7 @@ fn test_soundness_tamper_c_plus() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.second_messages.is_empty() {
-        proof.second_messages[0].c_plus = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.second_messages[0].c_plus = ArkGT(Fq12::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -305,9 +288,7 @@ fn test_soundness_tamper_c_minus() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.second_messages.is_empty() {
-        proof.second_messages[0].c_minus = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.second_messages[0].c_minus = ArkGT(Fq12::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -331,9 +312,7 @@ fn test_soundness_tamper_e1_plus() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.second_messages.is_empty() {
-        proof.second_messages[0].e1_plus = ArkG1(<ark_bn254::G1Projective as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.second_messages[0].e1_plus = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -357,9 +336,7 @@ fn test_soundness_tamper_e1_minus() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.second_messages.is_empty() {
-        proof.second_messages[0].e1_minus = ArkG1(<ark_bn254::G1Projective as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.second_messages[0].e1_minus = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -383,9 +360,7 @@ fn test_soundness_tamper_e2_plus() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.second_messages.is_empty() {
-        proof.second_messages[0].e2_plus = ArkG2(<ark_bn254::G2Projective as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.second_messages[0].e2_plus = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -409,9 +384,7 @@ fn test_soundness_tamper_e2_minus() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.second_messages.is_empty() {
-        proof.second_messages[0].e2_minus = ArkG2(<ark_bn254::G2Projective as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.second_messages[0].e2_minus = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -434,9 +407,7 @@ fn test_soundness_tamper_final_e1() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.final_message.e1 = ArkG1(<ark_bn254::G1Projective as UniformRand>::rand(
-        &mut rand::thread_rng(),
-    ));
+    proof.final_message.e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -458,9 +429,7 @@ fn test_soundness_tamper_final_e2() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.final_message.e2 = ArkG2(<ark_bn254::G2Projective as UniformRand>::rand(
-        &mut rand::thread_rng(),
-    ));
+    proof.final_message.e2 = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -482,12 +451,8 @@ fn test_soundness_tamper_both_final_elements() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.final_message.e1 = ArkG1(<ark_bn254::G1Projective as UniformRand>::rand(
-        &mut rand::thread_rng(),
-    ));
-    proof.final_message.e2 = ArkG2(<ark_bn254::G2Projective as UniformRand>::rand(
-        &mut rand::thread_rng(),
-    ));
+    proof.final_message.e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    proof.final_message.e2 = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -513,9 +478,8 @@ fn test_soundness_swap_d1_values() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        let temp = proof.first_messages[0].d1_left;
-        proof.first_messages[0].d1_left = proof.first_messages[0].d1_right;
-        proof.first_messages[0].d1_right = temp;
+        let msg = &mut proof.first_messages[0];
+        swap(&mut msg.d1_left, &mut msg.d1_right);
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -539,9 +503,8 @@ fn test_soundness_swap_c_values() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.second_messages.is_empty() {
-        let temp = proof.second_messages[0].c_plus;
-        proof.second_messages[0].c_plus = proof.second_messages[0].c_minus;
-        proof.second_messages[0].c_minus = temp;
+        let msg = &mut proof.second_messages[0];
+        swap(&mut msg.c_plus, &mut msg.c_minus);
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -565,10 +528,9 @@ fn test_soundness_scale_d1_values() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        use ark_ff::UniformRand;
         use dory::primitives::arithmetic::Group;
 
-        let scale = ArkFr(<ark_bn254::Fr as UniformRand>::rand(&mut rand::thread_rng()));
+        let scale = ArkFr(Fr::rand(&mut rand::thread_rng()));
         proof.first_messages[0].d1_left = proof.first_messages[0].d1_left.scale(&scale);
         proof.first_messages[0].d1_right = proof.first_messages[0].d1_right.scale(&scale);
     }
@@ -594,12 +556,8 @@ fn test_soundness_multi_round_tampering() {
         create_valid_proof_components(256, 4, 4);
 
     if proof.first_messages.len() >= 2 {
-        proof.first_messages[0].d1_left = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
-        proof.first_messages[1].e2_beta = ArkG2(<ark_bn254::G2Projective as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.first_messages[0].d1_left = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        proof.first_messages[1].e2_beta = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -624,9 +582,7 @@ fn test_soundness_last_round_tampering() {
 
     let last_round = proof.first_messages.len().saturating_sub(1);
     if !proof.first_messages.is_empty() {
-        proof.first_messages[last_round].d2_right = ArkGT(<ark_bn254::Fq12 as UniformRand>::rand(
-            &mut rand::thread_rng(),
-        ));
+        proof.first_messages[last_round].d2_right = ArkGT(Fq12::rand(&mut rand::thread_rng()));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -673,7 +629,7 @@ fn test_soundness_wrong_evaluation() {
     let (_, verifier_setup, _, point, commitment, _, proof) =
         create_valid_proof_components(256, 4, 4);
 
-    let wrong_evaluation = ArkFr(<ark_bn254::Fr as UniformRand>::rand(&mut rand::thread_rng()));
+    let wrong_evaluation = ArkFr(Fr::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(

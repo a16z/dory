@@ -155,7 +155,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
     )
     .unwrap();
 
-    let wrong_evaluation = evaluation + &ArkFr::one();
+    let wrong_evaluation = evaluation + ArkFr::one();
 
     let mut verifier_transcript = fresh_transcript();
     let verify_result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
