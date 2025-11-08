@@ -121,11 +121,11 @@ where
     let v2 = M2::fixed_base_vector_scalar_mul(&setup.h2, &v_vec);
 
     let mut prover_state = crate::reduce_and_fold::DoryProverState::new(
-        row_commitments, // v1 = T_vec_prime (row commitments)
-        v2,              // v2 = v_vec · g_fin
+        row_commitments,     // v1 = T_vec_prime (row commitments)
+        v2,                  // v2 = v_vec · g_fin
         Some(v_vec.clone()), // v2_scalars available for first-round optimization
-        right_vec,       // s1 = right_vec
-        left_vec,        // s2 = left_vec
+        right_vec,           // s1 = right_vec
+        left_vec,            // s2 = left_vec
         setup,
     );
 

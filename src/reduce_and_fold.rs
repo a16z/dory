@@ -150,7 +150,10 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
             let (s_l, s_r) = scalars.split_at(n2);
             let sum_left = M1::msm(g1_prime, s_l);
             let sum_right = M1::msm(g1_prime, s_r);
-            (E::pair(&sum_left, &self.setup.h2), E::pair(&sum_right, &self.setup.h2))
+            (
+                E::pair(&sum_left, &self.setup.h2),
+                E::pair(&sum_right, &self.setup.h2),
+            )
         } else {
             (E::multi_pair(g1_prime, v2_l), E::multi_pair(g1_prime, v2_r))
         };
