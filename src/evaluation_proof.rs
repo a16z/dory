@@ -8,7 +8,7 @@
 use crate::error::DoryError;
 use crate::messages::VMVMessage;
 use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
-use crate::primitives::poly::{compute_left_right_vectors, MultilinearLagrange};
+use crate::primitives::poly::MultilinearLagrange;
 use crate::primitives::transcript::Transcript;
 use crate::proof::DoryProof;
 use crate::reduce_and_fold::DoryVerifierState;
@@ -123,6 +123,7 @@ where
     let mut prover_state = crate::reduce_and_fold::DoryProverState::new(
         row_commitments, // v1 = T_vec_prime (row commitments)
         v2,              // v2 = v_vec · g_fin
+        Some(v_vec.clone()), // v2_scalars available for first-round optimization
         right_vec,       // s1 = right_vec
         left_vec,        // s2 = left_vec
         setup,
@@ -253,8 +254,14 @@ where
     let e2 = setup.h2.scale(&evaluation);
 
     // Step 4: Compute tensors (left_vec and right_vec) from evaluation point
-    // The verifier needs these to fold during the protocol
-    let (s2_tensor, s1_tensor) = compute_left_right_vectors(point, sigma, nu);
+    // The verifier uses O(nu) accumulators derived from per-dimension coordinates.
+    // We take the first `nu` coordinates for s1, and the last `nu` coordinates for s2.
+    // If there are fewer than `nu` remaining for s2 (when sigma < nu), pad with ones (neutral).
+    let s1_coords: Vec<F> = point[..nu].to_vec();
+    let mut s2_coords: Vec<F> = point[nu..(nu + nu).min(point.len())].to_vec();
+    if s2_coords.len() < nu {
+        s2_coords.resize_with(nu, F::one);
+    }
 
     // Step 5: Initialize verifier state
     // d1 = commitment (T in the paper)
@@ -264,8 +271,8 @@ where
         vmv_message.d2, // d2 from VMV message
         vmv_message.e1, // e1 from VMV message
         e2,             // e2 computed from evaluation
-        s1_tensor,      // right_vec from prover (folded as s1)
-        s2_tensor,      // left_vec from prover (folded as s2)
+        s1_coords,      // per-round coordinates for s1
+        s2_coords,      // per-round coordinates for s2
         nu,
         setup.clone(), // Clone setup for verifier state
     );
