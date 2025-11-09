@@ -20,6 +20,9 @@ pub struct DoryProverState<'a, E: PairingCurve> {
     /// Current v2 vector (G2 elements)
     v2: Vec<E::G2>,
 
+    /// For first round only: scalars used to construct v2 from fixed base h2
+    v2_scalars: Option<Vec<<E::G1 as Group>::Scalar>>,
+
     /// Current s1 vector (scalars)
     s1: Vec<<E::G1 as Group>::Scalar>,
 
@@ -53,11 +56,17 @@ pub struct DoryVerifierState<E: PairingCurve> {
     /// Extended protocol: commitment to s2
     e2: E::G2,
 
-    /// Tensors for VMV protocol (s1/right_vec folded during reduce)
-    s1_tensor: Vec<<E::G1 as Group>::Scalar>,
+    /// Accumulated scalar for s1 after folding across rounds
+    s1_acc: <E::G1 as Group>::Scalar,
 
-    /// Tensors for VMV protocol (s2/left_vec folded during reduce)
-    s2_tensor: Vec<<E::G1 as Group>::Scalar>,
+    /// Accumulated scalar for s2 after folding across rounds
+    s2_acc: <E::G1 as Group>::Scalar,
+
+    /// Per-round coordinates for s1 (length = nu). Order must match folding order.
+    s1_coords: Vec<<E::G1 as Group>::Scalar>,
+
+    /// Per-round coordinates for s2 (length = nu). Order must match folding order.
+    s2_coords: Vec<<E::G1 as Group>::Scalar>,
 
     /// Current round number for indexing setup arrays
     nu: usize,
@@ -72,12 +81,14 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
     /// # Parameters
     /// - `v1`: Initial G1 vector
     /// - `v2`: Initial G2 vector
+    /// - `v2_scalars`: Use the scalars in the first round to avoid a multi-pairing by instead performing a (cheaper) MSM + Pairing
     /// - `s1`: Initial scalar vector for G1 side
     /// - `s2`: Initial scalar vector for G2 side
     /// - `setup`: Prover setup parameters
     pub fn new(
         v1: Vec<E::G1>,
         v2: Vec<E::G2>,
+        v2_scalars: Option<Vec<<E::G1 as Group>::Scalar>>,
         s1: Vec<<E::G1 as Group>::Scalar>,
         s2: Vec<<E::G1 as Group>::Scalar>,
         setup: &'a ProverSetup<E>,
@@ -89,12 +100,16 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
             v1.len().is_power_of_two(),
             "vector length must be power of 2"
         );
+        if let Some(sc) = v2_scalars.as_ref() {
+            debug_assert_eq!(sc.len(), v2.len(), "v2_scalars must match v2 length");
+        }
 
         let nu = v1.len().trailing_zeros() as usize;
 
         Self {
             v1,
             v2,
+            v2_scalars,
             s1,
             s2,
             nu,
@@ -130,8 +145,18 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         let d1_right = E::multi_pair(v1_r, g2_prime);
 
         // D₂L = ⟨Γ₁', v₂L⟩, D₂R = ⟨Γ₁', v₂R⟩
-        let d2_left = E::multi_pair(g1_prime, v2_l);
-        let d2_right = E::multi_pair(g1_prime, v2_r);
+        // In the first round, v2 = h2 * scalars, so we can compute this as the Pairing of MSM(Γ₁', scalars)
+        let (d2_left, d2_right) = if let Some(scalars) = self.v2_scalars.as_ref() {
+            let (s_l, s_r) = scalars.split_at(n2);
+            let sum_left = M1::msm(g1_prime, s_l);
+            let sum_right = M1::msm(g1_prime, s_r);
+            (
+                E::pair(&sum_left, &self.setup.h2),
+                E::pair(&sum_right, &self.setup.h2),
+            )
+        } else {
+            (E::multi_pair(g1_prime, v2_l), E::multi_pair(g1_prime, v2_r))
+        };
 
         // Compute E values for extended protocol: MSMs with scalar vectors
         // E₁β = ⟨Γ₁, s₂⟩
@@ -174,6 +199,9 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         for i in 0..n {
             self.v2[i] = self.v2[i] + self.setup.g2_vec[i].scale(&beta_inv);
         }
+
+        // After first combine, the `v2_scalars` optimization does not apply.
+        self.v2_scalars = None;
     }
 
     /// Compute second reduce message for current round
@@ -305,8 +333,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     /// - `d2`: Initial d2 value (typically from VMV)
     /// - `e1`: Initial e1 value
     /// - `e2`: Initial e2 value
-    /// - `s1_tensor`: Tensor for VMV (right_vec in prover)
-    /// - `s2_tensor`: Tensor for VMV (left_vec in prover)
+    /// - `s1_coords`: Per-round coordinates for s1 (right_vec in prover)
+    /// - `s2_coords`: Per-round coordinates for s2 (left_vec in prover)
     /// - `nu`: Number of rounds
     /// - `setup`: Verifier setup parameters
     #[allow(clippy::too_many_arguments)]
@@ -316,13 +344,13 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         d2: E::GT,
         e1: E::G1,
         e2: E::G2,
-        s1_tensor: Vec<<E::G1 as Group>::Scalar>,
-        s2_tensor: Vec<<E::G1 as Group>::Scalar>,
+        s1_coords: Vec<<E::G1 as Group>::Scalar>,
+        s2_coords: Vec<<E::G1 as Group>::Scalar>,
         nu: usize,
         setup: VerifierSetup<E>,
     ) -> Self {
-        debug_assert_eq!(s1_tensor.len(), 1 << nu);
-        debug_assert_eq!(s2_tensor.len(), 1 << nu);
+        debug_assert_eq!(s1_coords.len(), nu);
+        debug_assert_eq!(s2_coords.len(), nu);
 
         Self {
             c,
@@ -330,8 +358,10 @@ impl<E: PairingCurve> DoryVerifierState<E> {
             d2,
             e1,
             e2,
-            s1_tensor,
-            s2_tensor,
+            s1_acc: <E::G1 as Group>::Scalar::one(),
+            s2_acc: <E::G1 as Group>::Scalar::one(),
+            s1_coords,
+            s2_coords,
             nu,
             setup,
         }
@@ -394,19 +424,17 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.e2 = self.e2 + second_msg.e2_plus.scale(alpha);
         self.e2 = self.e2 + second_msg.e2_minus.scale(&alpha_inv);
 
-        // Fold tensors: s₁ ← α·s₁L + s₁R, s₂ ← α⁻¹·s₂L + s₂R
-        let n2 = 1 << (self.nu - 1);
-        let (s1_l, s1_r) = self.s1_tensor.split_at_mut(n2);
-        for i in 0..n2 {
-            s1_l[i] = s1_l[i] * alpha + s1_r[i];
-        }
-        self.s1_tensor.truncate(n2);
-
-        let (s2_l, s2_r) = self.s2_tensor.split_at_mut(n2);
-        for i in 0..n2 {
-            s2_l[i] = s2_l[i] * alpha_inv + s2_r[i];
-        }
-        self.s2_tensor.truncate(n2);
+        // Update folded scalars in O(1): s1_acc *= (α·(1−y_t) + y_t), s2_acc *= (α⁻¹·(1−x_t) + x_t)
+        // Endianness note: s*_coords are stored in increasing dimension index (little-endian by dimension).
+        // Folding processes the most significant dimension first (MSB-first), so we index from the end: idx = nu - 1.
+        let idx = self.nu - 1;
+        let y_t = self.s1_coords[idx];
+        let x_t = self.s2_coords[idx];
+        let one = <E::G1 as Group>::Scalar::one();
+        let s1_term = (*alpha) * (one - y_t) + y_t;
+        let s2_term = alpha_inv * (one - x_t) + x_t;
+        self.s1_acc = self.s1_acc * s1_term;
+        self.s2_acc = self.s2_acc * s2_term;
 
         // Decrement round counter
         self.nu -= 1;
@@ -433,16 +461,10 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
         let d_inv = (*d).inv().expect("d must be invertible");
 
-        // Extract final tensor values (nu=0 means vectors are length 1)
-        debug_assert_eq!(self.s1_tensor.len(), 1);
-        debug_assert_eq!(self.s2_tensor.len(), 1);
-        let s1_final = self.s1_tensor[0];
-        let s2_final = self.s2_tensor[0];
-
         // Apply fold-scalars: update C, D₁, D₂ with gamma challenge
 
         // C' ← C + s₁·s₂·HT + γ·e(H₁, E₂) + γ⁻¹·e(E₁, H₂)
-        let s_product = s1_final * s2_final;
+        let s_product = self.s1_acc * self.s2_acc;
         self.c = self.c + self.setup.ht.scale(&s_product);
 
         let pairing_h1_e2 = E::pair(&self.setup.h1, &self.e2);
@@ -451,13 +473,13 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.c = self.c + pairing_e1_h2.scale(&gamma_inv);
 
         // D₁' ← D₁ + e(H₁, Γ₂₀ · s₁_final · γ)
-        let scalar_for_g2_in_d1 = s1_final * gamma;
+        let scalar_for_g2_in_d1 = self.s1_acc * gamma;
         let g2_0_scaled = self.setup.g2_0.scale(&scalar_for_g2_in_d1);
         let pairing_h1_g2 = E::pair(&self.setup.h1, &g2_0_scaled);
         self.d1 = self.d1 + pairing_h1_g2;
 
         // D₂' ← D₂ + e(Γ₁₀ · s₂_final · γ⁻¹, H₂)
-        let scalar_for_g1_in_d2 = s2_final * gamma_inv;
+        let scalar_for_g1_in_d2 = self.s2_acc * gamma_inv;
         let g1_0_scaled = self.setup.g1_0.scale(&scalar_for_g1_in_d2);
         let pairing_g1_h2 = E::pair(&g1_0_scaled, &self.setup.h2);
         self.d2 = self.d2 + pairing_g1_h2;
