@@ -425,7 +425,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.e2 = self.e2 + second_msg.e2_minus.scale(&alpha_inv);
 
         // Update folded scalars in O(1): s1_acc *= (α·(1−y_t) + y_t), s2_acc *= (α⁻¹·(1−x_t) + x_t)
-        // Current round index is derived from remaining rounds: we fold highest-indexed dimension first, hence idx = nu - 1.
+        // Endianness note: s*_coords are stored in increasing dimension index (little-endian by dimension).
+        // Folding processes the most significant dimension first (MSB-first), so we index from the end: idx = nu - 1.
         let idx = self.nu - 1;
         let y_t = self.s1_coords[idx];
         let x_t = self.s2_coords[idx];
