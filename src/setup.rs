@@ -121,14 +121,14 @@ impl<E: PairingCurve> ProverSetup<E> {
     /// Precomputes pairing values for efficient verification by computing
     /// delta and chi values for all rounds of the inner product protocol.
     pub fn to_verifier_setup(&self) -> VerifierSetup<E> {
-        let max_nu = self.g1_vec.len().trailing_zeros() as usize;
+        let max_num_rounds = self.g1_vec.len().trailing_zeros() as usize;
 
-        let mut delta_1l = Vec::with_capacity(max_nu + 1);
-        let mut delta_1r = Vec::with_capacity(max_nu + 1);
-        let mut delta_2r = Vec::with_capacity(max_nu + 1);
-        let mut chi = Vec::with_capacity(max_nu + 1);
+        let mut delta_1l = Vec::with_capacity(max_num_rounds + 1);
+        let mut delta_1r = Vec::with_capacity(max_num_rounds + 1);
+        let mut delta_2r = Vec::with_capacity(max_num_rounds + 1);
+        let mut chi = Vec::with_capacity(max_num_rounds + 1);
 
-        for k in 0..=max_nu {
+        for k in 0..=max_num_rounds {
             if k == 0 {
                 // Base case: identities for deltas, single pairing for chi
                 delta_1l.push(E::GT::identity());
@@ -169,7 +169,7 @@ impl<E: PairingCurve> ProverSetup<E> {
             h1: self.h1,
             h2: self.h2,
             ht: self.ht,
-            max_log_n: max_nu * 2, // Since square matrices: max_log_n = 2 * max_nu
+            max_log_n: max_num_rounds * 2, // Since square matrices: max_log_n = 2 * max_nu
         }
     }
 
