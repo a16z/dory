@@ -9,6 +9,8 @@
 //!
 //! Run with: cargo bench --bench arkworks_proof --features backends,cache,parallel
 
+#![allow(missing_docs)]
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use dory::backends::arkworks::{
     ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,

@@ -1,5 +1,7 @@
 //! Common test utilities for arkworks backend tests
 
+#![allow(unreachable_pub)]
+
 use dory::backends::arkworks::{
     ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
 };

@@ -7,8 +7,12 @@
 use crate::primitives::arithmetic::{Group, PairingCurve};
 use crate::primitives::serialization::{DoryDeserialize, DorySerialize};
 use rand_core::RngCore;
+
+#[cfg(feature = "disk-persistence")]
 use std::fs::{self, File};
+#[cfg(feature = "disk-persistence")]
 use std::io::{BufReader, BufWriter};
+#[cfg(feature = "disk-persistence")]
 use std::path::PathBuf;
 
 /// Prover setup parameters
@@ -200,6 +204,7 @@ impl<E: PairingCurve> ProverSetup<E> {
 /// - Windows: `{FOLDERID_LocalAppData}\dory\`
 ///
 /// Note: Uses XDG cache directory for persistent storage.
+#[cfg(feature = "disk-persistence")]
 fn get_storage_dir() -> Option<PathBuf> {
     dirs::cache_dir().map(|mut path| {
         path.push("dory");
@@ -208,6 +213,7 @@ fn get_storage_dir() -> Option<PathBuf> {
 }
 
 /// Get the full path to the setup file for a given max_log_n
+#[cfg(feature = "disk-persistence")]
 fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
     get_storage_dir().map(|mut path| {
         path.push(format!("dory_{}.urs", max_log_n));
@@ -219,7 +225,14 @@ fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
 ///
 /// Serializes both setups to a `.urs` file in the storage directory.
 /// If the storage directory doesn't exist, it will be created.
-/// Panics if the save operation fails.
+///
+/// # Panics
+/// Panics if:
+/// - Storage directory cannot be determined
+/// - Directory creation fails
+/// - File creation fails
+/// - Serialization of prover or verifier setup fails
+#[cfg(feature = "disk-persistence")]
 pub fn save_setup<E: PairingCurve>(
     prover: &ProverSetup<E>,
     verifier: &VerifierSetup<E>,
@@ -254,7 +267,14 @@ pub fn save_setup<E: PairingCurve>(
 /// Load prover and verifier setups from disk
 ///
 /// Attempts to deserialize both setups from the saved `.urs` file.
-/// Returns an error if the file doesn't exist, cannot be opened, or deserialization fails.
+///
+/// # Errors
+/// Returns `DoryError::InvalidURS` if:
+/// - Storage directory cannot be determined
+/// - Setup file doesn't exist
+/// - File cannot be opened
+/// - Deserialization fails
+#[cfg(feature = "disk-persistence")]
 pub fn load_setup<E: PairingCurve>(
     max_log_n: usize,
 ) -> Result<(ProverSetup<E>, VerifierSetup<E>), crate::DoryError>

@@ -6,18 +6,34 @@ resolver = "2"
 name = "dory"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.75"
 authors = [
     "Markos Georghiades <mgeorghiades@a16z.com>",
 ]
 license = "Apache-2.0 OR MIT"
 description = "A high performance and modular implementation of the Dory polynomial commitment scheme."
 repository = "https://github.com/a16z/dory"
-exclude = [".github", "README.md"]
+documentation = "https://docs.rs/dory"
+readme = "README.md"
+keywords = ["cryptography", "zkp", "commitment", "polynomial", "pcs"]
+categories = ["cryptography", "algorithms"]
+include = [
+    "src/**",
+    "examples/**",
+    "benches/**",
+    "README.md",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "Cargo.toml",
+]
+
+[package.metadata.docs.rs]
+all-features = true
 
 
 [features]
 default = []
-backends = ["arkworks"]
+backends = ["arkworks", "disk-persistence"]
 arkworks = [
     "dep:ark-bn254",
     "dep:ark-ec",
@@ -31,13 +47,14 @@ arkworks = [
 ]
 parallel = ["dep:rayon", "ark-ec?/parallel", "ark-ff?/parallel"]
 cache = ["arkworks", "dep:once_cell", "parallel"]
+disk-persistence = ["dep:dirs"]
 
 [dependencies]
 thiserror = "2.0"
 rand_core = "0.6"
-dory-derive = { path = "derive" }
+dory-derive = { version = "0.1.0", path = "derive" }
 tracing = "0.1"
-dirs = "5.0"
+dirs = { version = "5.0", optional = true }
 
 # Arkworks backend
 ark-bn254 = { version = "0.5.0", optional = true }
@@ -72,3 +89,11 @@ required-features = ["backends"]
 name = "arkworks_proof"
 harness = false
 required-features = ["backends", "cache", "parallel"]
+
+[lints.rust]
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"

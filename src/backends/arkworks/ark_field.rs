@@ -1,3 +1,7 @@
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
 use crate::primitives::arithmetic::Field;
 use ark_bn254::Fr;
 use ark_ff::{Field as ArkField, UniformRand, Zero as ArkZero};

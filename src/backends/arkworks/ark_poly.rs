@@ -1,3 +1,7 @@
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
 use super::ark_field::ArkFr;
 use crate::error::DoryError;
 use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};

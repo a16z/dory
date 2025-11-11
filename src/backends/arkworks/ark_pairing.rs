@@ -1,5 +1,9 @@
 //! BN254 pairing implementation with optimizations
 
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
 use super::ark_group::{ArkG1, ArkG2, ArkGT};
 use crate::primitives::arithmetic::{Group, PairingCurve};
 use ark_bn254::Bn254;

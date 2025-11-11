@@ -7,7 +7,7 @@ A high-performance, modular implementation of the Dory polynomial commitment sch
 Dory is a transparent polynomial commitment scheme with excellent asymptotic performance, based on the work of Jonathan Lee ([eprint 2020/1274](https://eprint.iacr.org/2020/1274)). This implementation provides a clean, modular architecture with strong performance characteristics and comprehensive test coverage.
 
 **Key Features:**
-- **Transparent setup**: No trusted setup ceremony required, and automatic URS disk persistence
+- **Transparent setup**: No trusted setup ceremony required with optional disk persistence
 - **Logarithmic proof size**: O(log n) group elements
 - **Logarithmic verification**: O(log n) GT exps and 5 pairings
 - **Modular design**: Pluggable backends for curves and cryptographic primitives
@@ -210,6 +210,7 @@ cargo bench --features backends,cache,parallel
 - `backends` - Enable concrete backends. Currently supports Arkworks BN254.
 - `cache` - Enable prepared point caching for ~20-30% pairing speedup. Requires `arkworks` and `parallel`.
 - `parallel` - Enable parallelization using Rayon for MSMs and pairings. Works with both `arkworks` backend and enables parallel features in `ark-ec` and `ark-ff`.
+- `disk-persistence` - Enable automatic setup caching to disk. When enabled, `setup()` will load from OS-specific cache directories if available, avoiding regeneration.
 
 ## Project Structure
 

@@ -1,3 +1,9 @@
+//! Serialization primitives for Dory types
+
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
 use std::io::{Read, Write};
 
 // Re-export derive macros

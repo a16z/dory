@@ -1,5 +1,9 @@
 //! Group implementations for BN254 curve (G1, G2, GT)
 
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
 use super::ark_field::ArkFr;
 use crate::primitives::arithmetic::{DoryRoutines, Group};
 use ark_bn254::{Fq12, G1Affine, G1Projective, G2Affine, G2Projective};

@@ -88,6 +88,7 @@
 //! - `cache` - Enable prepared point caching (~20-30% speedup, requires `parallel`)
 //! - `parallel` - Enable Rayon parallelization for MSMs and pairings
 
+/// Error types for Dory PCS operations
 pub mod error;
 pub mod evaluation_proof;
 pub mod messages;
@@ -132,6 +133,9 @@ pub use setup::{ProverSetup, VerifierSetup};
 /// # Performance
 /// To enable prepared point caching (~20-30% speedup), use the `cache` feature and call
 /// `init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec)` after setup.
+///
+/// # Panics
+/// Panics if the setup file exists on disk but is corrupted or cannot be deserialized.
 pub fn setup<E: PairingCurve, R: rand_core::RngCore>(
     rng: &mut R,
     max_log_n: usize,
@@ -140,31 +144,44 @@ where
     ProverSetup<E>: DorySerialize + DoryDeserialize,
     VerifierSetup<E>: DorySerialize + DoryDeserialize,
 {
-    // Try to load from disk
-    match setup::load_setup::<E>(max_log_n) {
-        Ok(saved) => return saved,
-        Err(DoryError::InvalidURS(msg)) if msg.contains("not found") => {
-            // File doesn't exist, we'll generate new setup
-            tracing::debug!("Setup file not found, will generate new one");
+    #[cfg(feature = "disk-persistence")]
+    {
+        // Try to load from disk
+        match setup::load_setup::<E>(max_log_n) {
+            Ok(saved) => return saved,
+            Err(DoryError::InvalidURS(msg)) if msg.contains("not found") => {
+                // File doesn't exist, we'll generate new setup
+                tracing::debug!("Setup file not found, will generate new one");
+            }
+            Err(e) => {
+                // File exists but is corrupted - unrecoverable
+                panic!("Failed to load setup from disk: {}", e);
+            }
         }
-        Err(e) => {
-            // File exists but is corrupted - unrecoverable
-            panic!("Failed to load setup from disk: {}", e);
-        }
+
+        // Setup not found on disk - generate new setup
+        tracing::info!(
+            "Setup not found on disk, generating new setup for max_log_n={}",
+            max_log_n
+        );
+        let prover_setup = ProverSetup::new(rng, max_log_n);
+        let verifier_setup = prover_setup.to_verifier_setup();
+
+        // Save to disk
+        setup::save_setup(&prover_setup, &verifier_setup, max_log_n);
+
+        (prover_setup, verifier_setup)
     }
 
-    // Setup not found on disk - generate new setup
-    tracing::info!(
-        "Setup not found on disk, generating new setup for max_log_n={}",
-        max_log_n
-    );
-    let prover_setup = ProverSetup::new(rng, max_log_n);
-    let verifier_setup = prover_setup.to_verifier_setup();
+    #[cfg(not(feature = "disk-persistence"))]
+    {
+        tracing::info!("Generating new setup for max_log_n={}", max_log_n);
 
-    // Save to disk
-    setup::save_setup(&prover_setup, &verifier_setup, max_log_n);
+        let prover_setup = ProverSetup::new(rng, max_log_n);
+        let verifier_setup = prover_setup.to_verifier_setup();
 
-    (prover_setup, verifier_setup)
+        (prover_setup, verifier_setup)
+    }
 }
 
 /// Force generate new prover and verifier setups and save to disk
@@ -182,6 +199,10 @@ where
 ///
 /// # Returns
 /// `(ProverSetup, VerifierSetup)` - Newly generated setup parameters
+///
+/// # Availability
+/// This function is only available when the `disk-persistence` feature is enabled.
+#[cfg(feature = "disk-persistence")]
 pub fn generate_urs<E: PairingCurve, R: rand_core::RngCore>(
     rng: &mut R,
     max_log_n: usize,
@@ -232,6 +253,12 @@ where
 /// 3. Generate proof using this function with the combined polynomial
 ///
 /// See `examples/homomorphic.rs` for a complete demonstration.
+///
+/// # Errors
+/// Returns `DoryError` if:
+/// - Point dimension doesn't match nu + sigma
+/// - Polynomial size doesn't match 2^(nu + sigma)
+/// - Number of row commitments doesn't match 2^nu
 #[allow(clippy::type_complexity)]
 #[tracing::instrument(skip_all, name = "prove")]
 pub fn prove<F, E, M1, M2, P, T>(
@@ -284,6 +311,10 @@ where
 ///
 /// # Returns
 /// `Ok(())` if proof is valid, `Err(DoryError)` otherwise
+///
+/// # Errors
+/// Returns `DoryError::InvalidProof` if the proof is invalid, or other variants
+/// if the input parameters are incorrect (e.g., point dimension mismatch).
 #[tracing::instrument(skip_all, name = "verify")]
 pub fn verify<F, E, M1, M2, T>(
     commitment: E::GT,

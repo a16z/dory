@@ -264,6 +264,10 @@ where
 /// This function can verify proofs for homomorphically combined polynomials.
 /// The commitment parameter should be the combined commitment, and the evaluation
 /// should be the evaluation of the combined polynomial.
+///
+/// # Errors
+/// Returns `DoryError::InvalidProof` if verification fails, or other variants
+/// if the input parameters are incorrect (e.g., point dimension mismatch).
 #[tracing::instrument(skip_all, name = "verify_evaluation_proof")]
 pub fn verify_evaluation_proof<F, E, M1, M2, T>(
     commitment: E::GT,
