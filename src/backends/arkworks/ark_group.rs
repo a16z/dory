@@ -1,23 +1,22 @@
+//! Group implementations for BN254 curve (G1, G2, GT)
+
 use super::ark_field::ArkFr;
-use crate::primitives::arithmetic::{DoryRoutines, Group, PairingCurve};
-use ark_bn254::{Bn254, Fq12, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
+use crate::primitives::arithmetic::{DoryRoutines, Group};
+use ark_bn254::{Fq12, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::{Field as ArkField, One, PrimeField, UniformRand, Zero as ArkZero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::{Add, Mul, Neg, Sub};
 use rand_core::RngCore;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ArkG1(pub G1Projective);
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ArkG2(pub G2Projective);
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ArkGT(pub Fq12);
-
-#[derive(Clone, Debug)]
-pub struct BN254;
 
 impl Group for ArkG1 {
     type Scalar = ArkFr;
@@ -246,36 +245,10 @@ impl<'a> Mul<&'a ArkGT> for ArkFr {
     }
 }
 
-impl PairingCurve for BN254 {
-    type G1 = ArkG1;
-    type G2 = ArkG2;
-    type GT = ArkGT;
-
-    fn pair(p: &Self::G1, q: &Self::G2) -> Self::GT {
-        ArkGT(Bn254::pairing(p.0, q.0).0)
-    }
-
-    fn multi_pair(ps: &[Self::G1], qs: &[Self::G2]) -> Self::GT {
-        assert_eq!(
-            ps.len(),
-            qs.len(),
-            "multi_pair requires equal length vectors"
-        );
-
-        if ps.is_empty() {
-            return Self::GT::identity();
-        }
-
-        let ps_inner: Vec<G1Projective> = ps.iter().map(|p| p.0).collect();
-        let qs_inner: Vec<G2Projective> = qs.iter().map(|q| q.0).collect();
-
-        ArkGT(Bn254::multi_pairing(ps_inner, qs_inner).0)
-    }
-}
-
 pub struct G1Routines;
 
 impl DoryRoutines<ArkG1> for G1Routines {
+    #[tracing::instrument(skip_all, name = "G1::msm", fields(len = bases.len()))]
     fn msm(bases: &[ArkG1], scalars: &[ArkFr]) -> ArkG1 {
         assert_eq!(
             bases.len(),
@@ -317,6 +290,7 @@ impl DoryRoutines<ArkG1> for G1Routines {
 pub struct G2Routines;
 
 impl DoryRoutines<ArkG2> for G2Routines {
+    #[tracing::instrument(skip_all, name = "G2::msm", fields(len = bases.len()))]
     fn msm(bases: &[ArkG2], scalars: &[ArkFr]) -> ArkG2 {
         assert_eq!(
             bases.len(),

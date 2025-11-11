@@ -7,11 +7,13 @@ A high-performance, modular implementation of the Dory polynomial commitment sch
 Dory is a transparent polynomial commitment scheme with excellent asymptotic performance, based on the work of Jonathan Lee ([eprint 2020/1274](https://eprint.iacr.org/2020/1274)). This implementation provides a clean, modular architecture with strong performance characteristics and comprehensive test coverage.
 
 **Key Features:**
-- **Transparent setup**: No trusted setup ceremony required
+- **Transparent setup**: No trusted setup ceremony required, and automatic URS disk persistence
 - **Logarithmic proof size**: O(log n) group elements
 - **Logarithmic verification**: O(log n) GT exps and 5 pairings
 - **Modular design**: Pluggable backends for curves and cryptographic primitives
-- **Performance-optimized**: Uses vectorized operations via `DoryRoutines` trait
+- **Performance-optimized**: Vectorized operations, optional prepared point caching, and parallelization with Rayon
+- **Flexible matrix layouts**: Supports both square and non-square matrices (nu ≤ sigma)
+- **Homomorphic properties**: Commitment linearity enables proof aggregation
 
 ## Architecture
 
@@ -49,12 +51,21 @@ Dory is a transparent polynomial commitment scheme with excellent asymptotic per
 
 Dory uses a two-tier (also known as AFGHO) homomorphic commitments:
 
-1. **Polynomial Representation**: Coefficients are arranged as a 2^ν × 2^σ matrix
+1. **Polynomial Representation**: Coefficients are arranged as a 2^ν × 2^σ matrix (constraint: ν ≤ σ)
 2. **Row Commitments** (Tier 1): Each row is committed using multi-scalar multiplication in G1
 3. **Final Commitment** (Tier 2): Row commitments are combined via pairings with G2 generators
 4. **Evaluation Proof**: Uses a VMV (Vector-Matrix-Vector) protocol with reduce-and-fold rounds
 
 The protocol leverages the algebraic structure of bilinear pairings to achieve logarithmic proof sizes and verification times.
+
+### Homomorphic Properties
+
+Dory commitments are linearly homomorphic, meaning:
+```
+Com(r₁·P₁ + r₂·P₂ + ... + rₙ·Pₙ) = r₁·Com(P₁) + r₂·Com(P₂) + ... + rₙ·Com(Pₙ)
+```
+
+This property enables efficient proof aggregation and batch verification. See `examples/homomorphic.rs` for a demonstration.
 
 ## Usage
 
@@ -80,27 +91,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nu = 4;     // log₂(rows) = 4 → 16 rows
     let sigma = 4;  // log₂(cols) = 4 → 16 columns
 
-    // 4. Prove: commit to polynomial and create evaluation proof
+    // 4. Commit to polynomial to get tier-2 commitment and row commitments
+    let (tier_2, row_commitments) = polynomial
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)?;
+
+    // 5. Create evaluation proof using row commitments
     let mut prover_transcript = Blake2bTranscript::new(b"dory-example");
-    let (commitment, evaluation, proof) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
         &polynomial,
         &point,
-        None,  // DoryCommitment: Will compute if None
+        row_commitments,
         nu,
         sigma,
         &prover_setup,
         &mut prover_transcript,
     )?;
 
-    // 5. Verify: check that the proof is valid
+    // 6. Verify: check that the proof is valid
+    let evaluation = polynomial.evaluate(&point);
     let mut verifier_transcript = Blake2bTranscript::new(b"dory-example");
     verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
+        tier_2,
         evaluation,
         &point,
         &proof,
-        nu,
-        sigma,
         verifier_setup,
         &mut verifier_transcript,
     )?;
@@ -109,6 +123,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## Examples
+
+The repository includes three comprehensive examples demonstrating different aspects of Dory:
+
+1. **`basic_e2e`** - Standard end-to-end workflow with square matrix (nu=4, sigma=4)
+   ```bash
+   cargo run --example basic_e2e --features backends
+   ```
+
+2. **`homomorphic`** - Demonstrates homomorphic combination of 5 polynomials
+   ```bash
+   cargo run --example homomorphic --features backends
+   ```
+
+3. **`non_square`** - Non-square matrix layout (nu=3, sigma=4) demonstrating flexibility
+   ```bash
+   cargo run --example non_square --features backends
+   ```
 
 ## Development Setup
 
@@ -121,6 +154,7 @@ After cloning the repository, install Git hooks to ensure code quality:
 This installs a pre-commit hook that:
 - Auto-formats code with `cargo fmt`
 - Runs `cargo clippy` in strict mode
+- Checks that documentation builds without warnings
 
 ## Performance Considerations
 
@@ -130,6 +164,14 @@ This implementation is optimized for performance:
   - `fixed_base_vector_scalar_mul` - Vectorized scalar multiplication
   - `fixed_scalar_mul_bases_then_add` - Fused multiply-add with base vectors
   - `fixed_scalar_mul_vs_then_add` - Fused multiply-add for vector folding
+
+- **Prepared Point Caching** (optional `cache` feature): Pre-computes prepared points for setup generators, providing ~20-30% speedup on pairing operations. Initialize with:
+  ```rust
+  use dory::backends::arkworks::init_cache;
+  init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
+  ```
+
+- **Parallelization** (optional `parallel` feature): Uses Rayon for parallel multi-scalar multiplications and multi-pairings, providing significant speedup on multi-core systems.
 
 - **Pluggable Polynomial Implementations**: The `Polynomial` and `MultilinearLagrange` traits are exposed, allowing users to provide custom polynomial representations optimized for their specific use cases (e.g., sparse polynomials)
 
@@ -141,19 +183,33 @@ This implementation is optimized for performance:
 # Build with arkworks backend
 cargo build --release --features backends
 
+# Build with all optimizations (cache + parallel)
+cargo build --release --features backends,cache,parallel
+
 # Run tests
 cargo nextest run --features backends
+
+# Run all tests with all features
+cargo nextest run --all-features
 
 # Run clippy
 cargo clippy --features backends -- -D warnings
 
 # Generate documentation
 cargo doc --features backends --open
+
+# Run examples (see Examples section above)
+cargo run --example basic_e2e --features backends
+
+# Run benchmark with optimizations
+cargo bench --features backends,cache,parallel
 ```
 
 ## Features
 
 - `backends` - Enable concrete backends. Currently supports Arkworks BN254.
+- `cache` - Enable prepared point caching for ~20-30% pairing speedup. Requires `arkworks` and `parallel`.
+- `parallel` - Enable parallelization using Rayon for MSMs and pairings. Works with both `arkworks` backend and enables parallel features in `ark-ec` and `ark-ff`.
 
 ## Project Structure
 
@@ -193,11 +249,14 @@ tests/arkworks/
 ## Test Coverage
 
 The implementation includes comprehensive tests covering:
-- Setup generation
-- Polynomial commitment
+- Setup generation and disk persistence
+- Polynomial commitment (square and non-square matrices)
 - Evaluation proofs
 - End-to-end workflows
-- Soundness (tampering resistance for all proof components)
+- Homomorphic combination
+- Non-square matrix support (nu < sigma, nu = sigma - 1, and very rectangular cases)
+- Soundness (tampering resistance for all proof components across 20+ attack vectors)
+- Prepared point caching correctness
 
 ## Acknowledgments
 

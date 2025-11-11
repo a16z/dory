@@ -24,19 +24,17 @@ fn test_full_workflow() {
     let expected_evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (returned_commitment, evaluation, proof) =
-        prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
-            &poly,
-            &point,
-            Some(DoryCommitment::new(tier_2, tier_1)),
-            nu,
-            sigma,
-            &prover_setup,
-            &mut prover_transcript,
-        )
-        .unwrap();
-
-    assert_eq!(tier_2, returned_commitment);
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        &poly,
+        &point,
+        tier_1,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
+    let evaluation = poly.evaluate(&point);
     assert_eq!(evaluation, expected_evaluation);
 
     let mut verifier_transcript = fresh_transcript();
@@ -45,8 +43,6 @@ fn test_full_workflow() {
         evaluation,
         &point,
         &proof,
-        nu,
-        sigma,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -66,26 +62,29 @@ fn test_workflow_without_precommitment() {
     let nu = 4;
     let sigma = 4;
 
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
     let mut prover_transcript = fresh_transcript();
-    let (commitment, evaluation, proof) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
         &poly,
         &point,
-        None,
+        tier_1,
         nu,
         sigma,
         &prover_setup,
         &mut prover_transcript,
     )
     .unwrap();
+    let evaluation = poly.evaluate(&point);
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
+        tier_2,
         evaluation,
         &point,
         &proof,
-        nu,
-        sigma,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -110,16 +109,17 @@ fn test_batched_proofs() {
         let point = random_point(8);
 
         let mut prover_transcript = Blake2bTranscript::new(format!("test-{}", i).as_bytes());
-        let (_, evaluation, proof) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
             &poly,
             &point,
-            Some(DoryCommitment::new(tier_2, tier_1.clone())),
+            tier_1.clone(),
             nu,
             sigma,
             &prover_setup,
             &mut prover_transcript,
         )
         .unwrap();
+        let evaluation = poly.evaluate(&point);
 
         let mut verifier_transcript = Blake2bTranscript::new(format!("test-{}", i).as_bytes());
         let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -127,8 +127,6 @@ fn test_batched_proofs() {
             evaluation,
             &point,
             &proof,
-            nu,
-            sigma,
             verifier_setup.clone(),
             &mut verifier_transcript,
         );
@@ -159,11 +157,15 @@ fn test_linear_polynomial() {
     let nu = 4;
     let sigma = 4;
 
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
     let mut prover_transcript = fresh_transcript();
-    let (commitment, evaluation, proof) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
         &poly,
         &point,
-        None,
+        tier_1,
         nu,
         sigma,
         &prover_setup,
@@ -171,17 +173,16 @@ fn test_linear_polynomial() {
     )
     .unwrap();
 
+    let evaluation = poly.evaluate(&point);
     let expected_eval = poly.evaluate(&point);
     assert_eq!(evaluation, expected_eval);
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
+        tier_2,
         evaluation,
         &point,
         &proof,
-        nu,
-        sigma,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -200,11 +201,15 @@ fn test_zero_polynomial() {
     let nu = 4;
     let sigma = 4;
 
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
     let mut prover_transcript = fresh_transcript();
-    let (commitment, evaluation, proof) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
         &poly,
         &point,
-        None,
+        tier_1,
         nu,
         sigma,
         &prover_setup,
@@ -212,16 +217,15 @@ fn test_zero_polynomial() {
     )
     .unwrap();
 
+    let evaluation = poly.evaluate(&point);
     assert_eq!(evaluation, ArkFr::zero());
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
+        tier_2,
         evaluation,
         &point,
         &proof,
-        nu,
-        sigma,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -245,17 +249,22 @@ fn test_soundness_wrong_commitment() {
         .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
+    let (_, tier_1_poly2) = poly2
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
     let mut prover_transcript = fresh_transcript();
-    let (_, evaluation, proof) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
         &poly2,
         &point,
-        None,
+        tier_1_poly2,
         nu,
         sigma,
         &prover_setup,
         &mut prover_transcript,
     )
     .unwrap();
+    let evaluation = poly2.evaluate(&point);
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -263,8 +272,6 @@ fn test_soundness_wrong_commitment() {
         evaluation,
         &point,
         &proof,
-        nu,
-        sigma,
         verifier_setup,
         &mut verifier_transcript,
     );

@@ -48,7 +48,7 @@ pub struct SecondReduceMessage<G1, G2, GT> {
 pub struct VMVMessage<G1, GT> {
     /// C = e(MSM(T_vec', v_vec), Γ₂,fin)
     pub c: GT,
-    /// D₂ = e(MSM(Γ₁[nu], v_vec), Γ₂,fin)
+    /// D₂ = e(MSM(Γ₁\[nu\], v_vec), Γ₂,fin)
     pub d2: GT,
     /// E₁ = MSM(T_vec', L_vec)
     pub e1: G1,

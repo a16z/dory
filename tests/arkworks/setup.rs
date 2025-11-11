@@ -105,3 +105,42 @@ fn test_setup_function_uses_disk() {
     assert_eq!(prover1.g2_vec[0], prover2.g2_vec[0]);
     assert_eq!(verifier1.chi[0], verifier2.chi[0]);
 }
+
+#[test]
+fn test_arkworks_setup_canonical_serialization() {
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+    use dory::backends::arkworks::{ArkworksProverSetup, ArkworksVerifierSetup};
+    use rand::thread_rng;
+
+    let mut rng = thread_rng();
+    let max_log_n = 6;
+
+    let prover = ArkworksProverSetup::new(&mut rng, max_log_n);
+    let verifier = prover.to_verifier_setup();
+
+    let mut prover_bytes = Vec::new();
+    prover
+        .serialize_compressed(&mut prover_bytes)
+        .expect("Failed to serialize prover setup");
+
+    let mut verifier_bytes = Vec::new();
+    verifier
+        .serialize_compressed(&mut verifier_bytes)
+        .expect("Failed to serialize verifier setup");
+
+    let loaded_prover = ArkworksProverSetup::deserialize_compressed(&prover_bytes[..])
+        .expect("Failed to deserialize prover setup");
+    let loaded_verifier = ArkworksVerifierSetup::deserialize_compressed(&verifier_bytes[..])
+        .expect("Failed to deserialize verifier setup");
+
+    assert_eq!(loaded_prover.g1_vec[0], prover.g1_vec[0]);
+    assert_eq!(loaded_prover.g2_vec[0], prover.g2_vec[0]);
+    assert_eq!(loaded_prover.h1, prover.h1);
+    assert_eq!(loaded_prover.h2, prover.h2);
+    assert_eq!(loaded_prover.ht, prover.ht);
+
+    assert_eq!(loaded_verifier.max_log_n, verifier.max_log_n);
+    assert_eq!(loaded_verifier.chi.len(), verifier.chi.len());
+    assert_eq!(loaded_verifier.g1_0, verifier.g1_0);
+    assert_eq!(loaded_verifier.g2_0, verifier.g2_0);
+}

@@ -27,7 +27,7 @@ pub struct DoryProverState<'a, E: PairingCurve> {
     s2: Vec<<E::G1 as Group>::Scalar>,
 
     /// Number of rounds remaining (log₂ of vector length)
-    nu: usize,
+    num_rounds: usize,
 
     /// Reference to prover setup
     setup: &'a ProverSetup<E>,
@@ -59,8 +59,8 @@ pub struct DoryVerifierState<E: PairingCurve> {
     /// Tensors for VMV protocol (s2/left_vec folded during reduce)
     s2_tensor: Vec<<E::G1 as Group>::Scalar>,
 
-    /// Current round number for indexing setup arrays
-    nu: usize,
+    /// Number of rounds remaining for indexing setup arrays
+    num_rounds: usize,
 
     /// Reference to verifier setup
     setup: VerifierSetup<E>,
@@ -90,14 +90,14 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
             "vector length must be power of 2"
         );
 
-        let nu = v1.len().trailing_zeros() as usize;
+        let num_rounds = v1.len().trailing_zeros() as usize;
 
         Self {
             v1,
             v2,
             s1,
             s2,
-            nu,
+            num_rounds,
             setup,
         }
     }
@@ -112,9 +112,12 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         M2: DoryRoutines<E::G2>,
         E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
     {
-        assert!(self.nu > 0, "Not enough rounds left in prover state");
+        assert!(
+            self.num_rounds > 0,
+            "Not enough rounds left in prover state"
+        );
 
-        let n2 = 1 << (self.nu - 1); // n/2
+        let n2 = 1 << (self.num_rounds - 1); // n/2
 
         // Split vectors into left and right halves
         let (v1_l, v1_r) = self.v1.split_at(n2);
@@ -125,20 +128,20 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         let g2_prime = &self.setup.g2_vec[..n2];
 
         // Compute D values: multi-pairings between v-vectors and generators
-        // D₁L = ⟨v₁L, Γ₂'⟩, D₁R = ⟨v₁R, Γ₂'⟩
-        let d1_left = E::multi_pair(v1_l, g2_prime);
-        let d1_right = E::multi_pair(v1_r, g2_prime);
+        // D₁L = ⟨v₁L, Γ₂'⟩, D₁R = ⟨v₁R, Γ₂'⟩ - g2_prime is from setup, use cached version
+        let d1_left = E::multi_pair_g2_setup(v1_l, g2_prime);
+        let d1_right = E::multi_pair_g2_setup(v1_r, g2_prime);
 
-        // D₂L = ⟨Γ₁', v₂L⟩, D₂R = ⟨Γ₁', v₂R⟩
-        let d2_left = E::multi_pair(g1_prime, v2_l);
-        let d2_right = E::multi_pair(g1_prime, v2_r);
+        // D₂L = ⟨Γ₁', v₂L⟩, D₂R = ⟨Γ₁', v₂R⟩ - g1_prime is from setup, use G1 cached version
+        let d2_left = E::multi_pair_g1_setup(g1_prime, v2_l);
+        let d2_right = E::multi_pair_g1_setup(g1_prime, v2_r);
 
         // Compute E values for extended protocol: MSMs with scalar vectors
         // E₁β = ⟨Γ₁, s₂⟩
-        let e1_beta = M1::msm(&self.setup.g1_vec[..1 << self.nu], &self.s2[..]);
+        let e1_beta = M1::msm(&self.setup.g1_vec[..1 << self.num_rounds], &self.s2[..]);
 
         // E₂β = ⟨Γ₂, s₁⟩
-        let e2_beta = M2::msm(&self.setup.g2_vec[..1 << self.nu], &self.s1[..]);
+        let e2_beta = M2::msm(&self.setup.g2_vec[..1 << self.num_rounds], &self.s1[..]);
 
         FirstReduceMessage {
             d1_left,
@@ -163,17 +166,13 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
     {
         let beta_inv = (*beta).inv().expect("beta must be invertible");
 
-        let n = 1 << self.nu;
+        let n = 1 << self.num_rounds;
 
         // Combine: v₁ ← v₁ + β·Γ₁
-        for i in 0..n {
-            self.v1[i] = self.v1[i] + self.setup.g1_vec[i].scale(beta);
-        }
+        M1::fixed_scalar_mul_bases_then_add(&self.setup.g1_vec[..n], &mut self.v1, beta);
 
         // Combine: v₂ ← v₂ + β⁻¹·Γ₂
-        for i in 0..n {
-            self.v2[i] = self.v2[i] + self.setup.g2_vec[i].scale(&beta_inv);
-        }
+        M2::fixed_scalar_mul_bases_then_add(&self.setup.g2_vec[..n], &mut self.v2, &beta_inv);
     }
 
     /// Compute second reduce message for current round
@@ -186,7 +185,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         M2: DoryRoutines<E::G2>,
         E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
     {
-        let n2 = 1 << (self.nu - 1); // n/2
+        let n2 = 1 << (self.num_rounds - 1); // n/2
 
         // Split all vectors into left and right halves
         let (v1_l, v1_r) = self.v1.split_at(n2);
@@ -232,7 +231,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         <E::G1 as Group>::Scalar: Field,
     {
         let alpha_inv = (*alpha).inv().expect("alpha must be invertible");
-        let n2 = 1 << (self.nu - 1); // n/2
+        let n2 = 1 << (self.num_rounds - 1); // n/2
 
         // Fold v₁: v₁ ← α·v₁L + v₁R (optimized with DoryRoutines)
         let (v1_l, v1_r) = self.v1.split_at_mut(n2);
@@ -259,13 +258,13 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         self.s2.truncate(n2);
 
         // Decrement round counter
-        self.nu -= 1;
+        self.num_rounds -= 1;
     }
 
     /// Compute final scalar product message
     ///
     /// Applies fold-scalars transformation and returns the final E1, E2 elements.
-    /// Must be called when nu=0 (vectors are size 1).
+    /// Must be called when num_rounds=0 (vectors are size 1).
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
     pub fn compute_final_message<M1, M2>(
         self,
@@ -277,7 +276,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
         <E::G1 as Group>::Scalar: Field,
     {
-        debug_assert_eq!(self.nu, 0, "nu must be 0 for final message");
+        debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for final message");
         debug_assert_eq!(self.v1.len(), 1, "v1 must have length 1");
         debug_assert_eq!(self.v2.len(), 1, "v2 must have length 1");
 
@@ -307,7 +306,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     /// - `e2`: Initial e2 value
     /// - `s1_tensor`: Tensor for VMV (right_vec in prover)
     /// - `s2_tensor`: Tensor for VMV (left_vec in prover)
-    /// - `nu`: Number of rounds
+    /// - `num_rounds`: Number of rounds
     /// - `setup`: Verifier setup parameters
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -318,11 +317,11 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         e2: E::G2,
         s1_tensor: Vec<<E::G1 as Group>::Scalar>,
         s2_tensor: Vec<<E::G1 as Group>::Scalar>,
-        nu: usize,
+        num_rounds: usize,
         setup: VerifierSetup<E>,
     ) -> Self {
-        debug_assert_eq!(s1_tensor.len(), 1 << nu);
-        debug_assert_eq!(s2_tensor.len(), 1 << nu);
+        debug_assert_eq!(s1_tensor.len(), 1 << num_rounds);
+        debug_assert_eq!(s2_tensor.len(), 1 << num_rounds);
 
         Self {
             c,
@@ -332,7 +331,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
             e2,
             s1_tensor,
             s2_tensor,
-            nu,
+            num_rounds,
             setup,
         }
     }
@@ -353,13 +352,13 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
         <E::G1 as Group>::Scalar: Field,
     {
-        assert!(self.nu > 0, "No rounds remaining");
+        assert!(self.num_rounds > 0, "No rounds remaining");
 
         let alpha_inv = (*alpha).inv().expect("alpha must be invertible");
         let beta_inv = (*beta).inv().expect("beta must be invertible");
 
         // Update C: C' ← C + χᵢ + β·D₂ + β⁻¹·D₁ + α·C₊ + α⁻¹·C₋
-        let chi = &self.setup.chi[self.nu];
+        let chi = &self.setup.chi[self.num_rounds];
         self.c = self.c + chi;
         self.c = self.c + self.d2.scale(beta);
         self.c = self.c + self.d1.scale(&beta_inv);
@@ -367,8 +366,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.c = self.c + second_msg.c_minus.scale(&alpha_inv);
 
         // Update D₁: D₁' ← α·D₁L + D₁R + α·β·Δ₁L + β·Δ₁R
-        let delta_1l = &self.setup.delta_1l[self.nu];
-        let delta_1r = &self.setup.delta_1r[self.nu];
+        let delta_1l = &self.setup.delta_1l[self.num_rounds];
+        let delta_1r = &self.setup.delta_1r[self.num_rounds];
         let alpha_beta = *alpha * *beta;
         self.d1 = first_msg.d1_left.scale(alpha);
         self.d1 = self.d1 + first_msg.d1_right;
@@ -376,8 +375,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.d1 = self.d1 + delta_1r.scale(beta);
 
         // Update D₂: D₂' ← α⁻¹·D₂L + D₂R + α⁻¹·β⁻¹·Δ₂L + β⁻¹·Δ₂R
-        let delta_2l = &self.setup.delta_2l[self.nu];
-        let delta_2r = &self.setup.delta_2r[self.nu];
+        let delta_2l = &self.setup.delta_2l[self.num_rounds];
+        let delta_2r = &self.setup.delta_2r[self.num_rounds];
         let alpha_inv_beta_inv = alpha_inv * beta_inv;
         self.d2 = first_msg.d2_left.scale(&alpha_inv);
         self.d2 = self.d2 + first_msg.d2_right;
@@ -395,7 +394,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.e2 = self.e2 + second_msg.e2_minus.scale(&alpha_inv);
 
         // Fold tensors: s₁ ← α·s₁L + s₁R, s₂ ← α⁻¹·s₂L + s₂R
-        let n2 = 1 << (self.nu - 1);
+        let n2 = 1 << (self.num_rounds - 1);
         let (s1_l, s1_r) = self.s1_tensor.split_at_mut(n2);
         for i in 0..n2 {
             s1_l[i] = s1_l[i] * alpha + s1_r[i];
@@ -409,13 +408,13 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.s2_tensor.truncate(n2);
 
         // Decrement round counter
-        self.nu -= 1;
+        self.num_rounds -= 1;
     }
 
     /// Verify final scalar product message
     ///
     /// Applies fold-scalars transformation and checks the final pairing equation.
-    /// Must be called when nu=0 after all reduce rounds are complete.
+    /// Must be called when num_rounds=0 after all reduce rounds are complete.
     #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
     pub fn verify_final(
         &mut self,
@@ -428,12 +427,15 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
         <E::G1 as Group>::Scalar: Field,
     {
-        debug_assert_eq!(self.nu, 0, "nu must be 0 for final verification");
+        debug_assert_eq!(
+            self.num_rounds, 0,
+            "num_rounds must be 0 for final verification"
+        );
 
         let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
         let d_inv = (*d).inv().expect("d must be invertible");
 
-        // Extract final tensor values (nu=0 means vectors are length 1)
+        // Extract final tensor values (num_rounds=0 means vectors are length 1)
         debug_assert_eq!(self.s1_tensor.len(), 1);
         debug_assert_eq!(self.s2_tensor.len(), 1);
         let s1_final = self.s1_tensor[0];

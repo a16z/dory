@@ -5,26 +5,6 @@ use crate::setup::ProverSetup;
 
 use super::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 
-/// Dory commitment containing both tier-1 and tier-2 commitments
-///
-/// The Dory commitment scheme uses a two-tier structure:
-/// - Tier-1: Row commitments in G1 (one per row of the coefficient matrix)
-/// - Tier-2: Final commitment in GT (combining row commitments via pairing)
-#[derive(Debug, Clone)]
-pub struct DoryCommitment<G1, GT> {
-    /// Tier-2 commitment: Final commitment in GT group
-    pub tier_2: GT,
-    /// Tier-1 commitments: Row commitments in G1 group
-    pub tier_1: Vec<G1>,
-}
-
-impl<G1, GT> DoryCommitment<G1, GT> {
-    /// Create a new Dory commitment from tier-1 and tier-2 components
-    pub fn new(tier_2: GT, tier_1: Vec<G1>) -> Self {
-        Self { tier_2, tier_1 }
-    }
-}
-
 /// Trait for multilinear Lagrange polynomial operations
 pub trait MultilinearLagrange<F: Field>: Polynomial<F> {
     /// Compute multilinear Lagrange basis evaluations at a point
@@ -38,10 +18,8 @@ pub trait MultilinearLagrange<F: Field>: Polynomial<F> {
     /// Compute vector-matrix product: v = L^T * M
     ///
     /// Treats coefficients as a 2^nu × 2^sigma matrix.
-    /// For each column j: v[j] = Σ_i left_vec[i] * coefficients[i][j]
-    fn vector_matrix_product(&self, left_vec: &[F], nu: usize, sigma: usize) -> Vec<F> {
-        compute_v_vec(self.coefficients(), left_vec, nu, sigma)
-    }
+    /// For each column j: v\[j\] = Σ_i left_vec\[i\] * coefficients\[i\]\[j\]
+    fn vector_matrix_product(&self, left_vec: &[F], nu: usize, sigma: usize) -> Vec<F>;
 
     /// Compute left and right vectors from evaluation point
     ///
@@ -77,9 +55,6 @@ pub trait Polynomial<F: Field> {
     /// # Returns
     /// Polynomial evaluation result
     fn evaluate(&self, point: &[F]) -> F;
-
-    /// Get reference to coefficients
-    fn coefficients(&self) -> &[F];
 
     /// Commit to polynomial using Dory's 2-tier (AFGHO) homomorphic commitment
     ///
@@ -182,7 +157,7 @@ pub fn compute_left_right_vectors<F: Field>(
     sigma: usize,
 ) -> (Vec<F>, Vec<F>) {
     let mut left_vec = vec![F::zero(); 1 << nu];
-    let mut right_vec = vec![F::zero(); 1 << nu];
+    let mut right_vec = vec![F::zero(); 1 << sigma];
     let point_dim = point.len();
 
     match point_dim {
@@ -199,9 +174,9 @@ pub fn compute_left_right_vectors<F: Field>(
         }
 
         // Case 3: Variables split between rows and columns (no padding)
-        n if n <= sigma * 2 => {
-            multilinear_lagrange_basis(&mut right_vec, &point[..nu]);
-            multilinear_lagrange_basis(&mut left_vec[..1 << (point_dim - nu)], &point[nu..]);
+        n if n <= nu + sigma => {
+            multilinear_lagrange_basis(&mut right_vec, &point[..sigma]);
+            multilinear_lagrange_basis(&mut left_vec[..1 << (point_dim - sigma)], &point[sigma..]);
         }
 
         // Case 4: Too many variables - need column padding
@@ -212,27 +187,4 @@ pub fn compute_left_right_vectors<F: Field>(
     }
 
     (left_vec, right_vec)
-}
-
-/// Compute vector-matrix product: v = L^T * M
-///
-/// Treats coefficients as a 2^nu × 2^sigma matrix.
-/// For each column j: v[j] = Σ_i left_vec[i] * coefficients[i][j]
-fn compute_v_vec<F: Field>(coefficients: &[F], left_vec: &[F], nu: usize, sigma: usize) -> Vec<F> {
-    let num_cols = 1 << sigma;
-    let num_rows = 1 << nu;
-    let mut v_vec = vec![F::zero(); num_cols];
-
-    for (j, v) in v_vec.iter_mut().enumerate() {
-        let mut sum = F::zero();
-        for (i, left_val) in left_vec.iter().enumerate().take(num_rows) {
-            let coeff_idx = i * num_cols + j;
-            if coeff_idx < coefficients.len() {
-                sum = sum + left_val.mul(&coefficients[coeff_idx]);
-            }
-        }
-        *v = sum;
-    }
-
-    v_vec
 }

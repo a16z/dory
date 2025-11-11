@@ -18,7 +18,7 @@ use std::path::PathBuf;
 /// from public randomness.
 ///
 /// For square matrices: |Γ₁| = |Γ₂| = 2^((max_log_n+1)/2)
-#[derive(Clone, DorySerialize, DoryDeserialize)]
+#[derive(Clone, Debug, DorySerialize, DoryDeserialize)]
 pub struct ProverSetup<E: PairingCurve> {
     /// Γ₁ - column generators in G1
     pub g1_vec: Vec<E::G1>,
@@ -40,21 +40,21 @@ pub struct ProverSetup<E: PairingCurve> {
 ///
 /// Contains precomputed pairing values for efficient verification.
 /// Derived from the prover setup.
-#[derive(Clone, DorySerialize, DoryDeserialize)]
+#[derive(Clone, Debug, DorySerialize, DoryDeserialize)]
 pub struct VerifierSetup<E: PairingCurve> {
-    /// Δ₁L[k] = e(Γ₁[..2^(k-1)], Γ₂[..2^(k-1)])
+    /// Δ₁L\[k\] = e(Γ₁\[..2^(k-1)\], Γ₂\[..2^(k-1)\])
     pub delta_1l: Vec<E::GT>,
 
-    /// Δ₁R[k] = e(Γ₁[2^(k-1)..2^k], Γ₂[..2^(k-1)])
+    /// Δ₁R\[k\] = e(Γ₁\[2^(k-1)..2^k\], Γ₂\[..2^(k-1)\])
     pub delta_1r: Vec<E::GT>,
 
-    /// Δ₂L[k] = same as Δ₁L[k]
+    /// Δ₂L\[k\] = same as Δ₁L\[k\]
     pub delta_2l: Vec<E::GT>,
 
-    /// Δ₂R[k] = e(Γ₁[..2^(k-1)], Γ₂[2^(k-1)..2^k])
+    /// Δ₂R\[k\] = e(Γ₁\[..2^(k-1)\], Γ₂\[2^(k-1)..2^k\])
     pub delta_2r: Vec<E::GT>,
 
-    /// χ[k] = e(Γ₁[..2^k], Γ₂[..2^k])
+    /// χ\[k\] = e(Γ₁\[..2^k\], Γ₂\[..2^k\])
     pub chi: Vec<E::GT>,
 
     /// First G1 generator
@@ -91,10 +91,8 @@ impl<E: PairingCurve> ProverSetup<E> {
     pub fn new<R: RngCore>(rng: &mut R, max_log_n: usize) -> Self {
         // For square matrices: n = 2^((max_log_n+1)/2)
         let n = 1 << max_log_n.div_ceil(2);
-
         // Generate n random G1 generators (Γ₁)
         let g1_vec: Vec<E::G1> = (0..n).map(|_| E::G1::random(rng)).collect();
-
         // Generate n random G2 generators (Γ₂)
         let g2_vec: Vec<E::G2> = (0..n).map(|_| E::G2::random(rng)).collect();
 
