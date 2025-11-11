@@ -1,13 +1,11 @@
-//! Arkworks-specific setup wrappers with canonical serialization support
+//! Arkworks-specific setup wrappers
+//!
+//! Provides wrapper types for `ProverSetup` and `VerifierSetup` with transparent access.
+//! Serialization implementations via `CanonicalSerialize` and `CanonicalDeserialize`
+//! are in the `ark_serde` module.
 
-use crate::primitives::serialization::{Compress, DoryDeserialize, DorySerialize, Validate};
 use crate::setup::{ProverSetup, VerifierSetup};
-use ark_serialize::{
-    CanonicalDeserialize, CanonicalSerialize, Compress as ArkCompress,
-    SerializationError as ArkSerializationError, Valid as ArkValid, Validate as ArkValidate,
-};
 use rand_core::RngCore;
-use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut};
 
 use super::BN254;
@@ -108,117 +106,5 @@ impl Deref for ArkworksVerifierSetup {
 impl DerefMut for ArkworksVerifierSetup {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
-    }
-}
-
-// Arkworks canonical serialization implementations
-impl ArkValid for ArkworksProverSetup {
-    fn check(&self) -> Result<(), ArkSerializationError> {
-        Ok(())
-    }
-}
-
-impl CanonicalSerialize for ArkworksProverSetup {
-    fn serialize_with_mode<W: Write>(
-        &self,
-        mut writer: W,
-        compress: ArkCompress,
-    ) -> Result<(), ArkSerializationError> {
-        let dory_compress = match compress {
-            ArkCompress::Yes => Compress::Yes,
-            ArkCompress::No => Compress::No,
-        };
-
-        DorySerialize::serialize_with_mode(&self.0, &mut writer, dory_compress)
-            .map_err(|_| ArkSerializationError::InvalidData)
-    }
-
-    fn serialized_size(&self, compress: ArkCompress) -> usize {
-        let dory_compress = match compress {
-            ArkCompress::Yes => Compress::Yes,
-            ArkCompress::No => Compress::No,
-        };
-        DorySerialize::serialized_size(&self.0, dory_compress)
-    }
-}
-
-impl CanonicalDeserialize for ArkworksProverSetup {
-    fn deserialize_with_mode<R: Read>(
-        mut reader: R,
-        compress: ArkCompress,
-        validate: ArkValidate,
-    ) -> Result<Self, ArkSerializationError> {
-        let dory_compress = match compress {
-            ArkCompress::Yes => Compress::Yes,
-            ArkCompress::No => Compress::No,
-        };
-
-        let dory_validate = match validate {
-            ArkValidate::Yes => Validate::Yes,
-            ArkValidate::No => Validate::No,
-        };
-
-        let setup =
-            ProverSetup::<BN254>::deserialize_with_mode(&mut reader, dory_compress, dory_validate)
-                .map_err(|_| ArkSerializationError::InvalidData)?;
-
-        Ok(Self(setup))
-    }
-}
-
-impl ArkValid for ArkworksVerifierSetup {
-    fn check(&self) -> Result<(), ArkSerializationError> {
-        Ok(())
-    }
-}
-
-impl CanonicalSerialize for ArkworksVerifierSetup {
-    fn serialize_with_mode<W: Write>(
-        &self,
-        mut writer: W,
-        compress: ArkCompress,
-    ) -> Result<(), ArkSerializationError> {
-        let dory_compress = match compress {
-            ArkCompress::Yes => Compress::Yes,
-            ArkCompress::No => Compress::No,
-        };
-
-        DorySerialize::serialize_with_mode(&self.0, &mut writer, dory_compress)
-            .map_err(|_| ArkSerializationError::InvalidData)
-    }
-
-    fn serialized_size(&self, compress: ArkCompress) -> usize {
-        let dory_compress = match compress {
-            ArkCompress::Yes => Compress::Yes,
-            ArkCompress::No => Compress::No,
-        };
-        DorySerialize::serialized_size(&self.0, dory_compress)
-    }
-}
-
-impl CanonicalDeserialize for ArkworksVerifierSetup {
-    fn deserialize_with_mode<R: Read>(
-        mut reader: R,
-        compress: ArkCompress,
-        validate: ArkValidate,
-    ) -> Result<Self, ArkSerializationError> {
-        let dory_compress = match compress {
-            ArkCompress::Yes => Compress::Yes,
-            ArkCompress::No => Compress::No,
-        };
-
-        let dory_validate = match validate {
-            ArkValidate::Yes => Validate::Yes,
-            ArkValidate::No => Validate::No,
-        };
-
-        let setup = VerifierSetup::<BN254>::deserialize_with_mode(
-            &mut reader,
-            dory_compress,
-            dory_validate,
-        )
-        .map_err(|_| ArkSerializationError::InvalidData)?;
-
-        Ok(Self(setup))
     }
 }
