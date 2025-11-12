@@ -310,16 +310,19 @@ where
 
     let e2 = setup.h2.scale(&evaluation);
 
-    // Always use O(1) folded-scalar accumulation with per-round coordinates.
+    // Folded-scalar accumulation with per-round coordinates.
     // num_rounds = sigma (we fold column dimensions).
     let num_rounds = sigma;
-    // s1 (right/prover): first nu coords, padded with zeros to sigma (extra MSB dims fixed to 0).
-    let mut s1_coords: Vec<F> = point[..nu].to_vec();
-    if nu < sigma {
-        s1_coords.resize(sigma, F::zero());
+    // s1 (right/prover): column coordinates (length σ), natural order LSB→MSB.
+    let col_coords = &point[..sigma];
+    let s1_coords: Vec<F> = col_coords.to_vec();
+    // s2 (left/prover): row coordinates placed in natural order for the first ν,
+    // zeros for the extra MSB dims so that MSB-first folds see zeros first.
+    let mut s2_coords: Vec<F> = vec![F::zero(); sigma];
+    let row_coords = &point[sigma..sigma + nu];
+    for i in 0..nu {
+        s2_coords[i] = row_coords[i];
     }
-    // s2 (left/prover): next sigma coords.
-    let s2_coords: Vec<F> = point[nu..nu + sigma].to_vec();
 
     let mut verifier_state = DoryVerifierState::new(
         vmv_message.c,
