@@ -39,6 +39,13 @@ impl ArkworksProverSetup {
         Self(ProverSetup::new(rng, max_log_n))
     }
 
+    /// Load prover setup from disk cache, or generate and cache if not available
+    #[cfg(feature = "disk-persistence")]
+    pub fn new_from_urs<R: RngCore>(rng: &mut R, max_log_n: usize) -> Self {
+        let (prover_setup, _) = crate::setup::<BN254, _>(rng, max_log_n);
+        Self(prover_setup)
+    }
+
     /// Derive verifier setup from this prover setup
     pub fn to_verifier_setup(&self) -> ArkworksVerifierSetup {
         ArkworksVerifierSetup(self.0.to_verifier_setup())

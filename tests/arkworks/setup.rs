@@ -144,3 +144,41 @@ fn test_arkworks_setup_canonical_serialization() {
     assert_eq!(loaded_verifier.g1_0, verifier.g1_0);
     assert_eq!(loaded_verifier.g2_0, verifier.g2_0);
 }
+
+#[test]
+#[cfg(feature = "disk-persistence")]
+fn test_arkworks_setup_new_from_urs() {
+    use dory::backends::arkworks::ArkworksProverSetup;
+    use dory::{backends::arkworks::BN254, generate_urs};
+    use rand::thread_rng;
+
+    let mut rng = thread_rng();
+    let max_log_n = 14;
+
+    // Clean up any existing cache file first
+    if let Some(cache_dir) = dirs::cache_dir() {
+        let cache_file = cache_dir
+            .join("dory")
+            .join(format!("dory_{}.urs", max_log_n));
+        let _ = std::fs::remove_file(&cache_file);
+    }
+
+    let (prover1, _) = generate_urs::<BN254, _>(&mut rng, max_log_n);
+
+    let prover2 = ArkworksProverSetup::new_from_urs(&mut rng, max_log_n);
+
+    // Verify they match (proving it loaded from disk)
+    assert_eq!(
+        prover1.g1_vec[0], prover2.g1_vec[0],
+        "g1_vec[0] should match"
+    );
+    assert_eq!(
+        prover1.g2_vec[0], prover2.g2_vec[0],
+        "g2_vec[0] should match"
+    );
+    assert_eq!(prover1.h1, prover2.h1, "h1 should match");
+    assert_eq!(prover1.h2, prover2.h2, "h2 should match");
+    assert_eq!(prover1.ht, prover2.ht, "ht should match");
+
+    println!("✓ Successfully loaded setup from disk cache!");
+}
