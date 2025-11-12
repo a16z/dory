@@ -28,7 +28,7 @@
 use crate::error::DoryError;
 use crate::messages::VMVMessage;
 use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
-use crate::primitives::poly::{compute_left_right_vectors, MultilinearLagrange};
+use crate::primitives::poly::MultilinearLagrange;
 use crate::primitives::transcript::Transcript;
 use crate::proof::DoryProof;
 use crate::reduce_and_fold::{DoryProverState, DoryVerifierState};
@@ -179,6 +179,7 @@ where
     let mut prover_state = DoryProverState::new(
         padded_row_commitments, // v1 = T_vec_prime (row commitments, padded)
         v2,                     // v2 = v_vec · g_fin
+        Some(v_vec),            // v2_scalars for first-round MSM+pair optimization
         padded_right_vec,       // s1 = right_vec (padded)
         padded_left_vec,        // s2 = left_vec (padded)
         setup,
@@ -309,24 +310,25 @@ where
 
     let e2 = setup.h2.scale(&evaluation);
 
-    let (s2_tensor, s1_tensor) = compute_left_right_vectors(point, nu, sigma);
-
-    let mut padded_s1_tensor = s1_tensor;
-    let mut padded_s2_tensor = s2_tensor;
+    // Always use O(1) folded-scalar accumulation with per-round coordinates.
+    // num_rounds = sigma (we fold column dimensions).
+    let num_rounds = sigma;
+    // s1 (right/prover): first nu coords, padded with zeros to sigma (extra MSB dims fixed to 0).
+    let mut s1_coords: Vec<F> = point[..nu].to_vec();
     if nu < sigma {
-        padded_s1_tensor.resize(1 << sigma, F::zero());
-        padded_s2_tensor.resize(1 << sigma, F::zero());
+        s1_coords.resize(sigma, F::zero());
     }
+    // s2 (left/prover): next sigma coords.
+    let s2_coords: Vec<F> = point[nu..nu + sigma].to_vec();
 
-    let num_rounds = nu.max(sigma);
     let mut verifier_state = DoryVerifierState::new(
-        vmv_message.c,    // c from VMV message
-        commitment,       // d1 = commitment
-        vmv_message.d2,   // d2 from VMV message
-        vmv_message.e1,   // e1 from VMV message
-        e2,               // e2 computed from evaluation
-        padded_s1_tensor, // right_vec (folded as s1, padded)
-        padded_s2_tensor, // left_vec (folded as s2, padded)
+        vmv_message.c,
+        commitment,
+        vmv_message.d2,
+        vmv_message.e1,
+        e2,
+        s1_coords,
+        s2_coords,
         num_rounds,
         setup.clone(),
     );

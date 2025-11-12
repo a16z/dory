@@ -142,4 +142,19 @@ pub trait DoryRoutines<G: Group> {
 
     /// vs\[i\] = scalar * vs\[i\] + addends\[i\]
     fn fixed_scalar_mul_vs_then_add(vs: &mut [G], addends: &[G], scalar: &G::Scalar);
+
+    /// Fold one scalar vector in place: left[i] = left[i] * scalar + right[i]
+    ///
+    /// Default implementation is sequential; backends can override to parallelize.
+    fn fold_scalars_in_place(
+        left: &mut [G::Scalar],
+        right: &[G::Scalar],
+        scalar: &G::Scalar,
+    ) {
+        debug_assert_eq!(left.len(), right.len(), "halves must match length");
+        let n = left.len();
+        for i in 0..n {
+            left[i] = left[i] * scalar + right[i];
+        }
+    }
 }
