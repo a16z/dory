@@ -28,7 +28,7 @@
 use crate::error::DoryError;
 use crate::messages::VMVMessage;
 use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
-use crate::primitives::poly::{compute_left_right_vectors, MultilinearLagrange};
+use crate::primitives::poly::MultilinearLagrange;
 use crate::primitives::transcript::Transcript;
 use crate::proof::DoryProof;
 use crate::reduce_and_fold::{DoryProverState, DoryVerifierState};
@@ -179,6 +179,7 @@ where
     let mut prover_state = DoryProverState::new(
         padded_row_commitments, // v1 = T_vec_prime (row commitments, padded)
         v2,                     // v2 = v_vec · g_fin
+        Some(v_vec),            // v2_scalars for first-round MSM+pair optimization
         padded_right_vec,       // s1 = right_vec (padded)
         padded_left_vec,        // s2 = left_vec (padded)
         setup,
@@ -309,24 +310,32 @@ where
 
     let e2 = setup.h2.scale(&evaluation);
 
-    let (s2_tensor, s1_tensor) = compute_left_right_vectors(point, nu, sigma);
-
-    let mut padded_s1_tensor = s1_tensor;
-    let mut padded_s2_tensor = s2_tensor;
-    if nu < sigma {
-        padded_s1_tensor.resize(1 << sigma, F::zero());
-        padded_s2_tensor.resize(1 << sigma, F::zero());
+    // Folded-scalar accumulation with per-round coordinates.
+    // num_rounds = sigma (we fold column dimensions).
+    let num_rounds = sigma;
+    // s1 (right/prover): the σ column coordinates in natural order (LSB→MSB).
+    // No padding here: the verifier folds across the σ column dimensions.
+    // With MSB-first folding, these coordinates are only consumed after the first σ−ν rounds,
+    // which correspond to the padded MSB dimensions on the left tensor, matching the prover.
+    let col_coords = &point[..sigma];
+    let s1_coords: Vec<F> = col_coords.to_vec();
+    // s2 (left/prover): the ν row coordinates in natural order, followed by zeros for the extra
+    // MSB dimensions. Conceptually this is s ⊗ [1,0]^(σ−ν): under MSB-first folds, the first
+    // σ−ν rounds multiply s2 by α⁻¹ while contributing no right halves (since those entries are 0).
+    let mut s2_coords: Vec<F> = vec![F::zero(); sigma];
+    let row_coords = &point[sigma..sigma + nu];
+    for i in 0..nu {
+        s2_coords[i] = row_coords[i];
     }
 
-    let num_rounds = nu.max(sigma);
     let mut verifier_state = DoryVerifierState::new(
         vmv_message.c,    // c from VMV message
         commitment,       // d1 = commitment
         vmv_message.d2,   // d2 from VMV message
         vmv_message.e1,   // e1 from VMV message
         e2,               // e2 computed from evaluation
-        padded_s1_tensor, // right_vec (folded as s1, padded)
-        padded_s2_tensor, // left_vec (folded as s2, padded)
+        s1_coords,        // s1: columns c0..c_{σ−1} (LSB→MSB), no padding; folded across σ dims
+        s2_coords,        // s2: rows r0..r_{ν−1} then zeros in MSB dims (emulates s ⊗ [1,0]^(σ−ν))
         num_rounds,
         setup.clone(),
     );
