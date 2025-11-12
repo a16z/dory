@@ -268,24 +268,24 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         let alpha_inv = (*alpha).inv().expect("alpha must be invertible");
         let n2 = 1 << (self.num_rounds - 1); // n/2
 
-        // Fold v₁: v₁ ← α·v₁L + v₁R (optimized with DoryRoutines)
+        // Fold v₁: v₁ ← α·v₁L + v₁R
         let (v1_l, v1_r) = self.v1.split_at_mut(n2);
         M1::fixed_scalar_mul_vs_then_add(v1_l, v1_r, alpha);
         self.v1.truncate(n2);
 
-        // Fold v₂: v₂ ← α⁻¹·v₂L + v₂R (optimized with DoryRoutines)
+        // Fold v₂: v₂ ← α⁻¹·v₂L + v₂R
         let (v2_l, v2_r) = self.v2.split_at_mut(n2);
         M2::fixed_scalar_mul_vs_then_add(v2_l, v2_r, &alpha_inv);
         self.v2.truncate(n2);
 
         // Fold s₁: s₁ ← α·s₁L + s₁R
         let (s1_l, s1_r) = self.s1.split_at_mut(n2);
-        M1::fold_scalars_in_place(s1_l, s1_r, alpha);
+        M1::fold_field_vectors(s1_l, s1_r, alpha);
         self.s1.truncate(n2);
 
         // Fold s₂: s₂ ← α⁻¹·s₂L + s₂R
         let (s2_l, s2_r) = self.s2.split_at_mut(n2);
-        M2::fold_scalars_in_place(s2_l, s2_r, &alpha_inv);
+        M1::fold_field_vectors(s2_l, s2_r, &alpha_inv);
         self.s2.truncate(n2);
 
         // Decrement round counter
