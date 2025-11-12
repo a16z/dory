@@ -8,12 +8,12 @@
 //!
 //! Matrix dimensions: 16×16 (nu=4, sigma=4, total 256 coefficients)
 
-use dory::backends::arkworks::{
+use dory_pcs::backends::arkworks::{
     ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
 };
-use dory::primitives::arithmetic::Field;
-use dory::primitives::poly::Polynomial;
-use dory::{prove, setup, verify};
+use dory_pcs::primitives::arithmetic::Field;
+use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::{prove, setup, verify};
 use rand::thread_rng;
 use tracing::info;
 

@@ -1,9 +1,9 @@
-use dory::backends::arkworks::{ArkG1, ArkG2, ArkGT, BN254};
-use dory::primitives::arithmetic::{Group, PairingCurve};
+use dory_pcs::backends::arkworks::{ArkG1, ArkG2, ArkGT, BN254};
+use dory_pcs::primitives::arithmetic::{Group, PairingCurve};
 use rand::thread_rng;
 
 #[cfg(feature = "cache")]
-use dory::backends::arkworks::ark_cache;
+use dory_pcs::backends::arkworks::ark_cache;
 
 #[test]
 fn multi_pair_correctness() {

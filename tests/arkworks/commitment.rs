@@ -1,7 +1,7 @@
 //! Polynomial commitment tests
 
 use super::*;
-use dory::primitives::poly::Polynomial;
+use dory_pcs::primitives::poly::Polynomial;
 
 #[test]
 fn test_commit_small_polynomial() {

@@ -2,6 +2,9 @@
 
 A high-performance, modular implementation of the Dory polynomial commitment scheme in Rust.
 
+[![Crates.io](https://img.shields.io/crates/v/dory-pcs.svg)](https://crates.io/crates/dory-pcs)
+[![Documentation](https://docs.rs/dory-pcs/badge.svg)](https://docs.rs/dory-pcs)
+
 ## Overview
 
 Dory is a transparent polynomial commitment scheme with excellent asymptotic performance, based on the work of Jonathan Lee ([eprint 2020/1274](https://eprint.iacr.org/2020/1274)). This implementation provides a clean, modular architecture with strong performance characteristics and comprehensive test coverage.
@@ -14,6 +17,29 @@ Dory is a transparent polynomial commitment scheme with excellent asymptotic per
 - **Performance-optimized**: Vectorized operations, optional prepared point caching, and parallelization with Rayon
 - **Flexible matrix layouts**: Supports both square and non-square matrices (nu ≤ sigma)
 - **Homomorphic properties**: Commitment linearity enables proof aggregation
+
+## Installation
+
+Add `dory-pcs` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+dory-pcs = "0.1"
+```
+
+Or with specific features:
+
+```toml
+[dependencies]
+dory-pcs = { version = "0.1", features = ["backends", "disk-persistence"] }
+```
+
+For maximum performance with all optimizations:
+
+```toml
+[dependencies]
+dory-pcs = { version = "0.1", features = ["backends", "cache", "parallel", "disk-persistence"] }
+```
 
 ## Architecture
 
@@ -70,9 +96,10 @@ This property enables efficient proof aggregation and batch verification. See `e
 ## Usage
 
 ```rust
-use dory::{setup, prove, verify};
-use dory::backends::arkworks::{BN254, TestG1Routines, TestG2Routines, ArkworksPolynomial};
-use dory::backends::blake2b_transcript::Blake2bTranscript;
+use dory_pcs::{setup, prove, verify};
+use dory_pcs::backends::arkworks::{
+    BN254, G1Routines, G2Routines, ArkworksPolynomial, Blake2bTranscript
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
@@ -93,11 +120,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 4. Commit to polynomial to get tier-2 commitment and row commitments
     let (tier_2, row_commitments) = polynomial
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)?;
+        .commit::<BN254, G1Routines>(nu, sigma, &prover_setup)?;
 
     // 5. Create evaluation proof using row commitments
     let mut prover_transcript = Blake2bTranscript::new(b"dory-example");
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _>(
         &polynomial,
         &point,
         row_commitments,
@@ -110,7 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 6. Verify: check that the proof is valid
     let evaluation = polynomial.evaluate(&point);
     let mut verifier_transcript = Blake2bTranscript::new(b"dory-example");
-    verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    verify::<_, BN254, G1Routines, G2Routines, _>(
         tier_2,
         evaluation,
         &point,
@@ -167,7 +194,7 @@ This implementation is optimized for performance:
 
 - **Prepared Point Caching** (optional `cache` feature): Pre-computes prepared points for setup generators, providing ~20-30% speedup on pairing operations. Initialize with:
   ```rust
-  use dory::backends::arkworks::init_cache;
+  use dory_pcs::backends::arkworks::init_cache;
   init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
   ```
 

@@ -1,9 +1,9 @@
 //! End-to-end integration tests
 
 use super::*;
-use dory::primitives::arithmetic::Field;
-use dory::primitives::poly::Polynomial;
-use dory::{prove, setup, verify};
+use dory_pcs::primitives::arithmetic::Field;
+use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::{prove, setup, verify};
 
 #[test]
 fn test_full_workflow() {

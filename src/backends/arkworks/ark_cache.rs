@@ -32,8 +32,8 @@ static CACHE: OnceCell<PreparedCache> = OnceCell::new();
 ///
 /// # Example
 /// ```ignore
-/// use dory::backends::arkworks::{init_cache, BN254};
-/// use dory::setup::ProverSetup;
+/// use dory_pcs::backends::arkworks::{init_cache, BN254};
+/// use dory_pcs::setup::ProverSetup;
 ///
 /// let setup = ProverSetup::<BN254>::new(&mut rng, max_log_n);
 /// init_cache(&setup.g1_vec, &setup.g2_vec);

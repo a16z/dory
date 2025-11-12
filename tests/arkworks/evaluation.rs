@@ -1,8 +1,8 @@
 //! Evaluation proof tests
 
 use super::*;
-use dory::primitives::poly::Polynomial;
-use dory::{prove, verify};
+use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::{prove, verify};
 
 #[test]
 fn test_evaluation_proof_small() {

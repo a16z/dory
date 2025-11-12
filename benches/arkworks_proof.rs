@@ -12,22 +12,22 @@
 #![allow(missing_docs)]
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use dory::backends::arkworks::{
+use dory_pcs::backends::arkworks::{
     ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
 };
-use dory::primitives::arithmetic::Field;
-use dory::primitives::poly::Polynomial;
-use dory::{prove, setup, verify};
+use dory_pcs::primitives::arithmetic::Field;
+use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::{prove, setup, verify};
 use rand::thread_rng;
 
 #[cfg(feature = "cache")]
-use dory::backends::arkworks::init_cache;
+use dory_pcs::backends::arkworks::init_cache;
 
 fn setup_benchmark_data() -> (
     ArkworksPolynomial,
     Vec<ArkFr>,
-    dory::setup::ProverSetup<BN254>,
-    dory::setup::VerifierSetup<BN254>,
+    dory_pcs::setup::ProverSetup<BN254>,
+    dory_pcs::setup::VerifierSetup<BN254>,
 ) {
     let mut rng = thread_rng();
     let max_log_n = 26;
@@ -37,7 +37,7 @@ fn setup_benchmark_data() -> (
     // Initialize cache with setup generators for optimized pairings
     #[cfg(feature = "cache")]
     {
-        if !dory::backends::arkworks::is_cached() {
+        if !dory_pcs::backends::arkworks::is_cached() {
             init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
         }
     }
@@ -143,7 +143,7 @@ fn bench_end_to_end(c: &mut Criterion) {
     // Initialize cache once
     #[cfg(feature = "cache")]
     {
-        if !dory::backends::arkworks::is_cached() {
+        if !dory_pcs::backends::arkworks::is_cached() {
             init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
         }
     }

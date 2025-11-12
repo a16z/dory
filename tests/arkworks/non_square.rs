@@ -1,8 +1,8 @@
 //! Test to verify behavior with non-square matrices (nu ≤ sigma)
 
 use super::*;
-use dory::primitives::poly::Polynomial;
-use dory::{prove, setup, verify};
+use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::{prove, setup, verify};
 
 #[test]
 fn test_non_square_matrix_nu_eq_sigma_minus_1() {

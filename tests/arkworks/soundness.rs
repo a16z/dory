@@ -3,9 +3,9 @@
 use super::*;
 use ark_bn254::{Fq12, Fr, G1Projective, G2Projective};
 use ark_ff::UniformRand;
-use dory::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
-use dory::primitives::poly::Polynomial;
-use dory::{prove, verify};
+use dory_pcs::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
+use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::{prove, verify};
 use std::mem::swap;
 
 #[allow(clippy::type_complexity)]
@@ -495,7 +495,7 @@ fn test_soundness_scale_d1_values() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        use dory::primitives::arithmetic::Group;
+        use dory_pcs::primitives::arithmetic::Group;
 
         let scale = ArkFr(Fr::rand(&mut rand::thread_rng()));
         proof.first_messages[0].d1_left = proof.first_messages[0].d1_left.scale(&scale);
@@ -566,7 +566,7 @@ fn test_soundness_identity_elements() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    use dory::primitives::arithmetic::Group;
+    use dory_pcs::primitives::arithmetic::Group;
     proof.final_message.e1 = ArkG1::identity();
     proof.final_message.e2 = ArkG2::identity();
 

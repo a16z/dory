@@ -1,10 +1,10 @@
 //! Homomorphic combination tests for Dory commitments
 
 use super::*;
-use dory::backends::arkworks::ArkG1;
-use dory::primitives::arithmetic::{Field, Group};
-use dory::primitives::poly::Polynomial;
-use dory::{prove, setup, verify};
+use dory_pcs::backends::arkworks::ArkG1;
+use dory_pcs::primitives::arithmetic::{Field, Group};
+use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::{prove, setup, verify};
 
 #[test]
 fn test_homomorphic_combination_e2e() {

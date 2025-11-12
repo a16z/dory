@@ -58,8 +58,8 @@ fn test_setup_consistency() {
 
 #[test]
 fn test_setup_disk_persistence() {
-    use dory::backends::arkworks::BN254;
-    use dory::setup::{load_setup, save_setup};
+    use dory_pcs::backends::arkworks::BN254;
+    use dory_pcs::setup::{load_setup, save_setup};
 
     let max_log_n = 10;
 
@@ -89,8 +89,8 @@ fn test_setup_disk_persistence() {
 
 #[test]
 fn test_setup_function_uses_disk() {
-    use dory::backends::arkworks::BN254;
-    use dory::{generate_urs, setup};
+    use dory_pcs::backends::arkworks::BN254;
+    use dory_pcs::{generate_urs, setup};
     use rand::thread_rng;
 
     let mut rng = thread_rng();
@@ -109,7 +109,7 @@ fn test_setup_function_uses_disk() {
 #[test]
 fn test_arkworks_setup_canonical_serialization() {
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-    use dory::backends::arkworks::{ArkworksProverSetup, ArkworksVerifierSetup};
+    use dory_pcs::backends::arkworks::{ArkworksProverSetup, ArkworksVerifierSetup};
     use rand::thread_rng;
 
     let mut rng = thread_rng();
@@ -148,8 +148,8 @@ fn test_arkworks_setup_canonical_serialization() {
 #[test]
 #[cfg(feature = "disk-persistence")]
 fn test_arkworks_setup_new_from_urs() {
-    use dory::backends::arkworks::ArkworksProverSetup;
-    use dory::{backends::arkworks::BN254, generate_urs};
+    use dory_pcs::backends::arkworks::ArkworksProverSetup;
+    use dory_pcs::{backends::arkworks::BN254, generate_urs};
     use rand::thread_rng;
 
     let mut rng = thread_rng();

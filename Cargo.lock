@@ -394,7 +394,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "dory"
+name = "dory-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "dory-pcs"
 version = "0.1.0"
 dependencies = [
  "ark-bn254",
@@ -415,15 +424,6 @@ dependencies = [
  "serde",
  "thiserror 2.0.17",
  "tracing",
-]
-
-[[package]]
-name = "dory-derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

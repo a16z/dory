@@ -39,8 +39,8 @@
 //! ### Basic Example
 //!
 //! ```ignore
-//! use dory::{setup, prove, verify};
-//! use dory::backends::arkworks::{BN254, G1Routines, G2Routines, Blake2bTranscript};
+//! use dory_pcs::{setup, prove, verify};
+//! use dory_pcs::backends::arkworks::{BN254, G1Routines, G2Routines, Blake2bTranscript};
 //!
 //! // 1. Generate setup (automatically loads from/saves to disk)
 //! let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
@@ -68,7 +68,7 @@
 //!
 //! Enable prepared point caching for ~20-30% pairing speedup (requires `cache` feature):
 //! ```ignore
-//! use dory::backends::arkworks::init_cache;
+//! use dory_pcs::backends::arkworks::init_cache;
 //!
 //! let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
 //! init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);

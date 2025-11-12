@@ -8,12 +8,12 @@
 //!
 //! Homomorphic property: Com(r₁·P₁ + r₂·P₂ + ... + rₙ·Pₙ) = r₁·Com(P₁) + r₂·Com(P₂) + ... + rₙ·Com(Pₙ)
 
-use dory::backends::arkworks::{
+use dory_pcs::backends::arkworks::{
     ArkFr, ArkG1, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
 };
-use dory::primitives::arithmetic::{Field, Group};
-use dory::primitives::poly::Polynomial;
-use dory::{prove, setup, verify};
+use dory_pcs::primitives::arithmetic::{Field, Group};
+use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::{prove, setup, verify};
 use rand::thread_rng;
 use tracing::info;
 

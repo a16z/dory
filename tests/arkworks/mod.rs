@@ -2,12 +2,12 @@
 
 #![allow(unreachable_pub)]
 
-use dory::backends::arkworks::{
+use dory_pcs::backends::arkworks::{
     ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
 };
-use dory::primitives::arithmetic::Field;
-use dory::proof::DoryProof;
-use dory::setup::{ProverSetup, VerifierSetup};
+use dory_pcs::primitives::arithmetic::Field;
+use dory_pcs::proof::DoryProof;
+use dory_pcs::setup::{ProverSetup, VerifierSetup};
 use rand::thread_rng;
 
 pub mod cache;
