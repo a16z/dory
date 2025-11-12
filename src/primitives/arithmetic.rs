@@ -142,4 +142,12 @@ pub trait DoryRoutines<G: Group> {
 
     /// vs\[i\] = scalar * vs\[i\] + addends\[i\]
     fn fixed_scalar_mul_vs_then_add(vs: &mut [G], addends: &[G], scalar: &G::Scalar);
+
+    /// Fold field vectors: left\[i\] = left\[i\] * scalar + right\[i\]
+    fn fold_field_vectors(left: &mut [G::Scalar], right: &[G::Scalar], scalar: &G::Scalar) {
+        assert_eq!(left.len(), right.len(), "Lengths must match");
+        for i in 0..left.len() {
+            left[i] = left[i] * *scalar + right[i];
+        }
+    }
 }
