@@ -331,11 +331,12 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     ///
     /// # Parameters
     /// - `c`: Initial inner product value
-    /// - `d1`: Initial d1 value (typically from VMV)
-    /// - `d2`: Initial d2 value (typically from VMV)
+    /// - `d1`: Initial d1 value (from VMV)
+    /// - `d2`: Initial d2 value (from VMV)
     /// - `e1`: Initial e1 value
     /// - `e2`: Initial e2 value
-    /// Construct verifier state for O(1) accumulation mode (works for square and non-square)
+    ///
+    /// Construct verifier state for O(1) accumulation
     ///
     /// - `s1_coords`: Per-round coordinates for s1 (right_vec in prover)
     /// - `s2_coords`: Per-round coordinates for s2 (left_vec in prover)

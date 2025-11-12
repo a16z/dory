@@ -324,18 +324,16 @@ where
     // σ−ν rounds multiply s2 by α⁻¹ while contributing no right halves (since those entries are 0).
     let mut s2_coords: Vec<F> = vec![F::zero(); sigma];
     let row_coords = &point[sigma..sigma + nu];
-    for i in 0..nu {
-        s2_coords[i] = row_coords[i];
-    }
+    s2_coords[..nu].copy_from_slice(&row_coords[..nu]);
 
     let mut verifier_state = DoryVerifierState::new(
-        vmv_message.c,    // c from VMV message
-        commitment,       // d1 = commitment
-        vmv_message.d2,   // d2 from VMV message
-        vmv_message.e1,   // e1 from VMV message
-        e2,               // e2 computed from evaluation
-        s1_coords,        // s1: columns c0..c_{σ−1} (LSB→MSB), no padding; folded across σ dims
-        s2_coords,        // s2: rows r0..r_{ν−1} then zeros in MSB dims (emulates s ⊗ [1,0]^(σ−ν))
+        vmv_message.c,  // c from VMV message
+        commitment,     // d1 = commitment
+        vmv_message.d2, // d2 from VMV message
+        vmv_message.e1, // e1 from VMV message
+        e2,             // e2 computed from evaluation
+        s1_coords,      // s1: columns c0..c_{σ−1} (LSB→MSB), no padding; folded across σ dims
+        s2_coords,      // s2: rows r0..r_{ν−1} then zeros in MSB dims (emulates s ⊗ [1,0]^(σ−ν))
         num_rounds,
         setup.clone(),
     );
