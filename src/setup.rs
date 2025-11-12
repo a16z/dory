@@ -7,8 +7,12 @@
 use crate::primitives::arithmetic::{Group, PairingCurve};
 use crate::primitives::serialization::{DoryDeserialize, DorySerialize};
 use rand_core::RngCore;
+
+#[cfg(feature = "disk-persistence")]
 use std::fs::{self, File};
+#[cfg(feature = "disk-persistence")]
 use std::io::{BufReader, BufWriter};
+#[cfg(feature = "disk-persistence")]
 use std::path::PathBuf;
 
 /// Prover setup parameters
@@ -18,7 +22,7 @@ use std::path::PathBuf;
 /// from public randomness.
 ///
 /// For square matrices: |Γ₁| = |Γ₂| = 2^((max_log_n+1)/2)
-#[derive(Clone, DorySerialize, DoryDeserialize)]
+#[derive(Clone, Debug, DorySerialize, DoryDeserialize)]
 pub struct ProverSetup<E: PairingCurve> {
     /// Γ₁ - column generators in G1
     pub g1_vec: Vec<E::G1>,
@@ -40,21 +44,21 @@ pub struct ProverSetup<E: PairingCurve> {
 ///
 /// Contains precomputed pairing values for efficient verification.
 /// Derived from the prover setup.
-#[derive(Clone, DorySerialize, DoryDeserialize)]
+#[derive(Clone, Debug, DorySerialize, DoryDeserialize)]
 pub struct VerifierSetup<E: PairingCurve> {
-    /// Δ₁L[k] = e(Γ₁[..2^(k-1)], Γ₂[..2^(k-1)])
+    /// Δ₁L\[k\] = e(Γ₁\[..2^(k-1)\], Γ₂\[..2^(k-1)\])
     pub delta_1l: Vec<E::GT>,
 
-    /// Δ₁R[k] = e(Γ₁[2^(k-1)..2^k], Γ₂[..2^(k-1)])
+    /// Δ₁R\[k\] = e(Γ₁\[2^(k-1)..2^k\], Γ₂\[..2^(k-1)\])
     pub delta_1r: Vec<E::GT>,
 
-    /// Δ₂L[k] = same as Δ₁L[k]
+    /// Δ₂L\[k\] = same as Δ₁L\[k\]
     pub delta_2l: Vec<E::GT>,
 
-    /// Δ₂R[k] = e(Γ₁[..2^(k-1)], Γ₂[2^(k-1)..2^k])
+    /// Δ₂R\[k\] = e(Γ₁\[..2^(k-1)\], Γ₂\[2^(k-1)..2^k\])
     pub delta_2r: Vec<E::GT>,
 
-    /// χ[k] = e(Γ₁[..2^k], Γ₂[..2^k])
+    /// χ\[k\] = e(Γ₁\[..2^k\], Γ₂\[..2^k\])
     pub chi: Vec<E::GT>,
 
     /// First G1 generator
@@ -91,10 +95,8 @@ impl<E: PairingCurve> ProverSetup<E> {
     pub fn new<R: RngCore>(rng: &mut R, max_log_n: usize) -> Self {
         // For square matrices: n = 2^((max_log_n+1)/2)
         let n = 1 << max_log_n.div_ceil(2);
-
         // Generate n random G1 generators (Γ₁)
         let g1_vec: Vec<E::G1> = (0..n).map(|_| E::G1::random(rng)).collect();
-
         // Generate n random G2 generators (Γ₂)
         let g2_vec: Vec<E::G2> = (0..n).map(|_| E::G2::random(rng)).collect();
 
@@ -119,14 +121,14 @@ impl<E: PairingCurve> ProverSetup<E> {
     /// Precomputes pairing values for efficient verification by computing
     /// delta and chi values for all rounds of the inner product protocol.
     pub fn to_verifier_setup(&self) -> VerifierSetup<E> {
-        let max_nu = self.g1_vec.len().trailing_zeros() as usize;
+        let max_num_rounds = self.g1_vec.len().trailing_zeros() as usize;
 
-        let mut delta_1l = Vec::with_capacity(max_nu + 1);
-        let mut delta_1r = Vec::with_capacity(max_nu + 1);
-        let mut delta_2r = Vec::with_capacity(max_nu + 1);
-        let mut chi = Vec::with_capacity(max_nu + 1);
+        let mut delta_1l = Vec::with_capacity(max_num_rounds + 1);
+        let mut delta_1r = Vec::with_capacity(max_num_rounds + 1);
+        let mut delta_2r = Vec::with_capacity(max_num_rounds + 1);
+        let mut chi = Vec::with_capacity(max_num_rounds + 1);
 
-        for k in 0..=max_nu {
+        for k in 0..=max_num_rounds {
             if k == 0 {
                 // Base case: identities for deltas, single pairing for chi
                 delta_1l.push(E::GT::identity());
@@ -167,7 +169,7 @@ impl<E: PairingCurve> ProverSetup<E> {
             h1: self.h1,
             h2: self.h2,
             ht: self.ht,
-            max_log_n: max_nu * 2, // Since square matrices: max_log_n = 2 * max_nu
+            max_log_n: max_num_rounds * 2, // Since square matrices: max_log_n = 2 * max_nu
         }
     }
 
@@ -202,6 +204,7 @@ impl<E: PairingCurve> ProverSetup<E> {
 /// - Windows: `{FOLDERID_LocalAppData}\dory\`
 ///
 /// Note: Uses XDG cache directory for persistent storage.
+#[cfg(feature = "disk-persistence")]
 fn get_storage_dir() -> Option<PathBuf> {
     dirs::cache_dir().map(|mut path| {
         path.push("dory");
@@ -210,6 +213,7 @@ fn get_storage_dir() -> Option<PathBuf> {
 }
 
 /// Get the full path to the setup file for a given max_log_n
+#[cfg(feature = "disk-persistence")]
 fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
     get_storage_dir().map(|mut path| {
         path.push(format!("dory_{}.urs", max_log_n));
@@ -221,7 +225,14 @@ fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
 ///
 /// Serializes both setups to a `.urs` file in the storage directory.
 /// If the storage directory doesn't exist, it will be created.
-/// Panics if the save operation fails.
+///
+/// # Panics
+/// Panics if:
+/// - Storage directory cannot be determined
+/// - Directory creation fails
+/// - File creation fails
+/// - Serialization of prover or verifier setup fails
+#[cfg(feature = "disk-persistence")]
 pub fn save_setup<E: PairingCurve>(
     prover: &ProverSetup<E>,
     verifier: &VerifierSetup<E>,
@@ -256,7 +267,14 @@ pub fn save_setup<E: PairingCurve>(
 /// Load prover and verifier setups from disk
 ///
 /// Attempts to deserialize both setups from the saved `.urs` file.
-/// Returns an error if the file doesn't exist, cannot be opened, or deserialization fails.
+///
+/// # Errors
+/// Returns `DoryError::InvalidURS` if:
+/// - Storage directory cannot be determined
+/// - Setup file doesn't exist
+/// - File cannot be opened
+/// - Deserialization fails
+#[cfg(feature = "disk-persistence")]
 pub fn load_setup<E: PairingCurve>(
     max_log_n: usize,
 ) -> Result<(ProverSetup<E>, VerifierSetup<E>), crate::DoryError>

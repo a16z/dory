@@ -1,3 +1,9 @@
+//! Serialization primitives for Dory types
+
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
 use std::io::{Read, Write};
 
 // Re-export derive macros
@@ -22,9 +28,6 @@ pub enum SerializationError {
 
     #[error("Invalid data: {0}")]
     InvalidData(String),
-
-    #[error("Not in canonical form")]
-    NotCanonical,
 
     #[error("Unexpected data")]
     UnexpectedData,
@@ -131,7 +134,6 @@ pub trait DoryDeserialize {
     }
 }
 
-#[cfg(not(feature = "backends"))]
 mod primitive_impls {
     use super::*;
 

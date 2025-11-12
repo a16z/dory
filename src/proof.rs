@@ -12,6 +12,9 @@ use crate::messages::*;
 /// The proof demonstrates that a committed polynomial evaluates to a specific value
 /// at a given point. It consists of messages from the interactive protocol made
 /// non-interactive via Fiat-Shamir.
+///
+/// The proof includes the matrix dimensions (nu, sigma) used during proof generation,
+/// which the verifier uses to ensure consistency with the evaluation point.
 #[derive(Clone, Debug)]
 pub struct DoryProof<G1, G2, GT> {
     /// Vector-Matrix-Vector message for PCS transformation
@@ -25,4 +28,10 @@ pub struct DoryProof<G1, G2, GT> {
 
     /// Final scalar product message
     pub final_message: ScalarProductMessage<G1, G2>,
+
+    /// Log₂ of number of rows in the coefficient matrix
+    pub nu: usize,
+
+    /// Log₂ of number of columns in the coefficient matrix
+    pub sigma: usize,
 }

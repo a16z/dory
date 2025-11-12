@@ -1,5 +1,9 @@
 //! Blake2b-based Fiat-Shamir transcript for Dory proofs
 
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
 use crate::primitives::arithmetic::{Group, PairingCurve};
 use crate::primitives::serialization::Compress;
 use crate::primitives::transcript::Transcript;

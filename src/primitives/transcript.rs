@@ -1,3 +1,7 @@
+//! Transcript trait for Fiat-Shamir transformations
+
+#![allow(missing_docs)]
+
 use crate::primitives::arithmetic::{Group, PairingCurve};
 use crate::primitives::DorySerialize;
 

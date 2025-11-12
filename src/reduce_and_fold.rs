@@ -4,6 +4,10 @@
 //! The prover maintains vectors and computes messages, while the verifier
 //! maintains accumulated values and verifies messages.
 
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
 use crate::error::DoryError;
 use crate::messages::*;
 use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
@@ -30,7 +34,7 @@ pub struct DoryProverState<'a, E: PairingCurve> {
     s2: Vec<<E::G1 as Group>::Scalar>,
 
     /// Number of rounds remaining (log₂ of vector length)
-    nu: usize,
+    num_rounds: usize,
 
     /// Reference to prover setup
     setup: &'a ProverSetup<E>,
@@ -62,14 +66,14 @@ pub struct DoryVerifierState<E: PairingCurve> {
     /// Accumulated scalar for s2 after folding across rounds
     s2_acc: <E::G1 as Group>::Scalar,
 
-    /// Per-round coordinates for s1 (length = nu). Order must match folding order.
+    /// Per-round coordinates for s1 (length = num_rounds). Order matches folding order.
     s1_coords: Vec<<E::G1 as Group>::Scalar>,
 
-    /// Per-round coordinates for s2 (length = nu). Order must match folding order.
+    /// Per-round coordinates for s2 (length = num_rounds). Order matches folding order.
     s2_coords: Vec<<E::G1 as Group>::Scalar>,
 
-    /// Current round number for indexing setup arrays
-    nu: usize,
+    /// Number of rounds remaining for indexing setup arrays
+    num_rounds: usize,
 
     /// Reference to verifier setup
     setup: VerifierSetup<E>,
@@ -81,7 +85,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
     /// # Parameters
     /// - `v1`: Initial G1 vector
     /// - `v2`: Initial G2 vector
-    /// - `v2_scalars`: Use the scalars in the first round to avoid a multi-pairing by instead performing a (cheaper) MSM + Pairing
+    /// - `v2_scalars`: Optional scalars where v2 = h2 * scalars; enables MSM+pair in first round
     /// - `s1`: Initial scalar vector for G1 side
     /// - `s2`: Initial scalar vector for G2 side
     /// - `setup`: Prover setup parameters
@@ -104,7 +108,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
             debug_assert_eq!(sc.len(), v2.len(), "v2_scalars must match v2 length");
         }
 
-        let nu = v1.len().trailing_zeros() as usize;
+        let num_rounds = v1.len().trailing_zeros() as usize;
 
         Self {
             v1,
@@ -112,7 +116,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
             v2_scalars,
             s1,
             s2,
-            nu,
+            num_rounds,
             setup,
         }
     }
@@ -127,9 +131,12 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         M2: DoryRoutines<E::G2>,
         E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
     {
-        assert!(self.nu > 0, "Not enough rounds left in prover state");
+        assert!(
+            self.num_rounds > 0,
+            "Not enough rounds left in prover state"
+        );
 
-        let n2 = 1 << (self.nu - 1); // n/2
+        let n2 = 1 << (self.num_rounds - 1); // n/2
 
         // Split vectors into left and right halves
         let (v1_l, v1_r) = self.v1.split_at(n2);
@@ -140,12 +147,12 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         let g2_prime = &self.setup.g2_vec[..n2];
 
         // Compute D values: multi-pairings between v-vectors and generators
-        // D₁L = ⟨v₁L, Γ₂'⟩, D₁R = ⟨v₁R, Γ₂'⟩
-        let d1_left = E::multi_pair(v1_l, g2_prime);
-        let d1_right = E::multi_pair(v1_r, g2_prime);
+        // D₁L = ⟨v₁L, Γ₂'⟩, D₁R = ⟨v₁R, Γ₂'⟩ - g2_prime is from setup, use cached version
+        let d1_left = E::multi_pair_g2_setup(v1_l, g2_prime);
+        let d1_right = E::multi_pair_g2_setup(v1_r, g2_prime);
 
         // D₂L = ⟨Γ₁', v₂L⟩, D₂R = ⟨Γ₁', v₂R⟩
-        // In the first round, v2 = h2 * scalars, so we can compute this as the Pairing of MSM(Γ₁', scalars)
+        // If v2 was constructed as h2 * scalars (first round), compute MSM(Γ₁', scalars) then one pairing.
         let (d2_left, d2_right) = if let Some(scalars) = self.v2_scalars.as_ref() {
             let (s_l, s_r) = scalars.split_at(n2);
             let sum_left = M1::msm(g1_prime, s_l);
@@ -155,15 +162,18 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
                 E::pair(&sum_right, &self.setup.h2),
             )
         } else {
-            (E::multi_pair(g1_prime, v2_l), E::multi_pair(g1_prime, v2_r))
+            (
+                E::multi_pair_g1_setup(g1_prime, v2_l),
+                E::multi_pair_g1_setup(g1_prime, v2_r),
+            )
         };
 
         // Compute E values for extended protocol: MSMs with scalar vectors
         // E₁β = ⟨Γ₁, s₂⟩
-        let e1_beta = M1::msm(&self.setup.g1_vec[..1 << self.nu], &self.s2[..]);
+        let e1_beta = M1::msm(&self.setup.g1_vec[..1 << self.num_rounds], &self.s2[..]);
 
         // E₂β = ⟨Γ₂, s₁⟩
-        let e2_beta = M2::msm(&self.setup.g2_vec[..1 << self.nu], &self.s1[..]);
+        let e2_beta = M2::msm(&self.setup.g2_vec[..1 << self.num_rounds], &self.s1[..]);
 
         FirstReduceMessage {
             d1_left,
@@ -188,17 +198,13 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
     {
         let beta_inv = (*beta).inv().expect("beta must be invertible");
 
-        let n = 1 << self.nu;
+        let n = 1 << self.num_rounds;
 
         // Combine: v₁ ← v₁ + β·Γ₁
-        for i in 0..n {
-            self.v1[i] = self.v1[i] + self.setup.g1_vec[i].scale(beta);
-        }
+        M1::fixed_scalar_mul_bases_then_add(&self.setup.g1_vec[..n], &mut self.v1, beta);
 
         // Combine: v₂ ← v₂ + β⁻¹·Γ₂
-        for i in 0..n {
-            self.v2[i] = self.v2[i] + self.setup.g2_vec[i].scale(&beta_inv);
-        }
+        M2::fixed_scalar_mul_bases_then_add(&self.setup.g2_vec[..n], &mut self.v2, &beta_inv);
 
         // After first combine, the `v2_scalars` optimization does not apply.
         self.v2_scalars = None;
@@ -214,7 +220,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         M2: DoryRoutines<E::G2>,
         E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
     {
-        let n2 = 1 << (self.nu - 1); // n/2
+        let n2 = 1 << (self.num_rounds - 1); // n/2
 
         // Split all vectors into left and right halves
         let (v1_l, v1_r) = self.v1.split_at(n2);
@@ -260,40 +266,36 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         <E::G1 as Group>::Scalar: Field,
     {
         let alpha_inv = (*alpha).inv().expect("alpha must be invertible");
-        let n2 = 1 << (self.nu - 1); // n/2
+        let n2 = 1 << (self.num_rounds - 1); // n/2
 
-        // Fold v₁: v₁ ← α·v₁L + v₁R (optimized with DoryRoutines)
+        // Fold v₁: v₁ ← α·v₁L + v₁R
         let (v1_l, v1_r) = self.v1.split_at_mut(n2);
         M1::fixed_scalar_mul_vs_then_add(v1_l, v1_r, alpha);
         self.v1.truncate(n2);
 
-        // Fold v₂: v₂ ← α⁻¹·v₂L + v₂R (optimized with DoryRoutines)
+        // Fold v₂: v₂ ← α⁻¹·v₂L + v₂R
         let (v2_l, v2_r) = self.v2.split_at_mut(n2);
         M2::fixed_scalar_mul_vs_then_add(v2_l, v2_r, &alpha_inv);
         self.v2.truncate(n2);
 
         // Fold s₁: s₁ ← α·s₁L + s₁R
         let (s1_l, s1_r) = self.s1.split_at_mut(n2);
-        for i in 0..n2 {
-            s1_l[i] = s1_l[i] * alpha + s1_r[i];
-        }
+        M1::fold_field_vectors(s1_l, s1_r, alpha);
         self.s1.truncate(n2);
 
         // Fold s₂: s₂ ← α⁻¹·s₂L + s₂R
         let (s2_l, s2_r) = self.s2.split_at_mut(n2);
-        for i in 0..n2 {
-            s2_l[i] = s2_l[i] * alpha_inv + s2_r[i];
-        }
+        M1::fold_field_vectors(s2_l, s2_r, &alpha_inv);
         self.s2.truncate(n2);
 
         // Decrement round counter
-        self.nu -= 1;
+        self.num_rounds -= 1;
     }
 
     /// Compute final scalar product message
     ///
     /// Applies fold-scalars transformation and returns the final E1, E2 elements.
-    /// Must be called when nu=0 (vectors are size 1).
+    /// Must be called when num_rounds=0 (vectors are size 1).
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
     pub fn compute_final_message<M1, M2>(
         self,
@@ -305,7 +307,7 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
         <E::G1 as Group>::Scalar: Field,
     {
-        debug_assert_eq!(self.nu, 0, "nu must be 0 for final message");
+        debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for final message");
         debug_assert_eq!(self.v1.len(), 1, "v1 must have length 1");
         debug_assert_eq!(self.v2.len(), 1, "v2 must have length 1");
 
@@ -329,13 +331,16 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     ///
     /// # Parameters
     /// - `c`: Initial inner product value
-    /// - `d1`: Initial d1 value (typically from VMV)
-    /// - `d2`: Initial d2 value (typically from VMV)
+    /// - `d1`: Initial d1 value (from VMV)
+    /// - `d2`: Initial d2 value (from VMV)
     /// - `e1`: Initial e1 value
     /// - `e2`: Initial e2 value
+    ///
+    /// Construct verifier state for O(1) accumulation
+    ///
     /// - `s1_coords`: Per-round coordinates for s1 (right_vec in prover)
     /// - `s2_coords`: Per-round coordinates for s2 (left_vec in prover)
-    /// - `nu`: Number of rounds
+    /// - `num_rounds`: Number of rounds
     /// - `setup`: Verifier setup parameters
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -346,11 +351,11 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         e2: E::G2,
         s1_coords: Vec<<E::G1 as Group>::Scalar>,
         s2_coords: Vec<<E::G1 as Group>::Scalar>,
-        nu: usize,
+        num_rounds: usize,
         setup: VerifierSetup<E>,
     ) -> Self {
-        debug_assert_eq!(s1_coords.len(), nu);
-        debug_assert_eq!(s2_coords.len(), nu);
+        debug_assert_eq!(s1_coords.len(), num_rounds);
+        debug_assert_eq!(s2_coords.len(), num_rounds);
 
         Self {
             c,
@@ -362,7 +367,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
             s2_acc: <E::G1 as Group>::Scalar::one(),
             s1_coords,
             s2_coords,
-            nu,
+            num_rounds,
             setup,
         }
     }
@@ -383,13 +388,13 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
         <E::G1 as Group>::Scalar: Field,
     {
-        assert!(self.nu > 0, "No rounds remaining");
+        assert!(self.num_rounds > 0, "No rounds remaining");
 
         let alpha_inv = (*alpha).inv().expect("alpha must be invertible");
         let beta_inv = (*beta).inv().expect("beta must be invertible");
 
         // Update C: C' ← C + χᵢ + β·D₂ + β⁻¹·D₁ + α·C₊ + α⁻¹·C₋
-        let chi = &self.setup.chi[self.nu];
+        let chi = &self.setup.chi[self.num_rounds];
         self.c = self.c + chi;
         self.c = self.c + self.d2.scale(beta);
         self.c = self.c + self.d1.scale(&beta_inv);
@@ -397,8 +402,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.c = self.c + second_msg.c_minus.scale(&alpha_inv);
 
         // Update D₁: D₁' ← α·D₁L + D₁R + α·β·Δ₁L + β·Δ₁R
-        let delta_1l = &self.setup.delta_1l[self.nu];
-        let delta_1r = &self.setup.delta_1r[self.nu];
+        let delta_1l = &self.setup.delta_1l[self.num_rounds];
+        let delta_1r = &self.setup.delta_1r[self.num_rounds];
         let alpha_beta = *alpha * *beta;
         self.d1 = first_msg.d1_left.scale(alpha);
         self.d1 = self.d1 + first_msg.d1_right;
@@ -406,8 +411,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.d1 = self.d1 + delta_1r.scale(beta);
 
         // Update D₂: D₂' ← α⁻¹·D₂L + D₂R + α⁻¹·β⁻¹·Δ₂L + β⁻¹·Δ₂R
-        let delta_2l = &self.setup.delta_2l[self.nu];
-        let delta_2r = &self.setup.delta_2r[self.nu];
+        let delta_2l = &self.setup.delta_2l[self.num_rounds];
+        let delta_2r = &self.setup.delta_2r[self.num_rounds];
         let alpha_inv_beta_inv = alpha_inv * beta_inv;
         self.d2 = first_msg.d2_left.scale(&alpha_inv);
         self.d2 = self.d2 + first_msg.d2_right;
@@ -426,8 +431,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
 
         // Update folded scalars in O(1): s1_acc *= (α·(1−y_t) + y_t), s2_acc *= (α⁻¹·(1−x_t) + x_t)
         // Endianness note: s*_coords are stored in increasing dimension index (little-endian by dimension).
-        // Folding processes the most significant dimension first (MSB-first), so we index from the end: idx = nu - 1.
-        let idx = self.nu - 1;
+        // Folding processes the most significant dimension first (MSB-first), so we index from the end: idx = num_rounds - 1.
+        let idx = self.num_rounds - 1;
         let y_t = self.s1_coords[idx];
         let x_t = self.s2_coords[idx];
         let one = <E::G1 as Group>::Scalar::one();
@@ -437,13 +442,13 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.s2_acc = self.s2_acc * s2_term;
 
         // Decrement round counter
-        self.nu -= 1;
+        self.num_rounds -= 1;
     }
 
     /// Verify final scalar product message
     ///
     /// Applies fold-scalars transformation and checks the final pairing equation.
-    /// Must be called when nu=0 after all reduce rounds are complete.
+    /// Must be called when num_rounds=0 after all reduce rounds are complete.
     #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
     pub fn verify_final(
         &mut self,
@@ -456,7 +461,10 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
         <E::G1 as Group>::Scalar: Field,
     {
-        debug_assert_eq!(self.nu, 0, "nu must be 0 for final verification");
+        debug_assert_eq!(
+            self.num_rounds, 0,
+            "num_rounds must be 0 for final verification"
+        );
 
         let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
         let d_inv = (*d).inv().expect("d must be invertible");

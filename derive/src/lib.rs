@@ -1,3 +1,10 @@
+//! Procedural macros for deriving serialization traits in Dory
+//!
+//! This crate provides derive macros for `DorySerialize`, `DoryDeserialize`, and `Valid` traits.
+//! These macros automatically implement field-by-field serialization for structs.
+
+#![allow(missing_docs)]
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields};

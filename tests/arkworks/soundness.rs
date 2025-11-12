@@ -4,6 +4,7 @@ use super::*;
 use ark_bn254::{Fq12, Fr, G1Projective, G2Projective};
 use ark_ff::UniformRand;
 use dory::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
+use dory::primitives::poly::Polynomial;
 use dory::{prove, verify};
 use std::mem::swap;
 
@@ -26,24 +27,29 @@ fn create_valid_proof_components(
     let poly = random_polynomial(size);
     let point = random_point(nu + sigma);
 
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
     let mut prover_transcript = fresh_transcript();
-    let (commitment, evaluation, proof) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
         &poly,
         &point,
-        None,
+        tier_1,
         nu,
         sigma,
         &prover_setup,
         &mut prover_transcript,
     )
     .unwrap();
+    let evaluation = poly.evaluate(&point);
 
     (
         prover_setup,
         verifier_setup,
         poly,
         point,
-        commitment,
+        tier_2,
         evaluation,
         proof,
     )
@@ -62,8 +68,6 @@ fn test_soundness_tamper_vmv_c() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -84,8 +88,6 @@ fn test_soundness_tamper_vmv_d2() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -106,8 +108,6 @@ fn test_soundness_tamper_vmv_e1() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -130,8 +130,6 @@ fn test_soundness_tamper_d1_left() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -154,8 +152,6 @@ fn test_soundness_tamper_d1_right() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -178,8 +174,6 @@ fn test_soundness_tamper_d2_left() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -202,8 +196,6 @@ fn test_soundness_tamper_d2_right() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -226,8 +218,6 @@ fn test_soundness_tamper_e1_beta() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -250,8 +240,6 @@ fn test_soundness_tamper_e2_beta() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -274,8 +262,6 @@ fn test_soundness_tamper_c_plus() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -298,8 +284,6 @@ fn test_soundness_tamper_c_minus() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -322,8 +306,6 @@ fn test_soundness_tamper_e1_plus() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -346,8 +328,6 @@ fn test_soundness_tamper_e1_minus() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -370,8 +350,6 @@ fn test_soundness_tamper_e2_plus() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -394,8 +372,6 @@ fn test_soundness_tamper_e2_minus() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -416,8 +392,6 @@ fn test_soundness_tamper_final_e1() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -438,8 +412,6 @@ fn test_soundness_tamper_final_e2() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -461,8 +433,6 @@ fn test_soundness_tamper_both_final_elements() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -489,8 +459,6 @@ fn test_soundness_swap_d1_values() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -514,8 +482,6 @@ fn test_soundness_swap_c_values() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -542,8 +508,6 @@ fn test_soundness_scale_d1_values() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -567,8 +531,6 @@ fn test_soundness_multi_round_tampering() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -592,8 +554,6 @@ fn test_soundness_last_round_tampering() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -616,8 +576,6 @@ fn test_soundness_identity_elements() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -638,8 +596,6 @@ fn test_soundness_wrong_evaluation() {
         wrong_evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -663,8 +619,6 @@ fn test_soundness_mixed_proofs() {
         evaluation2,
         &point2,
         &proof2,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -683,8 +637,6 @@ fn test_soundness_different_transcript() {
         evaluation,
         &point,
         &proof,
-        4,
-        4,
         verifier_setup,
         &mut verifier_transcript,
     );

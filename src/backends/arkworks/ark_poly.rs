@@ -1,3 +1,7 @@
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
 use super::ark_field::ArkFr;
 use crate::error::DoryError;
 use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
@@ -32,6 +36,7 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
         self.num_vars
     }
 
+    #[tracing::instrument(skip_all, name = "ArkworksPolynomial::evaluate", fields(num_vars = self.num_vars))]
     fn evaluate(&self, point: &[ArkFr]) -> ArkFr {
         assert_eq!(point.len(), self.num_vars, "Point dimension mismatch");
 
@@ -47,10 +52,7 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
         result
     }
 
-    fn coefficients(&self) -> &[ArkFr] {
-        &self.coefficients
-    }
-
+    #[tracing::instrument(skip_all, name = "ArkworksPolynomial::commit", fields(nu, sigma, num_rows = 1 << nu, num_cols = 1 << sigma))]
     fn commit<E, M1>(
         &self,
         nu: usize,
@@ -85,12 +87,32 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
             row_commitments.push(row_commit);
         }
 
-        // Tier 2: Compute final commitment via multi-pairing
+        // Tier 2: Compute final commitment via multi-pairing (g2_bases from setup)
         let g2_bases = &setup.g2_vec[..num_rows];
-        let commitment = E::multi_pair(&row_commitments, g2_bases);
+        let commitment = E::multi_pair_g2_setup(&row_commitments, g2_bases);
 
         Ok((commitment, row_commitments))
     }
 }
 
-impl MultilinearLagrange<ArkFr> for ArkworksPolynomial {}
+impl MultilinearLagrange<ArkFr> for ArkworksPolynomial {
+    #[tracing::instrument(skip_all, name = "ArkworksPolynomial::vector_matrix_product", fields(nu, sigma, num_rows = 1 << nu, num_cols = 1 << sigma))]
+    fn vector_matrix_product(&self, left_vec: &[ArkFr], nu: usize, sigma: usize) -> Vec<ArkFr> {
+        let num_cols = 1 << sigma;
+        let num_rows = 1 << nu;
+        let mut v_vec = vec![ArkFr::zero(); num_cols];
+
+        for (j, v) in v_vec.iter_mut().enumerate() {
+            let mut sum = ArkFr::zero();
+            for (i, left_val) in left_vec.iter().enumerate().take(num_rows) {
+                let coeff_idx = i * num_cols + j;
+                if coeff_idx < self.coefficients.len() {
+                    sum = sum + left_val.mul(&self.coefficients[coeff_idx]);
+                }
+            }
+            *v = sum;
+        }
+
+        v_vec
+    }
+}
