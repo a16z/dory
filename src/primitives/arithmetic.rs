@@ -63,6 +63,57 @@ pub trait Group:
     fn random<R: RngCore>(rng: &mut R) -> Self;
 }
 
+pub trait CompressedPairingCurve: Clone {
+    type G1: Group;
+    type G2: Group;
+    type GT: Group;
+    type CompressedGT;
+
+    fn pair(p: &Self::G1, q: &Self::G2) -> Self::CompressedGT {
+        Self::multi_pair(&[p.clone()], &[q.clone()])
+    }
+
+    fn multi_pair(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT;
+
+    /// Optimized multi-pairing when G2 points come from setup/generators
+    ///
+    /// This variant should be used when the G2 points are from the prover setup
+    /// (e.g., g2_vec generators). Backend implementations can optimize this by
+    /// caching prepared G2 points.
+    ///
+    /// # Parameters
+    /// - `ps`: G1 points (typically computed values like row commitments or v-vectors)
+    /// - `qs`: G2 points from setup (e.g., `setup.g2_vec[..n]`)
+    ///
+    /// # Returns
+    /// Product of pairings: Π e(p_i, q_i)
+    ///
+    /// # Default Implementation
+    /// Delegates to `multi_pair`
+    fn multi_pair_g2_setup(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
+        Self::multi_pair(ps, qs)
+    }
+
+    /// Optimized multi-pairing when G1 points are from the prover setup.
+    ///
+    /// This variant should be used when the G1 points are from the prover setup
+    /// (e.g., g1_vec generators). Backend implementations can optimize this by
+    /// caching prepared G1 points.
+    ///
+    /// # Parameters
+    /// - `ps`: G1 points from setup (e.g., `setup.g1_vec[..n]`)
+    /// - `qs`: G2 points (typically computed values like v-vectors)
+    ///
+    /// # Returns
+    /// Product of pairings: Π e(p_i, q_i)
+    ///
+    /// # Default Implementation
+    /// Delegates to `multi_pair`
+    fn multi_pair_g1_setup(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
+        Self::multi_pair(ps, qs)
+    }
+}
+
 pub trait PairingCurve: Clone {
     type G1: Group;
     type G2: Group;
