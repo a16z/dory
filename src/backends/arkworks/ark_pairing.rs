@@ -330,6 +330,20 @@ mod pairing_helpers {
         ArkGT(result.0)
     }
 
+    pub(super) fn multi_pair_g2_setup_optimized_compressed(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+    ) -> ArkGTCompressed {
+        let combined = if cfg!(feature = "parallel") {
+            multi_pair_g2_setup_parallel(ps, qs)
+        } else {
+            multi_pair_g2_setup_sequential(ps, qs)
+        };
+        let result = Bn254::compressed_final_exponentiation(combined)
+            .expect("Final exponentiation should not fail");
+        ArkGTCompressed(result)
+    }
+
     /// Optimized multi-pairing dispatch for G1 from setup
     pub(super) fn multi_pair_g1_setup_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
         let combined = if cfg!(feature = "parallel") {
@@ -341,6 +355,20 @@ mod pairing_helpers {
             Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
         ArkGT(result.0)
     }
+
+    pub(super) fn multi_pair_g1_setup_optimized_compressed(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+    ) -> ArkGTCompressed {
+        let combined = if cfg!(feature = "parallel") {
+            multi_pair_g1_setup_parallel(ps, qs)
+        } else {
+            multi_pair_g1_setup_sequential(ps, qs)
+        };
+        let result = Bn254::compressed_final_exponentiation(combined)
+            .expect("Final exponentiation should not fail");
+        ArkGTCompressed(result)
+    }
 }
 
 impl CompressedPairingCurve for BN254 {
@@ -349,7 +377,7 @@ impl CompressedPairingCurve for BN254 {
     type GT = ArkGT;
     type CompressedGT = ArkGTCompressed;
 
-    fn multi_pair(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
+    fn multi_pair_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
         assert_eq!(
             ps.len(),
             qs.len(),
@@ -360,6 +388,34 @@ impl CompressedPairingCurve for BN254 {
         assert!(!ps.is_empty());
 
         pairing_helpers::multi_pair_optimized_compressed(ps, qs)
+    }
+
+    #[tracing::instrument(skip_all, name = "BN254::multi_pair_g2_setup_compressed", fields(len = ps.len()))]
+    fn multi_pair_g2_setup_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
+        assert_eq!(
+            ps.len(),
+            qs.len(),
+            "multi_pair_g2_setup requires equal length vectors"
+        );
+
+        // TODO: handle empty case properly by implementing the default implementation of CompressedGT in arkworks.
+        assert!(!ps.is_empty());
+
+        pairing_helpers::multi_pair_g2_setup_optimized_compressed(ps, qs)
+    }
+
+    #[tracing::instrument(skip_all, name = "BN254::multi_pair_g1_setup_compressed", fields(len = ps.len()))]
+    fn multi_pair_g1_setup_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
+        assert_eq!(
+            ps.len(),
+            qs.len(),
+            "multi_pair_g1_setup requires equal length vectors"
+        );
+
+        // TODO: handle empty case properly by implementing the default implementation of CompressedGT in arkworks.
+        assert!(!ps.is_empty());
+
+        pairing_helpers::multi_pair_g1_setup_optimized_compressed(ps, qs)
     }
 }
 

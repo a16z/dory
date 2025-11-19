@@ -69,11 +69,11 @@ pub trait CompressedPairingCurve: Clone {
     type GT: Group;
     type CompressedGT;
 
-    fn pair(p: &Self::G1, q: &Self::G2) -> Self::CompressedGT {
-        Self::multi_pair(&[p.clone()], &[q.clone()])
+    fn pair_compressed(p: &Self::G1, q: &Self::G2) -> Self::CompressedGT {
+        Self::multi_pair_compressed(&[p.clone()], &[q.clone()])
     }
 
-    fn multi_pair(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT;
+    fn multi_pair_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT;
 
     /// Optimized multi-pairing when G2 points come from setup/generators
     ///
@@ -90,8 +90,8 @@ pub trait CompressedPairingCurve: Clone {
     ///
     /// # Default Implementation
     /// Delegates to `multi_pair`
-    fn multi_pair_g2_setup(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
-        Self::multi_pair(ps, qs)
+    fn multi_pair_g2_setup_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
+        Self::multi_pair_compressed(ps, qs)
     }
 
     /// Optimized multi-pairing when G1 points are from the prover setup.
@@ -109,8 +109,8 @@ pub trait CompressedPairingCurve: Clone {
     ///
     /// # Default Implementation
     /// Delegates to `multi_pair`
-    fn multi_pair_g1_setup(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
-        Self::multi_pair(ps, qs)
+    fn multi_pair_g1_setup_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
+        Self::multi_pair_compressed(ps, qs)
     }
 }
 
