@@ -1,5 +1,5 @@
 use dory_pcs::backends::arkworks::{ArkG1, ArkG2, ArkGT, BN254};
-use dory_pcs::primitives::arithmetic::{Group, PairingCurve};
+use dory_pcs::primitives::arithmetic::{CompressedPairingCurve, Group, PairingCurve};
 use rand::thread_rng;
 
 #[cfg(feature = "cache")]
@@ -24,6 +24,25 @@ fn multi_pair_correctness() {
 }
 
 #[test]
+fn multi_pair_compressed_correctness() {
+    let mut rng = thread_rng();
+    let n = 10;
+
+    let ps: Vec<ArkG1> = (0..n).map(|_| ArkG1::random(&mut rng)).collect();
+    let qs: Vec<ArkG2> = (0..n).map(|_| ArkG2::random(&mut rng)).collect();
+
+    let result_compressed = BN254::multi_pair_compressed(&ps, &qs);
+    let result = ArkGT::from(result_compressed);
+
+    let mut expected = ArkGT::identity();
+    for (p, q) in ps.iter().zip(qs.iter()) {
+        expected = expected.add(&BN254::pair(p, q));
+    }
+
+    assert_eq!(result, expected);
+}
+
+#[test]
 fn multi_pair_empty() {
     let empty_g1: Vec<ArkG1> = vec![];
     let empty_g2: Vec<ArkG2> = vec![];
@@ -31,6 +50,7 @@ fn multi_pair_empty() {
     let result = BN254::multi_pair(&empty_g1, &empty_g2);
     assert_eq!(result, ArkGT::identity());
 }
+
 
 #[test]
 #[should_panic(expected = "multi_pair requires equal length vectors")]

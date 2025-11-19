@@ -25,6 +25,13 @@ pub struct ArkGT(pub Fq12);
 #[derive(Clone, Copy, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ArkGTCompressed(pub CompressedFq12);
 
+impl From<ArkGTCompressed> for ArkGT {
+    fn from(gt: ArkGTCompressed) -> Self {
+        let decompressed = CompressedFq12::decompress_to_fq12(gt.0);
+        Self(decompressed)
+    }
+}
+
 impl Group for ArkG1 {
     type Scalar = ArkFr;
 
