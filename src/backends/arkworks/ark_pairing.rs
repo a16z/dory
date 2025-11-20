@@ -296,11 +296,11 @@ mod pairing_helpers {
 
     /// Optimized multi-pairing dispatch
     pub(super) fn multi_pair_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        let multi_miller_loop_output = if cfg!(feature = "parallel") {
-            multi_pair_parallel_miller_loop(ps, qs)
-        } else {
-            multi_pair_sequential_miller_loup(ps, qs)
-        };
+        #[cfg(feature = "parallel")]
+        let multi_miller_loop_output = multi_pair_parallel_miller_loop(ps, qs);
+        #[cfg(not(feature = "parallel"))]
+        let multi_miller_loop_output = multi_pair_sequential_miller_loup(ps, qs);
+
         let result = Bn254::final_exponentiation(multi_miller_loop_output)
             .expect("Final exponentiation should not fail");
         ArkGT(result.0)
@@ -308,11 +308,11 @@ mod pairing_helpers {
 
     /// Optimized multi-pairing dispatch for compressed pairing value
     pub(super) fn multi_pair_optimized_compressed(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGTCompressed {
-        let multi_miller_loop_output = if cfg!(feature = "parallel") {
-            multi_pair_parallel_miller_loop(ps, qs)
-        } else {
-            multi_pair_sequential_miller_loup(ps, qs)
-        };
+        #[cfg(feature = "parallel")]
+        let multi_miller_loop_output = multi_pair_parallel_miller_loop(ps, qs);
+        #[cfg(not(feature = "parallel"))]
+        let multi_miller_loop_output = multi_pair_sequential_miller_loup(ps, qs);
+
         let result = Bn254::compressed_final_exponentiation(multi_miller_loop_output)
             .expect("Final exponentiation should not fail");
         ArkGTCompressed(result)
@@ -320,11 +320,11 @@ mod pairing_helpers {
 
     /// Optimized multi-pairing dispatch for G2 from setup
     pub(super) fn multi_pair_g2_setup_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        let combined = if cfg!(feature = "parallel") {
-            multi_pair_g2_setup_parallel(ps, qs)
-        } else {
-            multi_pair_g2_setup_sequential(ps, qs)
-        };
+        #[cfg(feature = "parallel")]
+        let combined = multi_pair_g2_setup_parallel(ps, qs);
+        #[cfg(not(feature = "parallel"))]
+        let combined = multi_pair_g2_setup_sequential(ps, qs);
+
         let result =
             Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
         ArkGT(result.0)
@@ -334,11 +334,11 @@ mod pairing_helpers {
         ps: &[ArkG1],
         qs: &[ArkG2],
     ) -> ArkGTCompressed {
-        let combined = if cfg!(feature = "parallel") {
-            multi_pair_g2_setup_parallel(ps, qs)
-        } else {
-            multi_pair_g2_setup_sequential(ps, qs)
-        };
+        #[cfg(feature = "parallel")]
+        let combined = multi_pair_g2_setup_parallel(ps, qs);
+        #[cfg(not(feature = "parallel"))]
+        let combined = multi_pair_g2_setup_sequential(ps, qs);
+
         let result = Bn254::compressed_final_exponentiation(combined)
             .expect("Final exponentiation should not fail");
         ArkGTCompressed(result)
@@ -346,11 +346,11 @@ mod pairing_helpers {
 
     /// Optimized multi-pairing dispatch for G1 from setup
     pub(super) fn multi_pair_g1_setup_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        let combined = if cfg!(feature = "parallel") {
-            multi_pair_g1_setup_parallel(ps, qs)
-        } else {
-            multi_pair_g1_setup_sequential(ps, qs)
-        };
+        #[cfg(feature = "parallel")]
+        let combined = multi_pair_g1_setup_parallel(ps, qs);
+        #[cfg(not(feature = "parallel"))]
+        let combined = multi_pair_g1_setup_sequential(ps, qs);
+
         let result =
             Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
         ArkGT(result.0)
@@ -360,11 +360,11 @@ mod pairing_helpers {
         ps: &[ArkG1],
         qs: &[ArkG2],
     ) -> ArkGTCompressed {
-        let combined = if cfg!(feature = "parallel") {
-            multi_pair_g1_setup_parallel(ps, qs)
-        } else {
-            multi_pair_g1_setup_sequential(ps, qs)
-        };
+        #[cfg(feature = "parallel")]
+        let combined = multi_pair_g1_setup_parallel(ps, qs);
+        #[cfg(not(feature = "parallel"))]
+        let combined = multi_pair_g1_setup_sequential(ps, qs);
+
         let result = Bn254::compressed_final_exponentiation(combined)
             .expect("Final exponentiation should not fail");
         ArkGTCompressed(result)
