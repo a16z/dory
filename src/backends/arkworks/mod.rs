@@ -13,7 +13,7 @@ mod blake2b_transcript;
 pub mod ark_cache;
 
 pub use ark_field::ArkFr;
-pub use ark_group::{ArkG1, ArkG2, ArkGT, G1Routines, G2Routines};
+pub use ark_group::{ArkG1, ArkG2, ArkGT, ArkGTCompressed, G1Routines, G2Routines};
 pub use ark_pairing::BN254;
 pub use ark_poly::ArkworksPolynomial;
 pub use ark_proof::ArkDoryProof;

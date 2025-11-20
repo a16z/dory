@@ -381,11 +381,12 @@ impl CompressedPairingCurve for BN254 {
         assert_eq!(
             ps.len(),
             qs.len(),
-            "multi_pair requires equal length vectors"
+            "multi_pair_compressed requires equal length vectors"
         );
 
-        // TODO: handle empty case properly by implementing the default implementation of CompressedGT in arkworks.
-        assert!(!ps.is_empty());
+        if ps.is_empty() {
+            return Self::CompressedGT::default();
+        }
 
         pairing_helpers::multi_pair_optimized_compressed(ps, qs)
     }
@@ -395,11 +396,12 @@ impl CompressedPairingCurve for BN254 {
         assert_eq!(
             ps.len(),
             qs.len(),
-            "multi_pair_g2_setup requires equal length vectors"
+            "multi_pair_g2_setup_compressed requires equal length vectors"
         );
 
-        // TODO: handle empty case properly by implementing the default implementation of CompressedGT in arkworks.
-        assert!(!ps.is_empty());
+        if ps.is_empty() {
+            return Self::CompressedGT::default();
+        }
 
         pairing_helpers::multi_pair_g2_setup_optimized_compressed(ps, qs)
     }
@@ -409,11 +411,12 @@ impl CompressedPairingCurve for BN254 {
         assert_eq!(
             ps.len(),
             qs.len(),
-            "multi_pair_g1_setup requires equal length vectors"
+            "multi_pair_g1_setup_compressed requires equal length vectors"
         );
 
-        // TODO: handle empty case properly by implementing the default implementation of CompressedGT in arkworks.
-        assert!(!ps.is_empty());
+        if ps.is_empty() {
+            return Self::CompressedGT::default();
+        }
 
         pairing_helpers::multi_pair_g1_setup_optimized_compressed(ps, qs)
     }
