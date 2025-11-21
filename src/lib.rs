@@ -110,6 +110,9 @@ pub use proof::DoryProof;
 pub use reduce_and_fold::{DoryProverState, DoryVerifierState};
 pub use setup::{ProverSetup, VerifierSetup};
 
+#[cfg(feature = "disk-persistence")]
+pub use setup::get_storage_dir;
+
 /// Generate or load prover and verifier setups from disk
 ///
 /// Creates or loads the transparent setup parameters for Dory PCS.
