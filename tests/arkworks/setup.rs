@@ -151,12 +151,13 @@ fn test_arkworks_setup_new_from_urs() {
     use dory_pcs::backends::arkworks::ArkworksProverSetup;
     use dory_pcs::{backends::arkworks::BN254, generate_urs};
     use rand::thread_rng;
+    use dory_pcs::setup::get_storage_dir;
 
     let mut rng = thread_rng();
     let max_log_n = 14;
 
     // Clean up any existing cache file first
-    if let Some(cache_dir) = dirs::cache_dir() {
+    if let Some(cache_dir) = get_storage_dir() {
         let cache_file = cache_dir
             .join("dory")
             .join(format!("dory_{}.urs", max_log_n));
