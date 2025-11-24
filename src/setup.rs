@@ -196,55 +196,46 @@ impl<E: PairingCurve> ProverSetup<E> {
     }
 }
 
-/// Get the storage directory for Dory setup files
+/// Get the full path to the setup file for a given max_log_n
 ///
-/// Returns the appropriate storage directory based on the OS:
+/// Determines the appropriate storage directory based on the OS:
 /// - Linux: `~/.cache/dory/`
 /// - macOS: `~/Library/Caches/dory/`
 /// - Windows: `{FOLDERID_LocalAppData}\dory\`
 ///
-/// Note: Uses XDG cache directory for persistent storage.
-/// Detects OS at runtime by checking environment variables, then determines the cache directory.
-#[cfg(feature = "disk-persistence")]
-pub fn get_storage_dir() -> Option<PathBuf> {
-    // Check for Windows first (LOCALAPPDATA is Windows-specific)
-    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        let mut path = PathBuf::from(local_app_data);
-        path.push("dory");
-        return Some(path);
-    }
-
-    // For Unix-like systems, check for HOME
-    if let Ok(home) = std::env::var("HOME") {
-        let mut path = PathBuf::from(&home);
-        
-        // Check if Library/Caches exists (macOS indicator)
-        let macos_cache = {
-            let mut test_path = PathBuf::from(&home);
-            test_path.push("Library");
-            test_path.push("Caches");
-            test_path.exists()
-        };
-        
-        if macos_cache {
-            path.push("Library");
-            path.push("Caches");
-        } else {
-            // Linux and other Unix-like systems
-            path.push(".cache");
-        }
-        
-        path.push("dory");
-        return Some(path);
-    }
-
-    None
-}
-
-/// Get the full path to the setup file for a given max_log_n
+/// Note: Detects OS at runtime by checking environment variables then chooses XDG cache directory for persistent storage.
 #[cfg(feature = "disk-persistence")]
 fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
-    get_storage_dir().map(|mut path| {
+    let cache_directory = {
+        // Check for Windows first (LOCALAPPDATA is Windows-specific)
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            Some(PathBuf::from(local_app_data))
+        } else if let Ok(home) = std::env::var("HOME") {
+            let mut path = PathBuf::from(&home);
+
+            // Check if Library/Caches exists (macOS indicator)
+            let macos_cache = {
+                let mut test_path = PathBuf::from(&home);
+                test_path.push("Library");
+                test_path.push("Caches");
+                test_path.exists()
+            };
+
+            if macos_cache {
+                path.push("Library");
+                path.push("Caches");
+            } else {
+                // Linux and other Unix-like systems
+                path.push(".cache");
+            }
+            Some(path)
+        } else {
+            None
+        }
+    };
+
+    cache_directory.map(|mut path| {
+        path.push("dory");
         path.push(format!("dory_{}.urs", max_log_n));
         path
     })
