@@ -22,7 +22,7 @@ pub struct ArkG2(pub G2Projective);
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ArkGT(pub Fq12);
 
-#[derive(Default, Clone, Copy, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ArkGTCompressed(pub CompressedFq12);
 
 impl From<ArkGTCompressed> for ArkGT {
