@@ -48,6 +48,7 @@ arkworks = [
 parallel = ["dep:rayon", "ark-ec?/parallel", "ark-ff?/parallel"]
 cache = ["arkworks", "dep:once_cell", "parallel"]
 disk-persistence = ["dep:dirs"]
+recursion = ["arkworks"]
 
 [dependencies]
 thiserror = "2.0"
@@ -72,6 +73,7 @@ rayon = { version = "1.10", optional = true }
 [dev-dependencies]
 rand = "0.8"
 criterion = { version = "0.5", features = ["html_reports"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [[example]]
 name = "basic_e2e"
@@ -84,6 +86,10 @@ required-features = ["backends"]
 [[example]]
 name = "non_square"
 required-features = ["backends"]
+
+[[example]]
+name = "recursion"
+required-features = ["recursion"]
 
 [[bench]]
 name = "arkworks_proof"
