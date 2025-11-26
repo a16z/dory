@@ -100,6 +100,9 @@ pub mod setup;
 #[cfg(feature = "arkworks")]
 pub mod backends;
 
+#[cfg(feature = "recursion")]
+pub mod recursion;
+
 pub use error::DoryError;
 pub use evaluation_proof::create_evaluation_proof;
 pub use messages::{FirstReduceMessage, ScalarProductMessage, SecondReduceMessage, VMVMessage};
@@ -107,6 +110,8 @@ use primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 pub use primitives::poly::{MultilinearLagrange, Polynomial};
 use primitives::serialization::{DoryDeserialize, DorySerialize};
 pub use proof::DoryProof;
+#[cfg(feature = "recursion")]
+use recursion::WitnessBackend;
 pub use reduce_and_fold::{DoryProverState, DoryVerifierState};
 pub use setup::{ProverSetup, VerifierSetup};
 
@@ -336,5 +341,94 @@ where
 {
     evaluation_proof::verify_evaluation_proof::<F, E, M1, M2, T>(
         commitment, evaluation, point, proof, setup, transcript,
+    )
+}
+
+/// Verifies an evaluation proof with automatic operation tracing.
+///
+/// This function verifies a Dory evaluation proof while automatically tracing
+/// all expensive arithmetic operations through the provided
+/// [`TraceContext`](recursion::TraceContext). The context determines the behavior:
+///
+/// - **Witness Generation Mode**: Create context with
+///   [`TraceContext::for_witness_gen()`](recursion::TraceContext::for_witness_gen).
+///   All operations are computed and their witnesses are recorded.
+///
+/// - **Hint-Based Mode**: Create context with
+///   [`TraceContext::for_hints(hints)`](recursion::TraceContext::for_hints).
+///   Operations use pre-computed hints when available, falling back to computation
+///   with a warning when hints are missing.
+///
+/// # Arguments
+///
+/// - `commitment`: The polynomial commitment (tier-2/GT element)
+/// - `evaluation`: The claimed evaluation value
+/// - `point`: The evaluation point
+/// - `proof`: The Dory proof
+/// - `setup`: Verifier setup parameters
+/// - `transcript`: Fiat-Shamir transcript
+/// - `ctx`: Trace context handle (use `Rc::new(TraceContext::for_witness_gen())` or
+///   `Rc::new(TraceContext::for_hints(hints))`)
+///
+/// # Returns
+///
+/// `Ok(())` if the proof is valid.
+///
+/// After verification:
+/// - In witness generation mode: Call `Rc::try_unwrap(ctx).ok().unwrap().finalize()`
+///   to get the collected witnesses.
+/// - In hint-based mode: Check `ctx.had_missing_hints()` to see if any hints were missing.
+///
+/// # Example
+///
+/// ```ignore
+/// use std::rc::Rc;
+/// use dory_pcs::recursion::TraceContext;
+///
+/// // Witness generation
+/// let ctx = Rc::new(TraceContext::for_witness_gen());
+/// verify_recursive::<_, E, M1, M2, _, W, Gen>(
+///     commitment, evaluation, &point, &proof, setup.clone(), &mut transcript, ctx.clone()
+/// )?;
+/// let witnesses = Rc::try_unwrap(ctx).ok().unwrap().finalize();
+///
+/// // Convert to lightweight hints
+/// let hints = witnesses.unwrap().to_hints::<E>();
+///
+/// // Hint-based verification
+/// let ctx = Rc::new(TraceContext::for_hints(hints));
+/// verify_recursive::<_, E, M1, M2, _, W, Gen>(
+///     commitment, evaluation, &point, &proof, setup, &mut transcript, ctx
+/// )?;
+/// ```
+///
+/// # Errors
+///
+/// Returns `DoryError::InvalidProof` if verification fails.
+#[cfg(feature = "recursion")]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_recursive<F, E, M1, M2, T, W, Gen>(
+    commitment: E::GT,
+    evaluation: F,
+    point: &[F],
+    proof: &DoryProof<E::G1, E::G2, E::GT>,
+    setup: VerifierSetup<E>,
+    transcript: &mut T,
+    ctx: recursion::CtxHandle<W, E, Gen>,
+) -> Result<(), DoryError>
+where
+    F: Field,
+    E: PairingCurve + Clone,
+    E::G1: Group<Scalar = F>,
+    E::G2: Group<Scalar = F>,
+    E::GT: Group<Scalar = F>,
+    M1: DoryRoutines<E::G1>,
+    M2: DoryRoutines<E::G2>,
+    T: primitives::transcript::Transcript<Curve = E>,
+    W: WitnessBackend,
+    Gen: recursion::WitnessGenerator<W, E>,
+{
+    evaluation_proof::verify_recursive::<F, E, M1, M2, T, W, Gen>(
+        commitment, evaluation, point, proof, setup, transcript, ctx,
     )
 }
