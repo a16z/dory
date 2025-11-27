@@ -5,9 +5,7 @@
 #![allow(clippy::missing_panics_doc)]
 
 use super::ark_group::{ArkG1, ArkG2, ArkGT};
-use crate::{
-    primitives::arithmetic::{Group, PairingCurve},
-};
+use crate::primitives::arithmetic::{Group, PairingCurve};
 use ark_bn254::Bn254;
 use ark_ec::pairing::Pairing;
 

@@ -1,7 +1,7 @@
 //! Polynomial trait for multilinear polynomials
 
-use crate::{error::DoryError, primitives::arithmetic::CompressedPairingCurve};
 use crate::setup::ProverSetup;
+use crate::{error::DoryError, primitives::arithmetic::CompressedPairingCurve};
 
 use super::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 
