@@ -19,7 +19,7 @@ use ark_ff::One;
 pub struct BN254;
 
 mod pairing_helpers {
-    use ark_ec::pairing::{CompressedPairing, MillerLoopOutput};
+    use ark_ec::pairing::{CompressedPairing, MillerLoopOutput, Pairing};
 
     use crate::backends::arkworks::ark_group::ArkGTCompressed;
 
@@ -372,9 +372,6 @@ mod pairing_helpers {
 }
 
 impl CompressedPairingCurve for BN254 {
-    type G1 = ArkG1;
-    type G2 = ArkG2;
-    type GT = ArkGT;
     type CompressedGT = ArkGTCompressed;
 
     fn multi_pair_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {

@@ -100,7 +100,7 @@ pub trait Polynomial<F: Field> {
         setup: &ProverSetup<E>,
     ) -> Result<(E::CompressedGT, Vec<<E as PairingCurve>::G1>), DoryError>
     where
-        E: CompressedPairingCurve + PairingCurve,
+        E: CompressedPairingCurve,
         M1: DoryRoutines<<E as PairingCurve>::G1>,
         <E as PairingCurve>::G1: Group<Scalar = F>;
 }
