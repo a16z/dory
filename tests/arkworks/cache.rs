@@ -1,5 +1,5 @@
 use dory_pcs::backends::arkworks::{ArkG1, ArkG2, ArkGT, BN254};
-use dory_pcs::primitives::arithmetic::{ressedPairingCurve, Group, PairingCurve};
+use dory_pcs::primitives::arithmetic::{Group, PairingCurve};
 use rand::thread_rng;
 
 #[cfg(feature = "cache")]
