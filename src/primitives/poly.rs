@@ -1,6 +1,6 @@
 //! Polynomial trait for multilinear polynomials
 
-use crate::error::DoryError;
+use crate::{error::DoryError, primitives::arithmetic::CompressedPairingCurve};
 use crate::setup::ProverSetup;
 
 use super::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
@@ -88,6 +88,21 @@ pub trait Polynomial<F: Field> {
         E: PairingCurve,
         M1: DoryRoutines<E::G1>,
         E::G1: Group<Scalar = F>;
+
+    /// Commit to polynomial using Dory's 2-tier (AFGHO) homomorphic commitment, where the commitment is compressed.
+    ///
+    /// Same as `commit`, but the commitment is compressed.
+    /// NOTE: Currently the compressed pairing curve E also needs to implement the pairing curve trait, because the output from tier 1 commitments are needed to compute the compressed commitment in tier 2. In the future, it is possible to make the compressed pairing curve trait inherit from the pairing curve trait.
+    fn commit_compressed<E, M1>(
+        &self,
+        nu: usize,
+        sigma: usize,
+        setup: &ProverSetup<E>,
+    ) -> Result<(E::CompressedGT, Vec<<E as PairingCurve>::G1>), DoryError>
+    where
+        E: CompressedPairingCurve + PairingCurve,
+        M1: DoryRoutines<<E as PairingCurve>::G1>,
+        <E as PairingCurve>::G1: Group<Scalar = F>;
 }
 
 /// Compute multilinear Lagrange basis evaluations at a point
