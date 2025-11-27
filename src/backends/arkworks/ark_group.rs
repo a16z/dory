@@ -6,7 +6,7 @@
 
 use super::ark_field::ArkFr;
 use crate::primitives::arithmetic::{DoryRoutines, Group};
-use ark_bn254::{CompressedFq12, Fq12, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_bn254::{Fq12, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::{Field as ArkField, One, PrimeField, UniformRand, Zero as ArkZero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -21,16 +21,6 @@ pub struct ArkG2(pub G2Projective);
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ArkGT(pub Fq12);
-
-#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct ArkGTCompressed(pub CompressedFq12);
-
-impl From<ArkGTCompressed> for ArkGT {
-    fn from(gt: ArkGTCompressed) -> Self {
-        let decompressed = CompressedFq12::decompress_to_fq12(gt.0);
-        Self(decompressed)
-    }
-}
 
 impl Group for ArkG1 {
     type Scalar = ArkFr;
