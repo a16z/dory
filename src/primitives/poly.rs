@@ -93,7 +93,7 @@ pub trait Polynomial<F: Field> {
     ///
     /// Same as `commit`, but the commitment is compressed.
     /// NOTE: Currently the compressed pairing curve E also needs to implement the pairing curve trait, because the output from tier 1 commitments are needed to compute the compressed commitment in tier 2. In the future, it is possible to make the compressed pairing curve trait inherit from the pairing curve trait.
-    /// 
+    ///
     /// # Parameters
     /// - `nu`: Log₂ of number of rows
     /// - `sigma`: Log₂ of number of columns
