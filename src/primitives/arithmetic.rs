@@ -67,7 +67,7 @@ pub trait CompressedPairingCurve: PairingCurve {
     type CompressedGT: Default;
 
     fn pair_compressed(p: &Self::G1, q: &Self::G2) -> Self::CompressedGT {
-        Self::multi_pair_compressed(&[p.clone()], &[q.clone()])
+        Self::multi_pair_compressed(std::slice::from_ref(p), std::slice::from_ref(q))
     }
 
     fn multi_pair_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT;
