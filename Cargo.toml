@@ -84,6 +84,10 @@ required-features = ["backends"]
 name = "non_square"
 required-features = ["backends"]
 
+[[example]]
+name = "homomorphic_mixed_sizes"
+required-features = ["backends"]
+
 [[bench]]
 name = "arkworks_proof"
 harness = false
