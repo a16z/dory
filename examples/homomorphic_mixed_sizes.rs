@@ -17,7 +17,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Dory PCS - Mixed-size Homomorphic Combination Example");
     let mut rng = thread_rng();
 
-    // // Setup for 2^(nu + sigma) = 32 sized domains.
     let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 4);
 
     info!("Creating two polynomials with logical sizes 16 and 4...");
@@ -34,9 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Poly1: {:?}", poly1);
     info!("Poly2: {:?}", poly2);
-    // info!("✓ Polynomials instantiated\n");
 
-    // info!("Committing to each polynomial...");
     let commitment1 = poly1
         .commit::<BN254, G1Routines>(2, 2, &prover_setup)
         .unwrap();
@@ -88,7 +85,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Evaluating combined polynomial at a random point...");
     let point: Vec<ArkFr> = (0..4).map(|_| ArkFr::random(&mut rng)).collect();
-    // let point = vec![ArkFr::from_u64(1), ArkFr::from_u64(2), ArkFr::from_u64(3)];
     let evaluation = combined_poly.evaluate(&point);
 
     info!("Checking that evaluation matches r1·P1(x) + r2·P2(x)...");
