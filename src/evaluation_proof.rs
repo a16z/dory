@@ -670,10 +670,10 @@ where
 
     let mut verifier_state = DoryVerifierState::new(
         vmv_message.c.into(),  // c from VMV message
-        commitment.into(),     // d1 = commitment
+        commitment,            // d1 = commitment
         vmv_message.d2.into(), // d2 from VMV message
-        vmv_message.e1.into(), // e1 from VMV message
-        e2.into(),             // e2 computed from evaluation
+        vmv_message.e1,        // e1 from VMV message
+        e2,                    // e2 computed from evaluation
         s1_coords, // s1: columns c0..c_{σ−1} (LSB→MSB), no padding; folded across σ dims
         s2_coords, // s2: rows r0..r_{ν−1} then zeros in MSB dims (emulates s ⊗ [1,0]^(σ−ν))
         num_rounds,
