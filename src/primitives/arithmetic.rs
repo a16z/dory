@@ -36,6 +36,11 @@ pub trait Field:
     fn from_i64(val: i64) -> Self;
 }
 
+pub trait DoryElement:
+    Sized + Clone + Copy + PartialEq + Send + Sync + DorySerialize + DoryDeserialize + Default
+{
+}
+
 pub trait Group:
     Sized
     + Clone
@@ -64,7 +69,7 @@ pub trait Group:
 }
 
 pub trait CompressedPairingCurve: PairingCurve {
-    type CompressedGT: Default;
+    type CompressedGT: DoryElement;
 
     fn pair_compressed(p: &Self::G1, q: &Self::G2) -> Self::CompressedGT {
         Self::multi_pair_compressed(std::slice::from_ref(p), std::slice::from_ref(q))

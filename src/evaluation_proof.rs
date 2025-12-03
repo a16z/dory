@@ -27,7 +27,9 @@
 
 use crate::error::DoryError;
 use crate::messages::VMVMessage;
-use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
+use crate::primitives::arithmetic::{
+    CompressedPairingCurve, DoryRoutines, Field, Group, PairingCurve,
+};
 use crate::primitives::poly::MultilinearLagrange;
 use crate::primitives::transcript::Transcript;
 use crate::proof::DoryProof;
@@ -206,6 +208,209 @@ where
         first_messages.push(first_msg);
 
         let second_msg = prover_state.compute_second_message::<M1, M2>();
+
+        transcript.append_serde(b"c_plus", &second_msg.c_plus);
+        transcript.append_serde(b"c_minus", &second_msg.c_minus);
+        transcript.append_serde(b"e1_plus", &second_msg.e1_plus);
+        transcript.append_serde(b"e1_minus", &second_msg.e1_minus);
+        transcript.append_serde(b"e2_plus", &second_msg.e2_plus);
+        transcript.append_serde(b"e2_minus", &second_msg.e2_minus);
+
+        let alpha = transcript.challenge_scalar(b"alpha");
+        prover_state.apply_second_challenge::<M1, M2>(&alpha);
+
+        second_messages.push(second_msg);
+    }
+
+    let gamma = transcript.challenge_scalar(b"gamma");
+    let final_message = prover_state.compute_final_message::<M1, M2>(&gamma);
+
+    // We grab d challenge at the end (despite it being unused) to keep transcript states in-sync post proof.
+    let _d = transcript.challenge_scalar(b"d");
+
+    Ok(DoryProof {
+        vmv_message,
+        first_messages,
+        second_messages,
+        final_message,
+        nu,
+        sigma,
+    })
+}
+
+/// Create evaluation proof for a polynomial at a point
+/// Same as create_evaluation_proof, but the result is compressed.
+///
+/// Implements Eval-VMV-RE protocol from Dory Section 5.
+/// The protocol proves that polynomial(point) = evaluation via the VMV relation:
+/// evaluation = L^T × M × R
+///
+/// # Algorithm
+/// 1. Compute or use provided row commitments (Tier 1 commitment)
+/// 2. Split evaluation point into left and right vectors
+/// 3. Compute v_vec (column evaluations)
+/// 4. Create VMV message (C, D2, E1)
+/// 5. Initialize prover state for inner product / reduce-and-fold protocol
+/// 6. Run max(nu, sigma) rounds of reduce-and-fold (with automatic padding for non-square):
+///    - First reduce: compute message and apply beta challenge (reduce)
+///    - Second reduce: compute message and apply alpha challenge (fold)
+/// 7. Compute final scalar product message
+///
+/// # Parameters
+/// - `polynomial`: Polynomial to prove evaluation for
+/// - `point`: Evaluation point (length nu + sigma)
+/// - `row_commitments`: Optional precomputed row commitments from polynomial.commit()
+/// - `nu`: Log₂ of number of rows (constraint: nu ≤ sigma)
+/// - `sigma`: Log₂ of number of columns
+/// - `setup`: Prover setup
+/// - `transcript`: Fiat-Shamir transcript for challenge generation
+///
+/// # Returns
+/// Complete Dory proof containing VMV message, reduce messages, and final message
+///
+/// # Errors
+/// Returns error if dimensions are invalid (nu > sigma) or protocol fails
+///
+/// # Matrix Layout
+/// Supports both square (nu = sigma) and non-square (nu < sigma) matrices.
+/// For non-square matrices, vectors are automatically padded to length 2^sigma.
+#[allow(clippy::type_complexity)]
+#[tracing::instrument(skip_all, name = "create_evaluation_proof_compressed")]
+pub fn create_evaluation_proof_compressed<F, E, M1, M2, T, P>(
+    polynomial: &P,
+    point: &[F],
+    row_commitments: Option<Vec<E::G1>>,
+    nu: usize,
+    sigma: usize,
+    setup: &ProverSetup<E>,
+    transcript: &mut T,
+) -> Result<DoryProof<E::G1, E::G2, E::CompressedGT>, DoryError>
+where
+    F: Field,
+    E: CompressedPairingCurve,
+    E::G1: Group<Scalar = F>,
+    E::G2: Group<Scalar = F>,
+    E::GT: Group<Scalar = F>,
+    M1: DoryRoutines<E::G1>,
+    M2: DoryRoutines<E::G2>,
+    T: Transcript<Curve = E>,
+    P: MultilinearLagrange<F>,
+{
+    if point.len() != nu + sigma {
+        return Err(DoryError::InvalidPointDimension {
+            expected: nu + sigma,
+            actual: point.len(),
+        });
+    }
+
+    // Validate matrix dimensions: nu must be ≤ sigma (rows ≤ columns)
+    if nu > sigma {
+        return Err(DoryError::InvalidSize {
+            expected: sigma,
+            actual: nu,
+        });
+    }
+
+    let row_commitments = if let Some(rc) = row_commitments {
+        rc
+    } else {
+        let (_commitment, rc) = polynomial.commit::<E, M1>(nu, sigma, setup)?;
+        rc
+    };
+
+    let _span_eval_vecs = tracing::span!(
+        tracing::Level::DEBUG,
+        "compute_evaluation_vectors",
+        nu,
+        sigma
+    )
+    .entered();
+    let (left_vec, right_vec) = polynomial.compute_evaluation_vectors(point, nu, sigma);
+    drop(_span_eval_vecs);
+
+    let v_vec = polynomial.vector_matrix_product(&left_vec, nu, sigma);
+
+    let mut padded_row_commitments = row_commitments.clone();
+    if nu < sigma {
+        padded_row_commitments.resize(1 << sigma, E::G1::identity());
+    }
+
+    let _span_vmv =
+        tracing::span!(tracing::Level::DEBUG, "compute_vmv_message", nu, sigma).entered();
+
+    // C = e(⟨row_commitments, v_vec⟩, h₂)
+    let t_vec_v = M1::msm(&padded_row_commitments, &v_vec);
+    let c = E::pair_compressed(&t_vec_v, &setup.h2);
+
+    // D₂ = e(⟨Γ₁[sigma], v_vec⟩, h₂)
+    let g1_bases_at_sigma = &setup.g1_vec[..1 << sigma];
+    let gamma1_v = M1::msm(g1_bases_at_sigma, &v_vec);
+    let d2 = E::pair_compressed(&gamma1_v, &setup.h2);
+
+    // E₁ = ⟨row_commitments, left_vec⟩
+    let e1 = M1::msm(&row_commitments, &left_vec);
+
+    let vmv_message = VMVMessage { c, d2, e1 };
+    drop(_span_vmv);
+
+    let _span_transcript = tracing::span!(tracing::Level::DEBUG, "vmv_transcript").entered();
+    transcript.append_serde(b"vmv_c", &vmv_message.c);
+    transcript.append_serde(b"vmv_d2", &vmv_message.d2);
+    transcript.append_serde(b"vmv_e1", &vmv_message.e1);
+    drop(_span_transcript);
+
+    let _span_init = tracing::span!(
+        tracing::Level::DEBUG,
+        "fixed_base_vector_scalar_mul_h2",
+        nu,
+        sigma
+    )
+    .entered();
+
+    // v₂ = v_vec · Γ₂,fin (each scalar scales g_fin)
+    let v2 = {
+        let _span =
+            tracing::span!(tracing::Level::DEBUG, "fixed_base_vector_scalar_mul_h2").entered();
+        M2::fixed_base_vector_scalar_mul(&setup.h2, &v_vec)
+    };
+
+    let mut padded_right_vec = right_vec.clone();
+    let mut padded_left_vec = left_vec.clone();
+    if nu < sigma {
+        padded_right_vec.resize(1 << sigma, F::zero());
+        padded_left_vec.resize(1 << sigma, F::zero());
+    }
+
+    let mut prover_state = DoryProverState::new(
+        padded_row_commitments, // v1 = T_vec_prime (row commitments, padded)
+        v2,                     // v2 = v_vec · g_fin
+        Some(v_vec),            // v2_scalars for first-round MSM+pair optimization
+        padded_right_vec,       // s1 = right_vec (padded)
+        padded_left_vec,        // s2 = left_vec (padded)
+        setup,
+    );
+    drop(_span_init);
+
+    let num_rounds = nu.max(sigma);
+    let mut first_messages = Vec::with_capacity(num_rounds);
+    let mut second_messages = Vec::with_capacity(num_rounds);
+
+    for _round in 0..num_rounds {
+        let first_msg = prover_state.compute_first_message_compressed::<M1, M2>();
+
+        transcript.append_serde(b"d1_left", &first_msg.d1_left);
+        transcript.append_serde(b"d1_right", &first_msg.d1_right);
+        transcript.append_serde(b"d2_left", &first_msg.d2_left);
+        transcript.append_serde(b"d2_right", &first_msg.d2_right);
+        transcript.append_serde(b"e1_beta", &first_msg.e1_beta);
+        transcript.append_serde(b"e2_beta", &first_msg.e2_beta);
+
+        let beta = transcript.challenge_scalar(b"beta");
+        prover_state.apply_first_challenge::<M1, M2>(&beta);
+
+        first_messages.push(first_msg);
+
+        let second_msg = prover_state.compute_second_message_compressed::<M1, M2>();
 
         transcript.append_serde(b"c_plus", &second_msg.c_plus);
         transcript.append_serde(b"c_minus", &second_msg.c_minus);
