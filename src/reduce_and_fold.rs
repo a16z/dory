@@ -449,6 +449,74 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     ///
     /// Applies fold-scalars transformation and checks the final pairing equation.
     /// Must be called when num_rounds=0 after all reduce rounds are complete.
+    ///
+    /// # Original Protocol Equations
+    ///
+    /// The fold-scalars phase updates the accumulated values:
+    ///
+    /// ```text
+    /// C' ← C + (s₁·s₂)·HT + γ·e(H₁, E₂) + γ⁻¹·e(E₁, H₂)
+    /// D₁' ← D₁ + e(H₁, (s₁·γ)·Γ₂₀)
+    /// D₂' ← D₂ + e((s₂·γ⁻¹)·Γ₁₀, H₂)
+    /// ```
+    ///
+    /// The final verification check is:
+    ///
+    /// ```text
+    /// e(E₁ + d·Γ₁₀, E₂ + d⁻¹·Γ₂₀) = C' + χ₀ + d·D₂' + d⁻¹·D₁'
+    /// ```
+    ///
+    /// # Multi-Pairing Optimization
+    ///
+    /// Naively, this requires 5 separate pairings (5 miller loops + 5 final exponentiations).
+    /// We can rearrange terms to use a single multi-pairing.
+    ///
+    /// ## Step 1: Expand the RHS
+    ///
+    /// Substituting the updated values:
+    ///
+    /// ```text
+    /// RHS = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁
+    ///       + γ·e(H₁, E₂)
+    ///       + γ⁻¹·e(E₁, H₂)
+    ///       + d·e((s₂·γ⁻¹)·Γ₁₀, H₂)
+    ///       + d⁻¹·e(H₁, (s₁·γ)·Γ₂₀)
+    /// ```
+    ///
+    /// ## Step 2: Rearrange (move pairings to LHS)
+    ///
+    /// Define non-pairing terms: `T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁`
+    ///
+    /// ## Step 3: Use bilinearity to combine terms
+    ///
+    /// Terms sharing H₁ (pairings 1 and 4):
+    ///
+    /// ```text
+    /// e(H₁, E₂)^(-γ) · e(H₁, (s₁·γ)·Γ₂₀)^(-d⁻¹)
+    ///   = e(H₁, (-γ)·E₂) · e(H₁, (-d⁻¹·s₁·γ)·Γ₂₀)
+    ///   = e(H₁, (-γ)·E₂ + (-d⁻¹·s₁·γ)·Γ₂₀)
+    ///   = e(H₁, (-γ)·(E₂ + (d⁻¹·s₁)·Γ₂₀))
+    /// ```
+    ///
+    /// Terms sharing H₂ (pairings 2 and 3):
+    ///
+    /// ```text
+    /// e(E₁, H₂)^(-γ⁻¹) · e((s₂·γ⁻¹)·Γ₁₀, H₂)^(-d)
+    ///   = e((-γ⁻¹)·E₁, H₂) · e((-d·s₂·γ⁻¹)·Γ₁₀, H₂)
+    ///   = e((-γ⁻¹)·E₁ + (-d·s₂·γ⁻¹)·Γ₁₀, H₂)
+    ///   = e((-γ⁻¹)·(E₁ + (d·s₂)·Γ₁₀), H₂)
+    /// ```
+    ///
+    /// ## Final (optimized) check
+    ///
+    /// ```text
+    /// e(E₁ + d·Γ₁₀, E₂ + d⁻¹·Γ₂₀)
+    ///   · e(H₁, (-γ)·(E₂ + (d⁻¹·s₁)·Γ₂₀))
+    ///   · e((-γ⁻¹)·(E₁ + (d·s₂)·Γ₁₀), H₂)
+    ///   = T
+    /// ```
+    ///
+    /// This is a product of 3 pairings, computed via multi-pairing to amortize final exp costs:
     #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
     pub fn verify_final(
         &mut self,
@@ -468,43 +536,35 @@ impl<E: PairingCurve> DoryVerifierState<E> {
 
         let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
         let d_inv = (*d).inv().expect("d must be invertible");
+        let neg_gamma = -*gamma;
+        let neg_gamma_inv = -gamma_inv;
 
-        // Apply fold-scalars: update C, D₁, D₂ with gamma challenge
-
-        // C' ← C + s₁·s₂·HT + γ·e(H₁, E₂) + γ⁻¹·e(E₁, H₂)
+        // Compute RHS (non-pairing GT terms):
+        // T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁
         let s_product = self.s1_acc * self.s2_acc;
-        self.c = self.c + self.setup.ht.scale(&s_product);
-
-        let pairing_h1_e2 = E::pair(&self.setup.h1, &self.e2);
-        let pairing_e1_h2 = E::pair(&self.e1, &self.setup.h2);
-        self.c = self.c + pairing_h1_e2.scale(gamma);
-        self.c = self.c + pairing_e1_h2.scale(&gamma_inv);
-
-        // D₁' ← D₁ + e(H₁, Γ₂₀ · s₁_final · γ)
-        let scalar_for_g2_in_d1 = self.s1_acc * gamma;
-        let g2_0_scaled = self.setup.g2_0.scale(&scalar_for_g2_in_d1);
-        let pairing_h1_g2 = E::pair(&self.setup.h1, &g2_0_scaled);
-        self.d1 = self.d1 + pairing_h1_g2;
-
-        // D₂' ← D₂ + e(Γ₁₀ · s₂_final · γ⁻¹, H₂)
-        let scalar_for_g1_in_d2 = self.s2_acc * gamma_inv;
-        let g1_0_scaled = self.setup.g1_0.scale(&scalar_for_g1_in_d2);
-        let pairing_g1_h2 = E::pair(&g1_0_scaled, &self.setup.h2);
-        self.d2 = self.d2 + pairing_g1_h2;
-
-        // Final pairing check with d challenge:
-        // e(E₁ + d·Γ₁₀, E₂ + d⁻¹·Γ₂₀) = C + χ[0] + d·D₂ + d⁻¹·D₁
-
-        // Left side: e(msg.e1 + d·g1_0, msg.e2 + d⁻¹·g2_0)
-        let e1_modified = msg.e1 + self.setup.g1_0.scale(d);
-        let e2_modified = msg.e2 + self.setup.g2_0.scale(&d_inv);
-        let lhs = E::pair(&e1_modified, &e2_modified);
-
-        // Right side: C + χ[0] + d·D₂ + d⁻¹·D₁
-        let mut rhs = self.c;
+        let mut rhs = self.c + self.setup.ht.scale(&s_product);
         rhs = rhs + self.setup.chi[0];
         rhs = rhs + self.d2.scale(d);
         rhs = rhs + self.d1.scale(&d_inv);
+
+        // Pair 1: (E₁ + d·Γ₁₀, E₂ + d⁻¹·Γ₂₀)
+        let p1_g1 = msg.e1 + self.setup.g1_0.scale(d);
+        let p1_g2 = msg.e2 + self.setup.g2_0.scale(&d_inv);
+
+        // Pair 2: (H₁, (-γ)·(E₂ + (d⁻¹·s₁)·Γ₂₀))
+        let d_inv_s1 = d_inv * self.s1_acc;
+        let g2_term = self.e2 + self.setup.g2_0.scale(&d_inv_s1);
+        let p2_g1 = self.setup.h1;
+        let p2_g2 = g2_term.scale(&neg_gamma);
+
+        // Pair 3: ((-γ⁻¹)·(E₁ + (d·s₂)·Γ₁₀), H₂)
+        let d_s2 = *d * self.s2_acc;
+        let g1_term = self.e1 + self.setup.g1_0.scale(&d_s2);
+        let p3_g1 = g1_term.scale(&neg_gamma_inv);
+        let p3_g2 = self.setup.h2;
+
+        // Single multi-pairing: 3 miller loops + 1 final exponentiation
+        let lhs = E::multi_pair(&[p1_g1, p2_g1, p3_g1], &[p1_g2, p2_g2, p3_g2]);
 
         if lhs == rhs {
             Ok(())
