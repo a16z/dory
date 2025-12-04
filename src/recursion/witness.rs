@@ -100,6 +100,7 @@ pub trait WitnessBackend: Sized + Send + Sync + 'static {
 
 /// Trait for extracting the result from a witness.
 pub trait WitnessResult<T> {
-    /// Get the result of the operation.
-    fn result(&self) -> &T;
+    /// Get the result of the operation if implemented.
+    /// Returns None for unimplemented operations.
+    fn result(&self) -> Option<&T>;
 }

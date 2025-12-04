@@ -106,32 +106,48 @@ impl<W: WitnessBackend> WitnessCollection<W> {
 
         // Extract GT results
         for (id, w) in &self.gt_exp {
-            hints.insert_gt(*id, *w.result());
+            if let Some(result) = w.result() {
+                hints.insert_gt(*id, *result);
+            }
         }
         for (id, w) in &self.gt_mul {
-            hints.insert_gt(*id, *w.result());
+            if let Some(result) = w.result() {
+                hints.insert_gt(*id, *result);
+            }
         }
         for (id, w) in &self.pairing {
-            hints.insert_gt(*id, *w.result());
+            if let Some(result) = w.result() {
+                hints.insert_gt(*id, *result);
+            }
         }
         for (id, w) in &self.multi_pairing {
-            hints.insert_gt(*id, *w.result());
+            if let Some(result) = w.result() {
+                hints.insert_gt(*id, *result);
+            }
         }
 
         // Extract G1 results
         for (id, w) in &self.g1_scalar_mul {
-            hints.insert_g1(*id, *w.result());
+            if let Some(result) = w.result() {
+                hints.insert_g1(*id, *result);
+            }
         }
         for (id, w) in &self.msm_g1 {
-            hints.insert_g1(*id, *w.result());
+            if let Some(result) = w.result() {
+                hints.insert_g1(*id, *result);
+            }
         }
 
         // Extract G2 results
         for (id, w) in &self.g2_scalar_mul {
-            hints.insert_g2(*id, *w.result());
+            if let Some(result) = w.result() {
+                hints.insert_g2(*id, *result);
+            }
         }
         for (id, w) in &self.msm_g2 {
-            hints.insert_g2(*id, *w.result());
+            if let Some(result) = w.result() {
+                hints.insert_g2(*id, *result);
+            }
         }
 
         hints

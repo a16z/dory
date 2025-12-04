@@ -53,9 +53,8 @@ pub use collection::WitnessCollection;
 pub use collector::WitnessGenerator;
 pub use context::{CtxHandle, TraceContext};
 pub use hint_map::HintMap;
-pub use witness::{OpId, OpType, WitnessBackend};
+pub use witness::{OpId, OpType, WitnessBackend, WitnessResult};
 
 pub(crate) use collector::{OpIdBuilder, WitnessCollector};
 pub(crate) use context::ExecutionMode;
 pub(crate) use trace::{TraceG1, TraceG2, TraceGT, TracePairing};
-pub(crate) use witness::WitnessResult;

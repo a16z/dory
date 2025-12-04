@@ -49,8 +49,8 @@ pub struct GtExpWitness {
 }
 
 impl WitnessResult<ArkGT> for GtExpWitness {
-    fn result(&self) -> &ArkGT {
-        &self.result
+    fn result(&self) -> Option<&ArkGT> {
+        Some(&self.result)
     }
 }
 
@@ -70,8 +70,8 @@ pub struct G1ScalarMulWitness {
 }
 
 impl WitnessResult<ArkG1> for G1ScalarMulWitness {
-    fn result(&self) -> &ArkG1 {
-        &self.result
+    fn result(&self) -> Option<&ArkG1> {
+        Some(&self.result)
     }
 }
 
@@ -91,8 +91,8 @@ pub struct G2ScalarMulWitness {
 }
 
 impl WitnessResult<ArkG2> for G2ScalarMulWitness {
-    fn result(&self) -> &ArkG2 {
-        &self.result
+    fn result(&self) -> Option<&ArkG2> {
+        Some(&self.result)
     }
 }
 
@@ -112,8 +112,8 @@ pub struct GtMulWitness {
 }
 
 impl WitnessResult<ArkGT> for GtMulWitness {
-    fn result(&self) -> &ArkGT {
-        &self.result
+    fn result(&self) -> Option<&ArkGT> {
+        Some(&self.result)
     }
 }
 
@@ -144,8 +144,8 @@ pub struct PairingWitness {
 }
 
 impl WitnessResult<ArkGT> for PairingWitness {
-    fn result(&self) -> &ArkGT {
-        &self.result
+    fn result(&self) -> Option<&ArkGT> {
+        Some(&self.result)
     }
 }
 
@@ -167,8 +167,8 @@ pub struct MultiPairingWitness {
 }
 
 impl WitnessResult<ArkGT> for MultiPairingWitness {
-    fn result(&self) -> &ArkGT {
-        &self.result
+    fn result(&self) -> Option<&ArkGT> {
+        Some(&self.result)
     }
 }
 
@@ -190,8 +190,8 @@ pub struct MsmG1Witness {
 }
 
 impl WitnessResult<ArkG1> for MsmG1Witness {
-    fn result(&self) -> &ArkG1 {
-        &self.result
+    fn result(&self) -> Option<&ArkG1> {
+        Some(&self.result)
     }
 }
 
@@ -211,8 +211,8 @@ pub struct MsmG2Witness {
 }
 
 impl WitnessResult<ArkG2> for MsmG2Witness {
-    fn result(&self) -> &ArkG2 {
-        &self.result
+    fn result(&self) -> Option<&ArkG2> {
+        Some(&self.result)
     }
 }
 
