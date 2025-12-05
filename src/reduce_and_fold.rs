@@ -60,6 +60,14 @@ pub struct DoryVerifierState<E: PairingCurve> {
     /// Extended protocol: commitment to s2
     e2: E::G2,
 
+    /// Initial e1 from VMV message
+    /// Used in verify_final to batch the VMV constraint: D₂_init = e(E₁_init, H₂)
+    e1_init: E::G1,
+
+    /// Initial d2 from VMV message
+    /// Used in verify_final to batch the VMV constraint: D₂_init = e(E₁_init, H₂)
+    d2_init: E::GT,
+
     /// Accumulated scalar for s1 after folding across rounds
     s1_acc: <E::G1 as Group>::Scalar,
 
@@ -342,6 +350,11 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     /// - `s2_coords`: Per-round coordinates for s2 (left_vec in prover)
     /// - `num_rounds`: Number of rounds
     /// - `setup`: Verifier setup parameters
+    ///
+    /// Note: `e1` and `d2` are stored both as initial values (for batched VMV check)
+    /// and as accumulators (updated during reduce rounds)
+    /// this is because the VMV check happens before the folding rounds, so we need to save
+    /// the value for the final batched pairing check.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         c: E::GT,
@@ -363,6 +376,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
             d2,
             e1,
             e2,
+            e1_init: e1,
+            d2_init: d2,
             s1_acc: <E::G1 as Group>::Scalar::one(),
             s2_acc: <E::G1 as Group>::Scalar::one(),
             s1_coords,
@@ -450,9 +465,16 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     /// Applies fold-scalars transformation and checks the final pairing equation.
     /// Must be called when num_rounds=0 after all reduce rounds are complete.
     ///
-    /// # Original Protocol Equations
+    /// # Non-optimized Protocol Equations
     ///
-    /// The fold-scalars phase updates the accumulated values:
+    /// ## VMV Check (batched together with the final pairing check)
+    ///
+    /// The VMV protocol requires: `D₂_init = e(E₁_init, H₂)`
+    ///
+    /// This was originally checked as a standalone pairing in `verify_evaluation_proof`.
+    /// We defer it here to batch with other pairings.
+    ///
+    /// ## Fold-Scalars Updates
     ///
     /// ```text
     /// C' ← C + (s₁·s₂)·HT + γ·e(H₁, E₂) + γ⁻¹·e(E₁, H₂)
@@ -460,7 +482,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     /// D₂' ← D₂ + e((s₂·γ⁻¹)·Γ₁₀, H₂)
     /// ```
     ///
-    /// The final verification check is:
+    /// ## Final Verification
     ///
     /// ```text
     /// e(E₁ + d·Γ₁₀, E₂ + d⁻¹·Γ₂₀) = C' + χ₀ + d·D₂' + d⁻¹·D₁'
@@ -468,55 +490,42 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     ///
     /// # Multi-Pairing Optimization
     ///
-    /// Naively, this requires 5 separate pairings (5 miller loops + 5 final exponentiations).
-    /// We can rearrange terms to use a single multi-pairing.
+    /// ## Batching the VMV Check
     ///
-    /// ## Step 1: Expand the RHS
+    /// We use a random linear combination with challenge `d` to defer the VMV check.
+    /// Multiplying by `d` preserves soundness because:
+    /// - `d` is derived from the transcript AFTER `D₂_init` and `E₁_init` are committed
+    /// - If `D₂_init != e(E₁_init, H₂)`, then with overwhelming probability:
+    ///   `T + d·D₂_init ≠ multi_pair([...]) + d·e(E₁_init, H₂)`
     ///
-    /// Substituting the updated values:
     ///
-    /// ```text
-    /// RHS = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁
-    ///       + γ·e(H₁, E₂)
-    ///       + γ⁻¹·e(E₁, H₂)
-    ///       + d·e((s₂·γ⁻¹)·Γ₁₀, H₂)
-    ///       + d⁻¹·e(H₁, (s₁·γ)·Γ₂₀)
-    /// ```
+    /// ## Combining Pairings
     ///
-    /// ## Step 2: Rearrange (move pairings to LHS)
+    /// After moving all pairings to LHS and using bilinearity:
     ///
-    /// Define non-pairing terms: `T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁`
-    ///
-    /// ## Step 3: Use bilinearity to combine terms
-    ///
-    /// Terms sharing H₁ (pairings 1 and 4):
+    /// Terms sharing H₂ (fold-scalars pairings + deferred VMV check):
     ///
     /// ```text
-    /// e(H₁, E₂)^(-γ) · e(H₁, (s₁·γ)·Γ₂₀)^(-d⁻¹)
-    ///   = e(H₁, (-γ)·E₂) · e(H₁, (-d⁻¹·s₁·γ)·Γ₂₀)
-    ///   = e(H₁, (-γ)·E₂ + (-d⁻¹·s₁·γ)·Γ₂₀)
-    ///   = e(H₁, (-γ)·(E₂ + (d⁻¹·s₁)·Γ₂₀))
+    /// e(E₁_acc, H₂)^(-γ⁻¹) · e((s₂·γ⁻¹)·Γ₁₀, H₂)^(-d) · e(E₁_init, H₂)^d
+    ///   = e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d·E₁_init, H₂)
     /// ```
     ///
-    /// Terms sharing H₂ (pairings 2 and 3):
+    /// ## Final Combined Check
+    ///
+    /// The final check verifies both:
+    /// - (a) The original fold-scalars/reduce protocol equation
+    /// - (b) The VMV constraint `D₂_init = e(E₁_init, H₂)`
+    ///
+    /// Combined via: `(a) + d·(b)` where `d` is the final challenge.
     ///
     /// ```text
-    /// e(E₁, H₂)^(-γ⁻¹) · e((s₂·γ⁻¹)·Γ₁₀, H₂)^(-d)
-    ///   = e((-γ⁻¹)·E₁, H₂) · e((-d·s₂·γ⁻¹)·Γ₁₀, H₂)
-    ///   = e((-γ⁻¹)·E₁ + (-d·s₂·γ⁻¹)·Γ₁₀, H₂)
-    ///   = e((-γ⁻¹)·(E₁ + (d·s₂)·Γ₁₀), H₂)
+    /// e(E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
+    ///   · e(H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))
+    ///   · e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d·E₁_init, H₂)
+    ///   = T + d·D₂_init
     /// ```
     ///
-    /// ## Final (optimized) check
-    ///
-    /// ```text
-    /// e(E₁ + d·Γ₁₀, E₂ + d⁻¹·Γ₂₀)
-    ///   · e(H₁, (-γ)·(E₂ + (d⁻¹·s₁)·Γ₂₀))
-    ///   · e((-γ⁻¹)·(E₁ + (d·s₂)·Γ₁₀), H₂)
-    ///   = T
-    /// ```
-    ///
-    /// This is a product of 3 pairings, computed via multi-pairing to amortize final exp costs:
+    /// This is 3 miller loops + 1 final exponentiation, saving 3 standalone pairing.
     #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
     pub fn verify_final(
         &mut self,
@@ -540,27 +549,30 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         let neg_gamma_inv = -gamma_inv;
 
         // Compute RHS (non-pairing GT terms):
-        // T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁
+        // T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁ + d·D₂_init
+        // The d·D₂_init term is the deferred VMV check contribution.
         let s_product = self.s1_acc * self.s2_acc;
         let mut rhs = self.c + self.setup.ht.scale(&s_product);
         rhs = rhs + self.setup.chi[0];
         rhs = rhs + self.d2.scale(d);
         rhs = rhs + self.d1.scale(&d_inv);
+        rhs = rhs + self.d2_init.scale(d);
 
-        // Pair 1: (E₁ + d·Γ₁₀, E₂ + d⁻¹·Γ₂₀)
+        // Pair 1: (E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
         let p1_g1 = msg.e1 + self.setup.g1_0.scale(d);
         let p1_g2 = msg.e2 + self.setup.g2_0.scale(&d_inv);
 
-        // Pair 2: (H₁, (-γ)·(E₂ + (d⁻¹·s₁)·Γ₂₀))
+        // Pair 2: (H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))
         let d_inv_s1 = d_inv * self.s1_acc;
         let g2_term = self.e2 + self.setup.g2_0.scale(&d_inv_s1);
         let p2_g1 = self.setup.h1;
         let p2_g2 = g2_term.scale(&neg_gamma);
 
-        // Pair 3: ((-γ⁻¹)·(E₁ + (d·s₂)·Γ₁₀), H₂)
+        // Pair 3: ((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d·E₁_init, H₂)
+        // The d·E₁_init term is the deferred VMV check: d·e(E₁_init, H₂)
         let d_s2 = *d * self.s2_acc;
         let g1_term = self.e1 + self.setup.g1_0.scale(&d_s2);
-        let p3_g1 = g1_term.scale(&neg_gamma_inv);
+        let p3_g1 = g1_term.scale(&neg_gamma_inv) + self.e1_init.scale(d);
         let p3_g2 = self.setup.h2;
 
         // Single multi-pairing: 3 miller loops + 1 final exponentiation
