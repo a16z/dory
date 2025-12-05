@@ -492,11 +492,13 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     ///
     /// ## Batching the VMV Check
     ///
-    /// We use a random linear combination with challenge `d` to defer the VMV check.
-    /// Multiplying by `d` preserves soundness because:
+    /// We use random linear combination with challenge `d²` to defer the VMV check.
+    /// We use `d²` (not `d`) to ensure sufficient independence from the existing `d·D₂` term.
+    ///
+    /// Multiplying by `d²` preserves soundness because:
     /// - `d` is derived from the transcript AFTER `D₂_init` and `E₁_init` are committed
-    /// - If `D₂_init != e(E₁_init, H₂)`, then with overwhelming probability:
-    ///   `T + d·D₂_init ≠ multi_pair([...]) + d·e(E₁_init, H₂)`
+    /// - If `D₂_init ≠ e(E₁_init, H₂)`, then with overwhelming probability:
+    ///   `T + d²·D₂_init ≠ multi_pair([...]) + d²·e(E₁_init, H₂)`
     ///
     ///
     /// ## Combining Pairings
@@ -506,8 +508,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     /// Terms sharing H₂ (fold-scalars pairings + deferred VMV check):
     ///
     /// ```text
-    /// e(E₁_acc, H₂)^(-γ⁻¹) · e((s₂·γ⁻¹)·Γ₁₀, H₂)^(-d) · e(E₁_init, H₂)^d
-    ///   = e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d·E₁_init, H₂)
+    /// e(E₁_acc, H₂)^(-γ⁻¹) · e((s₂·γ⁻¹)·Γ₁₀, H₂)^(-d) · e(E₁_init, H₂)^(d²)
+    ///   = e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d²·E₁_init, H₂)
     /// ```
     ///
     /// ## Final Combined Check
@@ -516,16 +518,17 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     /// - (a) The original fold-scalars/reduce protocol equation
     /// - (b) The VMV constraint `D₂_init = e(E₁_init, H₂)`
     ///
-    /// Combined via: `(a) + d·(b)` where `d` is the final challenge.
+    /// Combined via: `(a) + d²·(b)` where `d` is the final challenge.
     ///
     /// ```text
     /// e(E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
     ///   · e(H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))
-    ///   · e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d·E₁_init, H₂)
-    ///   = T + d·D₂_init
+    ///   · e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d²·E₁_init, H₂)
+    ///   = T + d²·D₂_init
     /// ```
     ///
-    /// This is 3 miller loops + 1 final exponentiation, saving 3 standalone pairing.
+    /// This is 3 miller loops + 1 final exponentiation,
+    /// Whereas a naive check would be 6 ML + 6 FE
     #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
     pub fn verify_final(
         &mut self,
@@ -545,18 +548,20 @@ impl<E: PairingCurve> DoryVerifierState<E> {
 
         let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
         let d_inv = (*d).inv().expect("d must be invertible");
+        let d_sq = *d * *d;
         let neg_gamma = -*gamma;
         let neg_gamma_inv = -gamma_inv;
 
         // Compute RHS (non-pairing GT terms):
-        // T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁ + d·D₂_init
-        // The d·D₂_init term is the deferred VMV check contribution.
+        // T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁ + d²·D₂_init
+        // The d²·D₂_init term is the deferred VMV check contribution.
+        // We use d² instead of d to ensure independence from the d·D₂ term.
         let s_product = self.s1_acc * self.s2_acc;
         let mut rhs = self.c + self.setup.ht.scale(&s_product);
         rhs = rhs + self.setup.chi[0];
         rhs = rhs + self.d2.scale(d);
         rhs = rhs + self.d1.scale(&d_inv);
-        rhs = rhs + self.d2_init.scale(d);
+        rhs = rhs + self.d2_init.scale(&d_sq);
 
         // Pair 1: (E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
         let p1_g1 = msg.e1 + self.setup.g1_0.scale(d);
@@ -568,11 +573,12 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         let p2_g1 = self.setup.h1;
         let p2_g2 = g2_term.scale(&neg_gamma);
 
-        // Pair 3: ((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d·E₁_init, H₂)
-        // The d·E₁_init term is the deferred VMV check: d·e(E₁_init, H₂)
+        // Pair 3: ((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d²·E₁_init, H₂)
+        // The d²·E₁_init term is the deferred VMV check: d²·e(E₁_init, H₂)
+        // We use d² to ensure independence from other d-scaled terms.
         let d_s2 = *d * self.s2_acc;
         let g1_term = self.e1 + self.setup.g1_0.scale(&d_s2);
-        let p3_g1 = g1_term.scale(&neg_gamma_inv) + self.e1_init.scale(d);
+        let p3_g1 = g1_term.scale(&neg_gamma_inv) + self.e1_init.scale(&d_sq);
         let p3_g2 = self.setup.h2;
 
         // Single multi-pairing: 3 miller loops + 1 final exponentiation
