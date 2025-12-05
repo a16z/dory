@@ -223,7 +223,9 @@ where
     let gamma = transcript.challenge_scalar(b"gamma");
     let final_message = prover_state.compute_final_message::<M1, M2>(&gamma);
 
-    // We grab d challenge at the end (despite it being unused) to keep transcript states in-sync post proof.
+    transcript.append_serde(b"final_e1", &final_message.e1);
+    transcript.append_serde(b"final_e2", &final_message.e2);
+
     let _d = transcript.challenge_scalar(b"d");
 
     Ok(DoryProof {
@@ -362,6 +364,10 @@ where
     }
 
     let gamma = transcript.challenge_scalar(b"gamma");
+
+    transcript.append_serde(b"final_e1", &proof.final_message.e1);
+    transcript.append_serde(b"final_e2", &proof.final_message.e2);
+
     let d = transcript.challenge_scalar(b"d");
 
     verifier_state.verify_final(&proof.final_message, &gamma, &d)
