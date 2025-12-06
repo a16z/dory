@@ -16,6 +16,8 @@ use ark_ff::One;
 pub struct BN254;
 
 mod pairing_helpers {
+    use ark_ec::pairing::{MillerLoopOutput, Pairing};
+
     use super::*;
     use super::{ArkG1, ArkG2, ArkGT};
 
@@ -36,8 +38,11 @@ mod pairing_helpers {
 
     /// Sequential multi-pairing
     #[allow(dead_code)]
-    #[tracing::instrument(skip_all, name = "multi_pair_sequential", fields(len = ps.len()))]
-    pub(super) fn multi_pair_sequential(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
+    #[tracing::instrument(skip_all, name = "multi_pair_sequential_miller_loop", fields(len = ps.len()))]
+    pub(super) fn multi_pair_sequential_miller_loup(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+    ) -> MillerLoopOutput<ark_ec::bn::Bn<ark_bn254::Config>> {
         use ark_bn254::{G1Affine, G2Affine};
 
         let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = ps
@@ -62,7 +67,10 @@ mod pairing_helpers {
     /// Sequential multi-pairing with G2 from setup (uses cache if available)
     #[allow(dead_code)]
     #[tracing::instrument(skip_all, name = "multi_pair_g2_setup_sequential", fields(len = ps.len()))]
-    pub(super) fn multi_pair_g2_setup_sequential(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
+    pub(super) fn multi_pair_g2_setup_sequential(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+    ) -> MillerLoopOutput<ark_ec::bn::Bn<ark_bn254::Config>> {
         use ark_bn254::G1Affine;
 
         let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = ps
@@ -94,7 +102,10 @@ mod pairing_helpers {
     /// Sequential multi-pairing with G1 from setup (uses cache if available)
     #[allow(dead_code)]
     #[tracing::instrument(skip_all, name = "multi_pair_g1_setup_sequential", fields(len = ps.len()))]
-    pub(super) fn multi_pair_g1_setup_sequential(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
+    pub(super) fn multi_pair_g1_setup_sequential(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+    ) -> MillerLoopOutput<ark_ec::bn::Bn<ark_bn254::Config>> {
         use ark_bn254::G2Affine;
 
         let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = qs
@@ -131,24 +142,23 @@ mod pairing_helpers {
     fn multi_pair_with_prepared(
         ps_prep: Vec<<Bn254 as Pairing>::G1Prepared>,
         qs_prep: &[<Bn254 as Pairing>::G2Prepared],
-    ) -> ArkGT {
-        let miller_output = Bn254::multi_miller_loop(ps_prep, qs_prep.to_vec());
-        let result = Bn254::final_exponentiation(miller_output)
-            .expect("Final exponentiation should not fail");
-        ArkGT(result.0)
+    ) -> MillerLoopOutput<ark_ec::bn::Bn<ark_bn254::Config>> {
+        Bn254::multi_miller_loop(ps_prep, qs_prep.to_vec())
     }
 
     /// Parallel multi-pairing with chunked Miller loops (no caching assumptions)
     #[cfg(feature = "parallel")]
-    #[tracing::instrument(skip_all, name = "multi_pair_parallel", fields(len = ps.len(), chunk_size = determine_chunk_size(ps.len())))]
-    pub(super) fn multi_pair_parallel(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
+    #[tracing::instrument(skip_all, name = "multi_pair_parallel_miller_loop", fields(len = ps.len(), chunk_size = determine_chunk_size(ps.len())))]
+    pub(super) fn multi_pair_parallel_miller_loop(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+    ) -> MillerLoopOutput<ark_ec::bn::Bn<ark_bn254::Config>> {
         use ark_bn254::{G1Affine, G2Affine};
         use rayon::prelude::*;
 
         let chunk_size = determine_chunk_size(ps.len());
 
-        let combined = ps
-            .par_chunks(chunk_size)
+        ps.par_chunks(chunk_size)
             .zip(qs.par_chunks(chunk_size))
             .map(|(ps_chunk, qs_chunk)| {
                 let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = ps_chunk
@@ -172,17 +182,16 @@ mod pairing_helpers {
             .reduce(
                 || ark_ec::pairing::MillerLoopOutput(<<Bn254 as Pairing>::TargetField>::one()),
                 |a, b| ark_ec::pairing::MillerLoopOutput(a.0 * b.0),
-            );
-
-        let result =
-            Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
-        ArkGT(result.0)
+            )
     }
 
     /// Parallel multi-pairing with G2 from setup (uses cache if available)
     #[cfg(feature = "parallel")]
     #[tracing::instrument(skip_all, name = "multi_pair_g2_setup_parallel", fields(len = ps.len(), chunk_size = determine_chunk_size(ps.len())))]
-    pub(super) fn multi_pair_g2_setup_parallel(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
+    pub(super) fn multi_pair_g2_setup_parallel(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+    ) -> MillerLoopOutput<ark_ec::bn::Bn<ark_bn254::Config>> {
         use ark_bn254::G1Affine;
         use rayon::prelude::*;
 
@@ -193,8 +202,7 @@ mod pairing_helpers {
         #[cfg(not(feature = "cache"))]
         let cached_g2: Option<&[_]> = None;
 
-        let combined = ps
-            .par_chunks(chunk_size)
+        ps.par_chunks(chunk_size)
             .enumerate()
             .map(|(chunk_idx, ps_chunk)| {
                 let start_idx = chunk_idx * chunk_size;
@@ -226,17 +234,16 @@ mod pairing_helpers {
             .reduce(
                 || ark_ec::pairing::MillerLoopOutput(<<Bn254 as Pairing>::TargetField>::one()),
                 |a, b| ark_ec::pairing::MillerLoopOutput(a.0 * b.0),
-            );
-
-        let result =
-            Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
-        ArkGT(result.0)
+            )
     }
 
     /// Parallel multi-pairing with G1 from setup (uses cache if available)
     #[cfg(feature = "parallel")]
     #[tracing::instrument(skip_all, name = "multi_pair_g1_setup_parallel", fields(len = ps.len(), chunk_size = determine_chunk_size(ps.len())))]
-    pub(super) fn multi_pair_g1_setup_parallel(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
+    pub(super) fn multi_pair_g1_setup_parallel(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+    ) -> MillerLoopOutput<ark_ec::bn::Bn<ark_bn254::Config>> {
         use ark_bn254::G2Affine;
         use rayon::prelude::*;
 
@@ -247,8 +254,7 @@ mod pairing_helpers {
         #[cfg(not(feature = "cache"))]
         let cached_g1: Option<&[_]> = None;
 
-        let combined = qs
-            .par_chunks(chunk_size)
+        qs.par_chunks(chunk_size)
             .enumerate()
             .map(|(chunk_idx, qs_chunk)| {
                 let start_idx = chunk_idx * chunk_size;
@@ -280,47 +286,43 @@ mod pairing_helpers {
             .reduce(
                 || ark_ec::pairing::MillerLoopOutput(<<Bn254 as Pairing>::TargetField>::one()),
                 |a, b| ark_ec::pairing::MillerLoopOutput(a.0 * b.0),
-            );
+            )
+    }
+
+    /// Optimized multi-pairing dispatch
+    pub(super) fn multi_pair_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
+        #[cfg(feature = "parallel")]
+        let multi_miller_loop_output = multi_pair_parallel_miller_loop(ps, qs);
+        #[cfg(not(feature = "parallel"))]
+        let multi_miller_loop_output = multi_pair_sequential_miller_loup(ps, qs);
+
+        let result = Bn254::final_exponentiation(multi_miller_loop_output)
+            .expect("Final exponentiation should not fail");
+        ArkGT(result.0)
+    }
+
+    /// Optimized multi-pairing dispatch for G2 from setup
+    pub(super) fn multi_pair_g2_setup_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
+        #[cfg(feature = "parallel")]
+        let combined = multi_pair_g2_setup_parallel(ps, qs);
+        #[cfg(not(feature = "parallel"))]
+        let combined = multi_pair_g2_setup_sequential(ps, qs);
 
         let result =
             Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
         ArkGT(result.0)
     }
 
-    /// Optimized multi-pairing dispatch
-    pub(super) fn multi_pair_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        #[cfg(feature = "parallel")]
-        {
-            multi_pair_parallel(ps, qs)
-        }
-        #[cfg(not(feature = "parallel"))]
-        {
-            multi_pair_sequential(ps, qs)
-        }
-    }
-
-    /// Optimized multi-pairing dispatch for G2 from setup
-    pub(super) fn multi_pair_g2_setup_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        #[cfg(feature = "parallel")]
-        {
-            multi_pair_g2_setup_parallel(ps, qs)
-        }
-        #[cfg(not(feature = "parallel"))]
-        {
-            multi_pair_g2_setup_sequential(ps, qs)
-        }
-    }
-
     /// Optimized multi-pairing dispatch for G1 from setup
     pub(super) fn multi_pair_g1_setup_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
         #[cfg(feature = "parallel")]
-        {
-            multi_pair_g1_setup_parallel(ps, qs)
-        }
+        let combined = multi_pair_g1_setup_parallel(ps, qs);
         #[cfg(not(feature = "parallel"))]
-        {
-            multi_pair_g1_setup_sequential(ps, qs)
-        }
+        let combined = multi_pair_g1_setup_sequential(ps, qs);
+
+        let result =
+            Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
+        ArkGT(result.0)
     }
 }
 
