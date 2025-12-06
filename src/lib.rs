@@ -436,7 +436,7 @@ where
 /// if the input parameters are incorrect (e.g., point dimension mismatch).
 #[tracing::instrument(skip_all, name = "verify")]
 pub fn verify_compressed<F, E, M1, M2, T>(
-    commitment: E::GT,
+    commitment: E::CompressedGT,
     evaluation: F,
     point: &[F],
     proof: &DoryProof<E::G1, E::G2, E::CompressedGT>,

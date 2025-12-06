@@ -612,7 +612,7 @@ where
 /// if the input parameters are incorrect (e.g., point dimension mismatch).
 #[tracing::instrument(skip_all, name = "verify_evaluation_proof_compressed")]
 pub fn verify_evaluation_proof_compressed<F, E, M1, M2, T>(
-    commitment: E::GT,
+    commitment: E::CompressedGT,
     evaluation: F,
     point: &[F],
     proof: &DoryProof<E::G1, E::G2, E::CompressedGT>,
@@ -670,7 +670,7 @@ where
 
     let mut verifier_state = DoryVerifierState::new(
         vmv_message.c.into(),  // c from VMV message
-        commitment,            // d1 = commitment
+        commitment.into(),     // d1 = commitment
         vmv_message.d2.into(), // d2 from VMV message
         vmv_message.e1,        // e1 from VMV message
         e2,                    // e2 computed from evaluation
