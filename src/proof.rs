@@ -37,6 +37,29 @@ pub struct DoryProof<G1, G2, GT> {
 }
 
 impl<G1, G2, GT> DoryProof<G1, G2, GT> {
+    /// Return all GT elements in the proof (for testing)
+    #[cfg(test)]
+    pub fn gt_elements(&self) -> Vec<GT>
+    where
+        GT: Clone,
+    {
+        // Return all GT elements in the proof
+        let mut elements = Vec::new();
+        elements.push(self.vmv_message.c.clone());
+        elements.push(self.vmv_message.d2.clone());
+        for msg in &self.first_messages {
+            elements.push(msg.d1_left.clone());
+            elements.push(msg.d1_right.clone());
+            elements.push(msg.d2_left.clone());
+            elements.push(msg.d2_right.clone());
+        }
+        for msg in &self.second_messages {
+            elements.push(msg.c_plus.clone());
+            elements.push(msg.c_minus.clone());
+        }
+        elements
+    }
+
     /// Convert the proof's GT type to another type
     pub fn convert_gt<GT2>(self) -> DoryProof<G1, G2, GT2>
     where
