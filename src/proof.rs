@@ -38,7 +38,6 @@ pub struct DoryProof<G1, G2, GT> {
 
 impl<G1, G2, GT> DoryProof<G1, G2, GT> {
     /// Return all GT elements in the proof (for testing)
-    #[cfg(test)]
     pub fn gt_elements(&self) -> Vec<GT>
     where
         GT: Clone,
