@@ -93,6 +93,45 @@ Com(r₁·P₁ + r₂·P₂ + ... + rₙ·Pₙ) = r₁·Com(P₁) + r₂·Com(P�
 
 This property enables efficient proof aggregation and batch verification. See `examples/homomorphic.rs` for a demonstration.
 
+### Recursive Proof Composition
+
+The `recursion` feature enables traced verification for building recursive SNARKs that compose Dory:
+
+1. **Witness Generation**: Run verification while capturing traces of all arithmetic operations (GT exponentiations, scalar multiplications, pairings, etc.)
+
+2. **Hint-Based Verification**: Re-run verification using pre-computed hints instead of performing expensive ops
+
+```rust
+use std::rc::Rc;
+use dory_pcs::{verify_recursive, setup, prove};
+use dory_pcs::backends::arkworks::{
+    SimpleWitnessBackend, SimpleWitnessGenerator, BN254, G1Routines, G2Routines,
+};
+use dory_pcs::recursion::TraceContext;
+
+type Ctx = TraceContext<SimpleWitnessBackend, BN254, SimpleWitnessGenerator>;
+
+// Phase 1: Witness generation - captures operation traces
+let ctx = Rc::new(Ctx::for_witness_gen());
+verify_recursive::<_, BN254, G1Routines, G2Routines, _, _, _>(
+    commitment, evaluation, &point, &proof, setup.clone(), &mut transcript, ctx.clone(),
+)?;
+
+let collection = Rc::try_unwrap(ctx).ok().unwrap().finalize().unwrap();
+// collection contains detailed witnesses for each operation
+
+// Convert to hints
+let hints = collection.to_hints::<BN254>();
+
+// Phase 2: Hint-based verification
+let ctx = Rc::new(Ctx::for_hints(hints));
+verify_recursive::<_, BN254, G1Routines, G2Routines, _, _, _>(
+    commitment, evaluation, &point, &proof, setup, &mut transcript, ctx,
+)?;
+```
+
+See `examples/recursion.rs` for a complete demonstration.
+
 ## Usage
 
 ```rust
@@ -170,6 +209,11 @@ The repository includes three comprehensive examples demonstrating different asp
    cargo run --example non_square --features backends
    ```
 
+4. **`recursion`** - Trace generation and hint-based verification for recursive proof composition
+   ```bash
+   cargo run --example recursion --features recursion
+   ```
+
 ## Development Setup
 
 After cloning the repository, install Git hooks to ensure code quality:
@@ -238,6 +282,7 @@ cargo bench --features backends,cache,parallel
 - `cache` - Enable prepared point caching for ~20-30% pairing speedup. Requires `arkworks` and `parallel`.
 - `parallel` - Enable parallelization using Rayon for MSMs and pairings. Works with both `arkworks` backend and enables parallel features in `ark-ec` and `ark-ff`.
 - `disk-persistence` - Enable automatic setup caching to disk. When enabled, `setup()` will load from OS-specific cache directories if available, avoiding regeneration.
+- `recursion` - Enable traced verification for recursive proof composition. Provides witness generation and hint-based verification modes.
 
 ## Project Structure
 
@@ -263,7 +308,15 @@ src/
 ├── reduce_and_fold.rs             # Inner product protocol
 ├── messages.rs                    # Protocol messages
 ├── proof.rs                       # Proof structure
-└── error.rs                       # Error types
+├── error.rs                       # Error types
+└── recursion/                     # Recursive verification support
+    ├── mod.rs                     # Module exports
+    ├── witness.rs                 # WitnessBackend, OpId, OpType traits/types
+    ├── context.rs                 # TraceContext for execution modes
+    ├── trace.rs                   # TraceG1, TraceG2, TraceGT wrappers
+    ├── collection.rs              # WitnessCollection storage
+    ├── collector.rs               # WitnessCollector and generator traits
+    └── hint_map.rs                # Lightweight HintMap storage
 
 tests/arkworks/
 ├── mod.rs                         # Test utilities
@@ -271,7 +324,9 @@ tests/arkworks/
 ├── commitment.rs                  # Commitment tests
 ├── evaluation.rs                  # Evaluation tests
 ├── integration.rs                 # End-to-end tests
-└── soundness.rs                   # Soundness tests
+├── soundness.rs                   # Soundness tests
+├── recursion.rs                   # Trace and hint verification tests
+└── witness.rs                     # Witness generation tests
 ```
 
 ## Test Coverage
@@ -285,6 +340,7 @@ The implementation includes comprehensive tests covering:
 - Non-square matrix support (nu < sigma, nu = sigma - 1, and very rectangular cases)
 - Soundness (tampering resistance for all proof components across 20+ attack vectors)
 - Prepared point caching correctness
+- Recursive verification (witness generation and hint-based verification)
 
 ## Acknowledgments
 

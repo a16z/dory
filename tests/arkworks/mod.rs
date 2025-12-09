@@ -16,8 +16,12 @@ pub mod evaluation;
 pub mod homomorphic;
 pub mod integration;
 pub mod non_square;
+#[cfg(feature = "recursion")]
+pub mod recursion;
 pub mod setup;
 pub mod soundness;
+#[cfg(feature = "recursion")]
+pub mod witness;
 
 pub fn random_polynomial(size: usize) -> ArkworksPolynomial {
     let mut rng = thread_rng();
