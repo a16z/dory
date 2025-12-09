@@ -305,10 +305,9 @@ where
     transcript.append_serde(b"vmv_d2", &vmv_message.d2);
     transcript.append_serde(b"vmv_e1", &vmv_message.e1);
 
-    let pairing_check = E::pair(&vmv_message.e1, &setup.h2);
-    if vmv_message.d2 != pairing_check {
-        return Err(DoryError::InvalidProof);
-    }
+    // # NOTE: The VMV check `vmv_message.d2 == e(vmv_message.e1, setup.h2)` is deferred
+    // to verify_final where it's batched with other pairings using random linear
+    // combination with challenge `d`. See verify_final documentation for details.
 
     let e2 = setup.h2.scale(&evaluation);
 
