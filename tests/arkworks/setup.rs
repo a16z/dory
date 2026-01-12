@@ -156,10 +156,41 @@ fn test_arkworks_setup_new_from_urs() {
     let max_log_n = 14;
 
     // Clean up any existing cache file first
-    if let Some(cache_dir) = dirs::cache_dir() {
-        let cache_file = cache_dir
-            .join("dory")
-            .join(format!("dory_{}.urs", max_log_n));
+    let cache_directory = {
+        // Check for Windows first (LOCALAPPDATA is Windows-specific)
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            Some(std::path::PathBuf::from(local_app_data))
+        } else if let Ok(home) = std::env::var("HOME") {
+            let mut path = std::path::PathBuf::from(&home);
+
+            // Check if Library/Caches exists (macOS indicator)
+            let macos_cache = {
+                let mut test_path = std::path::PathBuf::from(&home);
+                test_path.push("Library");
+                test_path.push("Caches");
+                test_path.exists()
+            };
+
+            if macos_cache {
+                path.push("Library");
+                path.push("Caches");
+            } else {
+                // Linux and other Unix-like systems
+                path.push(".cache");
+            }
+            Some(path)
+        } else {
+            None
+        }
+    };
+
+    let cache_file = cache_directory.map(|mut path| {
+        path.push("dory");
+        path.push(format!("dory_{}.urs", max_log_n));
+        path
+    });
+
+    if let Some(cache_file) = cache_file {
         let _ = std::fs::remove_file(&cache_file);
     }
 
