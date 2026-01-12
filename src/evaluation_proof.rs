@@ -226,7 +226,9 @@ where
     let gamma = transcript.challenge_scalar(b"gamma");
     let final_message = prover_state.compute_final_message::<M1, M2>(&gamma);
 
-    // We grab d challenge at the end (despite it being unused) to keep transcript states in-sync post proof.
+    transcript.append_serde(b"final_e1", &final_message.e1);
+    transcript.append_serde(b"final_e2", &final_message.e2);
+
     let _d = transcript.challenge_scalar(b"d");
 
     Ok(DoryProof {
@@ -306,10 +308,9 @@ where
     transcript.append_serde(b"vmv_d2", &vmv_message.d2);
     transcript.append_serde(b"vmv_e1", &vmv_message.e1);
 
-    let pairing_check = E::pair(&vmv_message.e1, &setup.h2);
-    if vmv_message.d2 != pairing_check {
-        return Err(DoryError::InvalidProof);
-    }
+    // # NOTE: The VMV check `vmv_message.d2 == e(vmv_message.e1, setup.h2)` is deferred
+    // to verify_final where it's batched with other pairings using random linear
+    // combination with challenge `d`. See verify_final documentation for details.
 
     let e2 = setup.h2.scale(&evaluation);
 
@@ -365,6 +366,10 @@ where
     }
 
     let gamma = transcript.challenge_scalar(b"gamma");
+
+    transcript.append_serde(b"final_e1", &proof.final_message.e1);
+    transcript.append_serde(b"final_e2", &proof.final_message.e2);
+
     let d = transcript.challenge_scalar(b"d");
 
     verifier_state.verify_final(&proof.final_message, &gamma, &d)
