@@ -48,6 +48,7 @@ arkworks = [
 parallel = ["dep:rayon", "ark-ec?/parallel", "ark-ff?/parallel"]
 cache = ["arkworks", "dep:once_cell", "parallel"]
 disk-persistence = []
+recursion = ["arkworks"]
 
 [dependencies]
 thiserror = "2.0"
