@@ -47,15 +47,13 @@ arkworks = [
 ]
 parallel = ["dep:rayon", "ark-ec?/parallel", "ark-ff?/parallel"]
 cache = ["arkworks", "dep:once_cell", "parallel"]
-disk-persistence = ["dep:dirs"]
-recursion = ["arkworks"]
+disk-persistence = []
 
 [dependencies]
 thiserror = "2.0"
 rand_core = "0.6"
 dory-derive = { version = "0.1.0", path = "derive" }
 tracing = "0.1"
-dirs = { version = "5.0", optional = true }
 
 # Arkworks backend
 ark-bn254 = { version = "0.5.0", optional = true }
@@ -90,6 +88,10 @@ required-features = ["backends"]
 [[example]]
 name = "recursion"
 required-features = ["recursion"]
+
+[[example]]
+name = "homomorphic_mixed_sizes"
+required-features = ["backends"]
 
 [[bench]]
 name = "arkworks_proof"
