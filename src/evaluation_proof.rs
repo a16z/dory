@@ -34,6 +34,9 @@ use crate::proof::DoryProof;
 use crate::reduce_and_fold::{DoryProverState, DoryVerifierState};
 use crate::setup::{ProverSetup, VerifierSetup};
 
+#[cfg(feature = "recursion")]
+use crate::recursion::{WitnessBackend, WitnessGenerator};
+
 /// Create evaluation proof for a polynomial at a point
 ///
 /// Implements Eval-VMV-RE protocol from Dory Section 5.
@@ -370,4 +373,292 @@ where
     let d = transcript.challenge_scalar(b"d");
 
     verifier_state.verify_final(&proof.final_message, &gamma, &d)
+}
+
+/// Verify an evaluation proof with automatic operation tracing.
+///
+/// This function verifies a Dory evaluation proof while automatically tracing
+/// all expensive arithmetic operations through the provided
+/// [`TraceContext`](crate::recursion::TraceContext). The context determines the behavior:
+///
+/// - **Witness Generation Mode**: All operations are computed and their witnesses
+///   are recorded in the context's collector.
+/// - **Hint-Based Mode**: Operations use pre-computed hints when available,
+///   falling back to computation with a warning when hints are missing.
+///
+/// # Parameters
+/// - `commitment`: Polynomial commitment (in GT)
+/// - `evaluation`: Claimed evaluation result
+/// - `point`: Evaluation point (length must equal proof.nu + proof.sigma)
+/// - `proof`: Evaluation proof to verify
+/// - `setup`: Verifier setup
+/// - `transcript`: Fiat-Shamir transcript for challenge generation
+/// - `ctx`: Trace context (from `TraceContext::for_witness_gen()` or `TraceContext::for_hints()`)
+///
+/// # Returns
+/// `Ok(())` if proof is valid, `Err(DoryError)` otherwise.
+///
+/// After verification, call `ctx.finalize()` to get the collected witnesses
+/// (in witness generation mode) or check `ctx.had_missing_hints()` to see
+/// if any hints were missing (in hint-based mode).
+///
+/// # Errors
+/// Returns `DoryError::InvalidProof` if verification fails, or
+/// `DoryError::InvalidPointDimension` if point length doesn't match proof dimensions.
+///
+/// # Panics
+/// Panics if transcript challenge scalars (alpha, beta, gamma, d) are zero
+/// (if this happens, go buy a lottery ticket)
+///
+/// # Example
+///
+/// ```ignore
+/// use std::rc::Rc;
+/// use dory_pcs::recursion::TraceContext;
+///
+/// // Witness generation mode
+/// let ctx = Rc::new(TraceContext::for_witness_gen());
+/// verify_recursive(commitment, evaluation, &point, &proof, setup.clone(), &mut transcript, ctx.clone())?;
+/// let witnesses = Rc::try_unwrap(ctx).ok().unwrap().finalize();
+///
+/// // Hint-based mode
+/// let hints = witnesses.to_hints::<E>();
+/// let ctx = Rc::new(TraceContext::for_hints(hints));
+/// verify_recursive(commitment, evaluation, &point, &proof, setup, &mut transcript, ctx)?;
+///
+/// TODO(markosg04) this unrolls all the reduce_and_fold fns. We could make it more ergonomic by not unrolling.
+/// ```
+#[cfg(feature = "recursion")]
+#[tracing::instrument(skip_all, name = "verify_recursive")]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_recursive<F, E, M1, M2, T, W, Gen>(
+    commitment: E::GT,
+    evaluation: F,
+    point: &[F],
+    proof: &DoryProof<E::G1, E::G2, E::GT>,
+    setup: VerifierSetup<E>,
+    transcript: &mut T,
+    ctx: crate::recursion::CtxHandle<W, E, Gen>,
+) -> Result<(), DoryError>
+where
+    F: Field,
+    E: PairingCurve,
+    E::G1: Group<Scalar = F>,
+    E::G2: Group<Scalar = F>,
+    E::GT: Group<Scalar = F>,
+    M1: DoryRoutines<E::G1>,
+    M2: DoryRoutines<E::G2>,
+    T: Transcript<Curve = E>,
+    W: WitnessBackend,
+    Gen: WitnessGenerator<W, E>,
+{
+    use crate::recursion::{TraceG1, TraceG2, TraceGT, TracePairing};
+    use std::rc::Rc;
+
+    let nu = proof.nu;
+    let sigma = proof.sigma;
+
+    if point.len() != nu + sigma {
+        return Err(DoryError::InvalidPointDimension {
+            expected: nu + sigma,
+            actual: point.len(),
+        });
+    }
+
+    let vmv_message = &proof.vmv_message;
+    transcript.append_serde(b"vmv_c", &vmv_message.c);
+    transcript.append_serde(b"vmv_d2", &vmv_message.d2);
+    transcript.append_serde(b"vmv_e1", &vmv_message.e1);
+
+    // Create trace operators
+    let pairing = TracePairing::new(Rc::clone(&ctx));
+
+    // VMV check: d2 == e(e1, h2)
+    // This check binds the hints to the proof - using wrong hints will cause
+    // the pairing result to not match the proof's d2 value.
+    let h2_trace = TraceG2::new(setup.h2, Rc::clone(&ctx));
+    let e1_vmv = TraceG1::new(vmv_message.e1, Rc::clone(&ctx));
+    let pairing_check = pairing.pair(&e1_vmv, &h2_trace);
+
+    if vmv_message.d2 != *pairing_check.inner() {
+        return Err(DoryError::InvalidProof);
+    }
+
+    // e2 = h2 * evaluation (traced G2 scalar mul)
+    let e2 = h2_trace.scale(&evaluation);
+
+    let num_rounds = sigma;
+    let col_coords = &point[..sigma];
+    let s1_coords: Vec<F> = col_coords.to_vec();
+    let mut s2_coords: Vec<F> = vec![F::zero(); sigma];
+    let row_coords = &point[sigma..sigma + nu];
+    s2_coords[..nu].copy_from_slice(&row_coords[..nu]);
+
+    // Initialize traced verifier state
+    let mut c = TraceGT::new(vmv_message.c, Rc::clone(&ctx));
+    let mut d1 = TraceGT::new(commitment, Rc::clone(&ctx));
+    let mut d2 = TraceGT::new(vmv_message.d2, Rc::clone(&ctx));
+    let mut e1 = TraceG1::new(vmv_message.e1, Rc::clone(&ctx));
+    let mut e2_state = e2;
+    let mut s1_acc = F::one();
+    let mut s2_acc = F::one();
+    let mut remaining_rounds = num_rounds;
+
+    ctx.set_num_rounds(num_rounds);
+
+    // Process each round with automatic tracing
+    for round in 0..num_rounds {
+        ctx.advance_round();
+        let first_msg = &proof.first_messages[round];
+        let second_msg = &proof.second_messages[round];
+
+        transcript.append_serde(b"d1_left", &first_msg.d1_left);
+        transcript.append_serde(b"d1_right", &first_msg.d1_right);
+        transcript.append_serde(b"d2_left", &first_msg.d2_left);
+        transcript.append_serde(b"d2_right", &first_msg.d2_right);
+        transcript.append_serde(b"e1_beta", &first_msg.e1_beta);
+        transcript.append_serde(b"e2_beta", &first_msg.e2_beta);
+        let beta = transcript.challenge_scalar(b"beta");
+
+        transcript.append_serde(b"c_plus", &second_msg.c_plus);
+        transcript.append_serde(b"c_minus", &second_msg.c_minus);
+        transcript.append_serde(b"e1_plus", &second_msg.e1_plus);
+        transcript.append_serde(b"e1_minus", &second_msg.e1_minus);
+        transcript.append_serde(b"e2_plus", &second_msg.e2_plus);
+        transcript.append_serde(b"e2_minus", &second_msg.e2_minus);
+        let alpha = transcript.challenge_scalar(b"alpha");
+
+        let alpha_inv = alpha.inv().expect("alpha must be invertible");
+        let beta_inv = beta.inv().expect("beta must be invertible");
+
+        // Update C with traced operations
+        let chi = &setup.chi[remaining_rounds];
+        c = c + TraceGT::new(*chi, Rc::clone(&ctx));
+
+        // d2.scale(beta) - traced GT exp
+        let d2_scaled = d2.scale(&beta);
+        // c + d2_scaled - traced GT mul (via Add impl)
+        c = c + d2_scaled;
+
+        // d1.scale(beta_inv) - traced GT exp
+        let d1_scaled = d1.scale(&beta_inv);
+        c = c + d1_scaled;
+
+        // c_plus.scale(alpha) - traced GT exp
+        let c_plus_trace = TraceGT::new(second_msg.c_plus, Rc::clone(&ctx));
+        let c_plus_scaled = c_plus_trace.scale(&alpha);
+        c = c + c_plus_scaled;
+
+        // c_minus.scale(alpha_inv) - traced GT exp
+        let c_minus_trace = TraceGT::new(second_msg.c_minus, Rc::clone(&ctx));
+        let c_minus_scaled = c_minus_trace.scale(&alpha_inv);
+        c = c + c_minus_scaled;
+
+        // Update D1 (GT operations - traced via scale and add)
+        let delta_1l = &setup.delta_1l[remaining_rounds];
+        let delta_1r = &setup.delta_1r[remaining_rounds];
+        let alpha_beta = alpha * beta;
+        let d1_left_trace = TraceGT::new(first_msg.d1_left, Rc::clone(&ctx));
+        d1 = d1_left_trace.scale(&alpha);
+        d1 = d1 + TraceGT::new(first_msg.d1_right, Rc::clone(&ctx));
+        let delta_1l_trace = TraceGT::new(*delta_1l, Rc::clone(&ctx));
+        d1 = d1 + delta_1l_trace.scale(&alpha_beta);
+        let delta_1r_trace = TraceGT::new(*delta_1r, Rc::clone(&ctx));
+        d1 = d1 + delta_1r_trace.scale(&beta);
+
+        // Update D2 (GT operations - traced via scale and add)
+        let delta_2l = &setup.delta_2l[remaining_rounds];
+        let delta_2r = &setup.delta_2r[remaining_rounds];
+        let alpha_inv_beta_inv = alpha_inv * beta_inv;
+        let d2_left_trace = TraceGT::new(first_msg.d2_left, Rc::clone(&ctx));
+        d2 = d2_left_trace.scale(&alpha_inv);
+        d2 = d2 + TraceGT::new(first_msg.d2_right, Rc::clone(&ctx));
+        let delta_2l_trace = TraceGT::new(*delta_2l, Rc::clone(&ctx));
+        d2 = d2 + delta_2l_trace.scale(&alpha_inv_beta_inv);
+        let delta_2r_trace = TraceGT::new(*delta_2r, Rc::clone(&ctx));
+        d2 = d2 + delta_2r_trace.scale(&beta_inv);
+
+        // Update E1 (G1 operations - traced via scale)
+        let e1_beta_trace = TraceG1::new(first_msg.e1_beta, Rc::clone(&ctx));
+        let e1_beta_scaled = e1_beta_trace.scale(&beta);
+        e1 = e1 + e1_beta_scaled;
+        let e1_plus_trace = TraceG1::new(second_msg.e1_plus, Rc::clone(&ctx));
+        e1 = e1 + e1_plus_trace.scale(&alpha);
+        let e1_minus_trace = TraceG1::new(second_msg.e1_minus, Rc::clone(&ctx));
+        e1 = e1 + e1_minus_trace.scale(&alpha_inv);
+
+        // Update E2 (G2 operations - traced via scale)
+        let e2_beta_trace = TraceG2::new(first_msg.e2_beta, Rc::clone(&ctx));
+        let e2_beta_scaled = e2_beta_trace.scale(&beta_inv);
+        e2_state = e2_state + e2_beta_scaled;
+        let e2_plus_trace = TraceG2::new(second_msg.e2_plus, Rc::clone(&ctx));
+        e2_state = e2_state + e2_plus_trace.scale(&alpha);
+        let e2_minus_trace = TraceG2::new(second_msg.e2_minus, Rc::clone(&ctx));
+        e2_state = e2_state + e2_minus_trace.scale(&alpha_inv);
+
+        // Update scalar accumulators (field ops, not traced)
+        let idx = remaining_rounds - 1;
+        let y_t = s1_coords[idx];
+        let x_t = s2_coords[idx];
+        let one = F::one();
+        let s1_term = alpha * (one - y_t) + y_t;
+        let s2_term = alpha_inv * (one - x_t) + x_t;
+        s1_acc = s1_acc * s1_term;
+        s2_acc = s2_acc * s2_term;
+
+        remaining_rounds -= 1;
+    }
+
+    ctx.enter_final();
+
+    let gamma = transcript.challenge_scalar(b"gamma");
+
+    transcript.append_serde(b"final_e1", &proof.final_message.e1);
+    transcript.append_serde(b"final_e2", &proof.final_message.e2);
+
+    let d_challenge = transcript.challenge_scalar(b"d");
+
+    let gamma_inv = gamma.inv().expect("gamma must be invertible");
+    let d_inv = d_challenge.inv().expect("d must be invertible");
+    let neg_gamma = -gamma;
+    let neg_gamma_inv = -gamma_inv;
+
+    // Optimized final verification using batched multi-pairing (3 ML + 1 FE)
+    // Note: VMV check was done early (for hint binding), so no d² terms here.
+    //
+    // RHS (GT terms): T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁
+    let s_product = s1_acc * s2_acc;
+    let ht_trace = TraceGT::new(setup.ht, Rc::clone(&ctx));
+    let mut rhs = c + ht_trace.scale(&s_product);
+    rhs = rhs + TraceGT::new(setup.chi[0], Rc::clone(&ctx));
+    rhs = rhs + d2.scale(&d_challenge);
+    rhs = rhs + d1.scale(&d_inv);
+
+    // Pair 1: (E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
+    let g1_0_trace = TraceG1::new(setup.g1_0, Rc::clone(&ctx));
+    let g2_0_trace = TraceG2::new(setup.g2_0, Rc::clone(&ctx));
+    let e1_final = TraceG1::new(proof.final_message.e1, Rc::clone(&ctx));
+    let e2_final = TraceG2::new(proof.final_message.e2, Rc::clone(&ctx));
+    let p1_g1 = e1_final + g1_0_trace.scale(&d_challenge);
+    let p1_g2 = e2_final + g2_0_trace.scale(&d_inv);
+
+    // Pair 2: (H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))
+    let h1_trace = TraceG1::new(setup.h1, Rc::clone(&ctx));
+    let d_inv_s1 = d_inv * s1_acc;
+    let g2_term = e2_state + g2_0_trace.scale(&d_inv_s1);
+    let p2_g2 = g2_term.scale(&neg_gamma);
+
+    // Pair 3: ((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀), H₂)
+    let d_s2 = d_challenge * s2_acc;
+    let g1_term = e1 + g1_0_trace.scale(&d_s2);
+    let p3_g1 = g1_term.scale(&neg_gamma_inv);
+
+    // Multi-pairing check: 3 miller loops + 1 final exponentiation
+    let lhs = pairing.multi_pair(&[p1_g1, h1_trace, p3_g1], &[p1_g2, p2_g2, h2_trace]);
+
+    if *lhs.inner() == *rhs.inner() {
+        Ok(())
+    } else {
+        Err(DoryError::InvalidProof)
+    }
 }
