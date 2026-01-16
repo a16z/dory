@@ -1,7 +1,7 @@
 //! Witness generation types and traits for recursive proof composition.
 
 /// Operation type identifier for witness indexing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum OpType {
     /// GT exponentiation: base^scalar in the target group
@@ -26,7 +26,7 @@ pub enum OpType {
 ///
 /// Operations are indexed by (round, op_type, index) to enable deterministic
 /// mapping between witness generation and hint consumption.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct OpId {
     /// Protocol round number (0 for initial checks, 1..=num_rounds for reduce rounds)
     pub round: u16,

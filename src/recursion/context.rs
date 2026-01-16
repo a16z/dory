@@ -151,19 +151,19 @@ where
     /// Get a G1 hint for the given operation.
     #[inline]
     pub fn get_hint_g1(&self, id: OpId) -> Option<E::G1> {
-        self.hints.as_ref().and_then(|h| h.get_g1(id).copied())
+        self.hints.as_ref().and_then(|h| h.get_g1(&id).copied())
     }
 
     /// Get a G2 hint for the given operation.
     #[inline]
     pub fn get_hint_g2(&self, id: OpId) -> Option<E::G2> {
-        self.hints.as_ref().and_then(|h| h.get_g2(id).copied())
+        self.hints.as_ref().and_then(|h| h.get_g2(&id).copied())
     }
 
     /// Get a GT hint for the given operation.
     #[inline]
     pub fn get_hint_gt(&self, id: OpId) -> Option<E::GT> {
-        self.hints.as_ref().and_then(|h| h.get_gt(id).copied())
+        self.hints.as_ref().and_then(|h| h.get_gt(&id).copied())
     }
 
     /// Record a GT exponentiation witness.

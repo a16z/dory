@@ -1,10 +1,4 @@
-//! Lightweight hint storage for recursive verification.
-//!
-//! This module provides [`HintMap`], a simplified storage structure that holds
-//! only operation results (not full witnesses with intermediate computation steps).
-//! This results in ~30-50x smaller storage compared to full witness collections.
-
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::{Read, Write};
 
 use super::witness::{OpId, OpType};
@@ -51,38 +45,34 @@ impl<E: PairingCurve> HintResult<E> {
         matches!(self, HintResult::GT(_))
     }
 
-    /// Try to get as G1, returns None if wrong variant.
+    /// Extract a G1 result, returning None if this is not a G1 variant.
     #[inline]
     pub fn as_g1(&self) -> Option<&E::G1> {
-        match self {
-            HintResult::G1(g1) => Some(g1),
-            _ => None,
+        if let HintResult::G1(g1) = self {
+            Some(g1)
+        } else {
+            None
         }
     }
 
-    /// Try to get as G2, returns None if wrong variant.
+    /// Extract a G2 result, returning None if this is not a G2 variant.
     #[inline]
     pub fn as_g2(&self) -> Option<&E::G2> {
-        match self {
-            HintResult::G2(g2) => Some(g2),
-            _ => None,
+        if let HintResult::G2(g2) = self {
+            Some(g2)
+        } else {
+            None
         }
     }
 
-    /// Try to get as GT, returns None if wrong variant.
+    /// Extract a GT result, returning None if this is not a GT variant.
     #[inline]
     pub fn as_gt(&self) -> Option<&E::GT> {
-        match self {
-            HintResult::GT(gt) => Some(gt),
-            _ => None,
+        if let HintResult::GT(gt) = self {
+            Some(gt)
+        } else {
+            None
         }
-    }
-}
-
-impl<E: PairingCurve> Valid for HintResult<E> {
-    fn check(&self) -> Result<(), SerializationError> {
-        // Curve points are validated during deserialization
-        Ok(())
     }
 }
 
@@ -94,18 +84,19 @@ impl<E: PairingCurve> DorySerialize for HintResult<E> {
     ) -> Result<(), SerializationError> {
         match self {
             HintResult::G1(g1) => {
-                TAG_G1.serialize_with_mode(&mut writer, compress)?;
-                g1.serialize_with_mode(writer, compress)
+                DorySerialize::serialize_with_mode(&TAG_G1, &mut writer, compress)?;
+                DorySerialize::serialize_with_mode(g1, &mut writer, compress)?;
             }
             HintResult::G2(g2) => {
-                TAG_G2.serialize_with_mode(&mut writer, compress)?;
-                g2.serialize_with_mode(writer, compress)
+                DorySerialize::serialize_with_mode(&TAG_G2, &mut writer, compress)?;
+                DorySerialize::serialize_with_mode(g2, &mut writer, compress)?;
             }
             HintResult::GT(gt) => {
-                TAG_GT.serialize_with_mode(&mut writer, compress)?;
-                gt.serialize_with_mode(writer, compress)
+                DorySerialize::serialize_with_mode(&TAG_GT, &mut writer, compress)?;
+                DorySerialize::serialize_with_mode(gt, &mut writer, compress)?;
             }
         }
+        Ok(())
     }
 
     fn serialized_size(&self, compress: Compress) -> usize {
@@ -123,25 +114,35 @@ impl<E: PairingCurve> DoryDeserialize for HintResult<E> {
         compress: Compress,
         validate: Validate,
     ) -> Result<Self, SerializationError> {
-        let tag = u8::deserialize_with_mode(&mut reader, compress, validate)?;
+        let tag = <u8 as DoryDeserialize>::deserialize_with_mode(&mut reader, compress, validate)?;
         match tag {
-            TAG_G1 => Ok(HintResult::G1(E::G1::deserialize_with_mode(
-                reader, compress, validate,
-            )?)),
-            TAG_G2 => Ok(HintResult::G2(E::G2::deserialize_with_mode(
-                reader, compress, validate,
-            )?)),
-            TAG_GT => Ok(HintResult::GT(E::GT::deserialize_with_mode(
-                reader, compress, validate,
-            )?)),
-            _ => Err(SerializationError::InvalidData(format!(
-                "Invalid HintResult tag: {tag}"
-            ))),
+            TAG_G1 => {
+                let g1 = E::G1::deserialize_with_mode(&mut reader, compress, validate)?;
+                Ok(HintResult::G1(g1))
+            }
+            TAG_G2 => {
+                let g2 = E::G2::deserialize_with_mode(&mut reader, compress, validate)?;
+                Ok(HintResult::G2(g2))
+            }
+            TAG_GT => {
+                let gt = E::GT::deserialize_with_mode(&mut reader, compress, validate)?;
+                Ok(HintResult::GT(gt))
+            }
+            _ => Err(SerializationError::InvalidData(
+                "Invalid HintResult tag".to_string(),
+            )),
         }
     }
 }
 
-/// Hint storage
+impl<E: PairingCurve> Valid for HintResult<E> {
+    fn check(&self) -> Result<(), SerializationError> {
+        // Curve elements are already validated upon creation
+        Ok(())
+    }
+}
+
+/// A lightweight hint storage for recursive verification.
 ///
 /// Unlike [`WitnessCollection`](crate::recursion::WitnessCollection) which stores
 /// full computation traces, this stores only the final results for each operation,
@@ -151,7 +152,7 @@ pub struct HintMap<E: PairingCurve> {
     /// Number of reduce-and-fold rounds in the verification
     pub num_rounds: usize,
     /// All operation results indexed by OpId
-    results: HashMap<OpId, HintResult<E>>,
+    results: BTreeMap<OpId, HintResult<E>>,
 }
 
 impl<E: PairingCurve> HintMap<E> {
@@ -159,94 +160,98 @@ impl<E: PairingCurve> HintMap<E> {
     pub fn new(num_rounds: usize) -> Self {
         Self {
             num_rounds,
-            results: HashMap::new(),
+            results: BTreeMap::new(),
         }
     }
 
     /// Get G1 result for an operation.
-    ///
-    /// Returns None if the operation is not found or is not a G1 result.
-    #[inline]
-    pub fn get_g1(&self, id: OpId) -> Option<&E::G1> {
-        self.results.get(&id).and_then(|r| r.as_g1())
+    pub fn get_g1(&self, op_id: &OpId) -> Option<&E::G1> {
+        self.results.get(op_id)?.as_g1()
     }
 
     /// Get G2 result for an operation.
-    ///
-    /// Returns None if the operation is not found or is not a G2 result.
-    #[inline]
-    pub fn get_g2(&self, id: OpId) -> Option<&E::G2> {
-        self.results.get(&id).and_then(|r| r.as_g2())
+    pub fn get_g2(&self, op_id: &OpId) -> Option<&E::G2> {
+        self.results.get(op_id)?.as_g2()
     }
 
     /// Get GT result for an operation.
-    ///
-    /// Returns None if the operation is not found or is not a GT result.
-    #[inline]
-    pub fn get_gt(&self, id: OpId) -> Option<&E::GT> {
-        self.results.get(&id).and_then(|r| r.as_gt())
+    pub fn get_gt(&self, op_id: &OpId) -> Option<&E::GT> {
+        self.results.get(op_id)?.as_gt()
     }
 
-    /// Get raw result enum for an operation.
-    #[inline]
-    pub fn get(&self, id: OpId) -> Option<&HintResult<E>> {
-        self.results.get(&id)
+    /// Get any result for an operation.
+    pub fn get(&self, op_id: &OpId) -> Option<&HintResult<E>> {
+        self.results.get(op_id)
     }
 
-    /// Insert a G1 result.
-    #[inline]
-    pub fn insert_g1(&mut self, id: OpId, value: E::G1) {
-        self.results.insert(id, HintResult::G1(value));
+    /// Insert a result for an operation.
+    pub fn insert(&mut self, op_id: OpId, result: HintResult<E>) -> Option<HintResult<E>> {
+        self.results.insert(op_id, result)
     }
 
-    /// Insert a G2 result.
-    #[inline]
-    pub fn insert_g2(&mut self, id: OpId, value: E::G2) {
-        self.results.insert(id, HintResult::G2(value));
+    /// Insert a G1 result for an operation.
+    pub fn insert_g1(&mut self, op_id: OpId, result: E::G1) -> Option<HintResult<E>> {
+        self.results.insert(op_id, HintResult::G1(result))
     }
 
-    /// Insert a GT result.
-    #[inline]
-    pub fn insert_gt(&mut self, id: OpId, value: E::GT) {
-        self.results.insert(id, HintResult::GT(value));
+    /// Insert a G2 result for an operation.
+    pub fn insert_g2(&mut self, op_id: OpId, result: E::G2) -> Option<HintResult<E>> {
+        self.results.insert(op_id, HintResult::G2(result))
     }
 
-    /// Total number of hints stored.
-    #[inline]
+    /// Insert a GT result for an operation.
+    pub fn insert_gt(&mut self, op_id: OpId, result: E::GT) -> Option<HintResult<E>> {
+        self.results.insert(op_id, HintResult::GT(result))
+    }
+
+    /// Number of operations stored.
     pub fn len(&self) -> usize {
         self.results.len()
     }
 
-    /// Check if the hint map is empty.
-    #[inline]
+    /// Check if empty.
     pub fn is_empty(&self) -> bool {
         self.results.is_empty()
     }
 
-    /// Iterate over all (OpId, HintResult) pairs.
+    /// Iterator over all operations and results.
     pub fn iter(&self) -> impl Iterator<Item = (&OpId, &HintResult<E>)> {
         self.results.iter()
     }
 
-    /// Check if a hint exists for the given operation.
-    #[inline]
-    pub fn contains(&self, id: OpId) -> bool {
-        self.results.contains_key(&id)
-    }
-}
+    /// Count operations by type.
+    pub fn count_by_type(&self) -> (usize, usize, usize) {
+        let mut g1_count = 0;
+        let mut g2_count = 0;
+        let mut gt_count = 0;
 
-impl<E: PairingCurve> Default for HintMap<E> {
-    fn default() -> Self {
-        Self::new(0)
-    }
-}
-
-impl<E: PairingCurve> Valid for HintMap<E> {
-    fn check(&self) -> Result<(), SerializationError> {
         for result in self.results.values() {
-            result.check()?;
+            match result {
+                HintResult::G1(_) => g1_count += 1,
+                HintResult::G2(_) => g2_count += 1,
+                HintResult::GT(_) => gt_count += 1,
+            }
         }
-        Ok(())
+
+        (g1_count, g2_count, gt_count)
+    }
+
+    /// Count operations by round and type.
+    pub fn stats(&self) -> Vec<(u16, OpType, usize)> {
+        use std::collections::HashMap;
+
+        let mut stats: HashMap<(u16, OpType), usize> = HashMap::new();
+
+        for op_id in self.results.keys() {
+            *stats.entry((op_id.round, op_id.op_type)).or_insert(0) += 1;
+        }
+
+        let mut result: Vec<_> = stats
+            .into_iter()
+            .map(|((round, op_type), count)| (round, op_type, count))
+            .collect();
+        result.sort();
+        result
     }
 }
 
@@ -256,27 +261,31 @@ impl<E: PairingCurve> DorySerialize for HintMap<E> {
         mut writer: W,
         compress: Compress,
     ) -> Result<(), SerializationError> {
-        (self.num_rounds as u64).serialize_with_mode(&mut writer, compress)?;
-        (self.results.len() as u64).serialize_with_mode(&mut writer, compress)?;
+        DorySerialize::serialize_with_mode(&(self.num_rounds as u64), &mut writer, compress)?;
+        DorySerialize::serialize_with_mode(&(self.results.len() as u64), &mut writer, compress)?;
 
         for (id, result) in &self.results {
             // Serialize OpId as (round: u16, op_type: u8, index: u16)
-            id.round.serialize_with_mode(&mut writer, compress)?;
-            (id.op_type as u8).serialize_with_mode(&mut writer, compress)?;
-            id.index.serialize_with_mode(&mut writer, compress)?;
-            result.serialize_with_mode(&mut writer, compress)?;
+            DorySerialize::serialize_with_mode(&id.round, &mut writer, compress)?;
+            DorySerialize::serialize_with_mode(&(id.op_type as u8), &mut writer, compress)?;
+            DorySerialize::serialize_with_mode(&id.index, &mut writer, compress)?;
+
+            // Serialize the result
+            DorySerialize::serialize_with_mode(result, &mut writer, compress)?;
         }
+
         Ok(())
     }
 
     fn serialized_size(&self, compress: Compress) -> usize {
-        let header = 8 + 8; // num_rounds + len
-        let entries: usize = self
-            .results
-            .values()
-            .map(|r| 2 + 1 + 2 + r.serialized_size(compress))
-            .sum();
-        header + entries
+        let mut size = 8 + 8; // num_rounds + len
+
+        for result in self.results.values() {
+            size += 2 + 1 + 2; // OpId: round + op_type + index
+            size += result.serialized_size(compress);
+        }
+
+        size
     }
 }
 
@@ -286,14 +295,20 @@ impl<E: PairingCurve> DoryDeserialize for HintMap<E> {
         compress: Compress,
         validate: Validate,
     ) -> Result<Self, SerializationError> {
-        let num_rounds = u64::deserialize_with_mode(&mut reader, compress, validate)? as usize;
-        let len = u64::deserialize_with_mode(&mut reader, compress, validate)? as usize;
+        let num_rounds =
+            <u64 as DoryDeserialize>::deserialize_with_mode(&mut reader, compress, validate)?
+                as usize;
+        let len = <u64 as DoryDeserialize>::deserialize_with_mode(&mut reader, compress, validate)?
+            as usize;
 
-        let mut results = HashMap::with_capacity(len);
+        let mut results = BTreeMap::new();
         for _ in 0..len {
-            let round = u16::deserialize_with_mode(&mut reader, compress, validate)?;
-            let op_type_byte = u8::deserialize_with_mode(&mut reader, compress, validate)?;
-            let index = u16::deserialize_with_mode(&mut reader, compress, validate)?;
+            let round =
+                <u16 as DoryDeserialize>::deserialize_with_mode(&mut reader, compress, validate)?;
+            let op_type_byte =
+                <u8 as DoryDeserialize>::deserialize_with_mode(&mut reader, compress, validate)?;
+            let index =
+                <u16 as DoryDeserialize>::deserialize_with_mode(&mut reader, compress, validate)?;
 
             let op_type = match op_type_byte {
                 0 => OpType::GtExp,
@@ -305,20 +320,95 @@ impl<E: PairingCurve> DoryDeserialize for HintMap<E> {
                 6 => OpType::MsmG1,
                 7 => OpType::MsmG2,
                 _ => {
-                    return Err(SerializationError::InvalidData(format!(
-                        "Invalid OpType: {op_type_byte}"
-                    )))
+                    return Err(SerializationError::InvalidData(
+                        "Invalid OpType byte".to_string(),
+                    ))
                 }
             };
 
-            let id = OpId::new(round, op_type, index);
+            let op_id = OpId {
+                round,
+                op_type,
+                index,
+            };
+
             let result = HintResult::deserialize_with_mode(&mut reader, compress, validate)?;
-            results.insert(id, result);
+            results.insert(op_id, result);
         }
 
         Ok(Self {
             num_rounds,
             results,
         })
+    }
+}
+
+// Implement ark-serialize traits by delegating to DorySerialize/DoryDeserialize
+use ark_serialize::{
+    CanonicalDeserialize, CanonicalSerialize, Compress as ArkCompress, Read as ArkRead,
+    SerializationError as ArkSerializationError, Valid as ArkValid, Validate as ArkValidate,
+    Write as ArkWrite,
+};
+
+// NOTE: These implementations preserve the original error information from Dory's
+// serialization for better debugging. The error messages include the underlying
+// cause to help diagnose serialization/deserialization failures.
+impl<E: PairingCurve> CanonicalSerialize for HintMap<E> {
+    fn serialize_with_mode<W: ArkWrite>(
+        &self,
+        writer: W,
+        compress: ArkCompress,
+    ) -> Result<(), ArkSerializationError> {
+        let compress = if matches!(compress, ArkCompress::Yes) {
+            Compress::Yes
+        } else {
+            Compress::No
+        };
+        DorySerialize::serialize_with_mode(self, writer, compress).map_err(|e| {
+            ArkSerializationError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("HintMap serialization failed: {:?}", e),
+            ))
+        })
+    }
+
+    fn serialized_size(&self, compress: ArkCompress) -> usize {
+        let compress = if matches!(compress, ArkCompress::Yes) {
+            Compress::Yes
+        } else {
+            Compress::No
+        };
+        DorySerialize::serialized_size(self, compress)
+    }
+}
+
+impl<E: PairingCurve> CanonicalDeserialize for HintMap<E> {
+    fn deserialize_with_mode<R: ArkRead>(
+        reader: R,
+        compress: ArkCompress,
+        validate: ArkValidate,
+    ) -> Result<Self, ArkSerializationError> {
+        let compress = if matches!(compress, ArkCompress::Yes) {
+            Compress::Yes
+        } else {
+            Compress::No
+        };
+        let validate = if matches!(validate, ArkValidate::Yes) {
+            Validate::Yes
+        } else {
+            Validate::No
+        };
+        DoryDeserialize::deserialize_with_mode(reader, compress, validate).map_err(|e| {
+            ArkSerializationError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("HintMap deserialization failed: {:?}", e),
+            ))
+        })
+    }
+}
+
+impl<E: PairingCurve> ArkValid for HintMap<E> {
+    fn check(&self) -> Result<(), ArkSerializationError> {
+        Ok(())
     }
 }
