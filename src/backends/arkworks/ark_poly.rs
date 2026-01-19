@@ -4,7 +4,9 @@
 
 use super::ark_field::ArkFr;
 use crate::error::DoryError;
-use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
+use crate::primitives::arithmetic::{
+    CompressedPairingCurve, DoryRoutines, Field, Group, PairingCurve,
+};
 use crate::primitives::poly::{MultilinearLagrange, Polynomial};
 use crate::setup::ProverSetup;
 
@@ -90,6 +92,48 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
         // Tier 2: Compute final commitment via multi-pairing (g2_bases from setup)
         let g2_bases = &setup.g2_vec[..num_rows];
         let commitment = E::multi_pair_g2_setup(&row_commitments, g2_bases);
+
+        Ok((commitment, row_commitments))
+    }
+
+    #[tracing::instrument(skip_all, name = "ArkworksPolynomial::commit_compressed", fields(nu, sigma, num_rows = 1 << nu, num_cols = 1 << sigma))]
+    fn commit_compressed<E, M1>(
+        &self,
+        nu: usize,
+        sigma: usize,
+        setup: &ProverSetup<E>,
+    ) -> Result<(E::CompressedGT, Vec<E::G1>), DoryError>
+    where
+        E: CompressedPairingCurve,
+        M1: DoryRoutines<E::G1>,
+        E::G1: Group<Scalar = ArkFr>,
+    {
+        let expected_len = 1 << (nu + sigma);
+        if self.coefficients.len() != expected_len {
+            return Err(DoryError::InvalidSize {
+                expected: expected_len,
+                actual: self.coefficients.len(),
+            });
+        }
+
+        let num_rows = 1 << nu;
+        let num_cols = 1 << sigma;
+
+        // Tier 1: Compute row commitments
+        let mut row_commitments = Vec::with_capacity(num_rows);
+        for i in 0..num_rows {
+            let row_start = i * num_cols;
+            let row_end = row_start + num_cols;
+            let row = &self.coefficients[row_start..row_end];
+
+            let g1_bases = &setup.g1_vec[..num_cols];
+            let row_commit = M1::msm(g1_bases, row);
+            row_commitments.push(row_commit);
+        }
+
+        // Tier 2: Compute final commitment via multi-pairing (g2_bases from setup)
+        let g2_bases = &setup.g2_vec[..num_rows];
+        let commitment = E::multi_pair_g2_setup_compressed(&row_commitments, g2_bases);
 
         Ok((commitment, row_commitments))
     }

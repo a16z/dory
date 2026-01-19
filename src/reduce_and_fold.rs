@@ -10,7 +10,9 @@
 
 use crate::error::DoryError;
 use crate::messages::*;
-use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
+use crate::primitives::arithmetic::{
+    CompressedPairingCurve, DoryRoutines, Field, Group, PairingCurve,
+};
 use crate::setup::{ProverSetup, VerifierSetup};
 
 /// Prover state for the Dory opening protocol
@@ -193,6 +195,74 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         }
     }
 
+    /// Compute first reduce message for current round
+    /// Same as compute_first_message, but the result is compressed.
+    ///
+    /// Computes D1L, D1R, D2L, D2R, E1β, E2β based on current state.
+    #[tracing::instrument(skip_all, name = "DoryProverState::compute_first_message_compressed")]
+    pub fn compute_first_message_compressed<M1, M2>(
+        &self,
+    ) -> FirstReduceMessage<E::G1, E::G2, E::CompressedGT>
+    where
+        E: CompressedPairingCurve,
+        M1: DoryRoutines<E::G1>,
+        M2: DoryRoutines<E::G2>,
+        E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
+    {
+        assert!(
+            self.num_rounds > 0,
+            "Not enough rounds left in prover state"
+        );
+
+        let n2 = 1 << (self.num_rounds - 1); // n/2
+
+        // Split vectors into left and right halves
+        let (v1_l, v1_r) = self.v1.split_at(n2);
+        let (v2_l, v2_r) = self.v2.split_at(n2);
+
+        // Get collapsed generator vectors of length n/2
+        let g1_prime = &self.setup.g1_vec[..n2];
+        let g2_prime = &self.setup.g2_vec[..n2];
+
+        // Compute D values: multi-pairings between v-vectors and generators
+        // D₁L = ⟨v₁L, Γ₂'⟩, D₁R = ⟨v₁R, Γ₂'⟩ - g2_prime is from setup, use cached version
+        let d1_left = E::multi_pair_g2_setup_compressed(v1_l, g2_prime);
+        let d1_right = E::multi_pair_g2_setup_compressed(v1_r, g2_prime);
+
+        // D₂L = ⟨Γ₁', v₂L⟩, D₂R = ⟨Γ₁', v₂R⟩
+        // If v2 was constructed as h2 * scalars (first round), compute MSM(Γ₁', scalars) then one pairing.
+        let (d2_left, d2_right) = if let Some(scalars) = self.v2_scalars.as_ref() {
+            let (s_l, s_r) = scalars.split_at(n2);
+            let sum_left = M1::msm(g1_prime, s_l);
+            let sum_right = M1::msm(g1_prime, s_r);
+            (
+                E::pair_compressed(&sum_left, &self.setup.h2),
+                E::pair_compressed(&sum_right, &self.setup.h2),
+            )
+        } else {
+            (
+                E::multi_pair_g1_setup_compressed(g1_prime, v2_l),
+                E::multi_pair_g1_setup_compressed(g1_prime, v2_r),
+            )
+        };
+
+        // Compute E values for extended protocol: MSMs with scalar vectors
+        // E₁β = ⟨Γ₁, s₂⟩
+        let e1_beta = M1::msm(&self.setup.g1_vec[..1 << self.num_rounds], &self.s2[..]);
+
+        // E₂β = ⟨Γ₂, s₁⟩
+        let e2_beta = M2::msm(&self.setup.g2_vec[..1 << self.num_rounds], &self.s1[..]);
+
+        FirstReduceMessage {
+            d1_left,
+            d1_right,
+            d2_left,
+            d2_right,
+            e1_beta,
+            e2_beta,
+        }
+    }
+
     /// Apply first challenge (beta) and combine vectors
     ///
     /// Updates the state by combining with generators scaled by beta.
@@ -241,6 +311,54 @@ impl<'a, E: PairingCurve> DoryProverState<'a, E> {
         let c_plus = E::multi_pair(v1_l, v2_r);
         // C₋ = ⟨v₁R, v₂L⟩
         let c_minus = E::multi_pair(v1_r, v2_l);
+
+        // Compute E terms for extended protocol: cross products with scalars
+        // E₁₊ = ⟨v₁L, s₂R⟩
+        let e1_plus = M1::msm(v1_l, s2_r);
+        // E₁₋ = ⟨v₁R, s₂L⟩
+        let e1_minus = M1::msm(v1_r, s2_l);
+        // E₂₊ = ⟨s₁L, v₂R⟩
+        let e2_plus = M2::msm(v2_r, s1_l);
+        // E₂₋ = ⟨s₁R, v₂L⟩
+        let e2_minus = M2::msm(v2_l, s1_r);
+
+        SecondReduceMessage {
+            c_plus,
+            c_minus,
+            e1_plus,
+            e1_minus,
+            e2_plus,
+            e2_minus,
+        }
+    }
+
+    /// Compute second reduce message for current round
+    /// Same as compute_second_message, but the result is compressed.
+    ///
+    /// Computes C+, C-, E1+, E1-, E2+, E2- based on current state.
+    #[tracing::instrument(skip_all, name = "DoryProverState::compute_second_message_compressed")]
+    pub fn compute_second_message_compressed<M1, M2>(
+        &self,
+    ) -> SecondReduceMessage<E::G1, E::G2, E::CompressedGT>
+    where
+        E: CompressedPairingCurve,
+        M1: DoryRoutines<E::G1>,
+        M2: DoryRoutines<E::G2>,
+        E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
+    {
+        let n2 = 1 << (self.num_rounds - 1); // n/2
+
+        // Split all vectors into left and right halves
+        let (v1_l, v1_r) = self.v1.split_at(n2);
+        let (v2_l, v2_r) = self.v2.split_at(n2);
+        let (s1_l, s1_r) = self.s1.split_at(n2);
+        let (s2_l, s2_r) = self.s2.split_at(n2);
+
+        // Compute C terms: cross products of v-vectors
+        // C₊ = ⟨v₁L, v₂R⟩
+        let c_plus = E::multi_pair_compressed(v1_l, v2_r);
+        // C₋ = ⟨v₁R, v₂L⟩
+        let c_minus = E::multi_pair_compressed(v1_r, v2_l);
 
         // Compute E terms for extended protocol: cross products with scalars
         // E₁₊ = ⟨v₁L, s₂R⟩

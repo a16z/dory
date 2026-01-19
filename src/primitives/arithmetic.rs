@@ -36,6 +36,11 @@ pub trait Field:
     fn from_i64(val: i64) -> Self;
 }
 
+pub trait DoryElement:
+    Sized + Clone + Copy + PartialEq + Send + Sync + DorySerialize + DoryDeserialize + Default
+{
+}
+
 pub trait Group:
     Sized
     + Clone
@@ -61,6 +66,54 @@ pub trait Group:
     fn scale(&self, k: &Self::Scalar) -> Self;
 
     fn random<R: RngCore>(rng: &mut R) -> Self;
+}
+
+pub trait CompressedPairingCurve: PairingCurve {
+    type CompressedGT: DoryElement;
+
+    fn pair_compressed(p: &Self::G1, q: &Self::G2) -> Self::CompressedGT {
+        Self::multi_pair_compressed(std::slice::from_ref(p), std::slice::from_ref(q))
+    }
+
+    fn multi_pair_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT;
+
+    /// Optimized multi-pairing when G2 points come from setup/generators
+    ///
+    /// This variant should be used when the G2 points are from the prover setup
+    /// (e.g., g2_vec generators). Backend implementations can optimize this by
+    /// caching prepared G2 points.
+    ///
+    /// # Parameters
+    /// - `ps`: G1 points (typically computed values like row commitments or v-vectors)
+    /// - `qs`: G2 points from setup (e.g., `setup.g2_vec[..n]`)
+    ///
+    /// # Returns
+    /// Product of pairings: Π e(p_i, q_i)
+    ///
+    /// # Default Implementation
+    /// Delegates to `multi_pair`
+    fn multi_pair_g2_setup_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
+        Self::multi_pair_compressed(ps, qs)
+    }
+
+    /// Optimized multi-pairing when G1 points are from the prover setup.
+    ///
+    /// This variant should be used when the G1 points are from the prover setup
+    /// (e.g., g1_vec generators). Backend implementations can optimize this by
+    /// caching prepared G1 points.
+    ///
+    /// # Parameters
+    /// - `ps`: G1 points from setup (e.g., `setup.g1_vec[..n]`)
+    /// - `qs`: G2 points (typically computed values like v-vectors)
+    ///
+    /// # Returns
+    /// Product of pairings: Π e(p_i, q_i)
+    ///
+    /// # Default Implementation
+    /// Delegates to `multi_pair`
+    fn multi_pair_g1_setup_compressed(ps: &[Self::G1], qs: &[Self::G2]) -> Self::CompressedGT {
+        Self::multi_pair_compressed(ps, qs)
+    }
 }
 
 pub trait PairingCurve: Clone {

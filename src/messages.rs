@@ -64,3 +64,45 @@ pub struct ScalarProductMessage<G1, G2> {
     /// E₂ - final G2 element
     pub e2: G2,
 }
+
+impl<G1, G2, GT> FirstReduceMessage<G1, G2, GT> {
+    /// Generate a FirstReduceMessage
+    ///
+    /// This function converts the FirstReduceMessage to a different GT type and is currently used for compression.
+    pub fn convert_gt<GT2>(&self) -> FirstReduceMessage<G1, G2, GT2>
+    where
+        GT: Into<GT2> + Clone,
+        G1: Clone,
+        G2: Clone,
+    {
+        FirstReduceMessage {
+            d1_left: self.d1_left.clone().into(),
+            d1_right: self.d1_right.clone().into(),
+            d2_left: self.d2_left.clone().into(),
+            d2_right: self.d2_right.clone().into(),
+            e1_beta: self.e1_beta.clone(),
+            e2_beta: self.e2_beta.clone(),
+        }
+    }
+}
+
+impl<G1, G2, GT> SecondReduceMessage<G1, G2, GT> {
+    /// Generate a SecondReduceMessage
+    ///
+    /// This function converts the SecondReduceMessage to a different GT type and is currently used for compression.
+    pub fn convert_gt<GT2>(&self) -> SecondReduceMessage<G1, G2, GT2>
+    where
+        GT: Into<GT2> + Clone,
+        G1: Clone,
+        G2: Clone,
+    {
+        SecondReduceMessage {
+            c_plus: self.c_plus.clone().into(),
+            c_minus: self.c_minus.clone().into(),
+            e1_plus: self.e1_plus.clone(),
+            e1_minus: self.e1_minus.clone(),
+            e2_plus: self.e2_plus.clone(),
+            e2_minus: self.e2_minus.clone(),
+        }
+    }
+}

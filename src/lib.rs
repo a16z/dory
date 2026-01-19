@@ -110,6 +110,8 @@ pub use proof::DoryProof;
 pub use reduce_and_fold::{DoryProverState, DoryVerifierState};
 pub use setup::{ProverSetup, VerifierSetup};
 
+use crate::primitives::arithmetic::CompressedPairingCurve;
+
 /// Generate or load prover and verifier setups from disk
 ///
 /// Creates or loads the transparent setup parameters for Dory PCS.
@@ -293,6 +295,77 @@ where
     )
 }
 
+/// Evaluate a polynomial at a point and create compressed proof
+///
+/// Creates an evaluation proof for a polynomial at a given point using precomputed
+/// tier-1 commitments (row commitments).
+///
+/// # Workflow
+/// 1. Call `polynomial.commit(nu, sigma, setup)` to get `(tier_2, row_commitments)`
+/// 2. Call this function with the `row_commitments` to create the proof
+/// 3. Use `tier_2` for verification via the `verify()` function
+///
+/// # Parameters
+/// - `polynomial`: Polynomial implementing MultilinearLagrange trait
+/// - `point`: Evaluation point (length must equal nu + sigma)
+/// - `row_commitments`: Tier-1 commitments (row commitments in G1) from `polynomial.commit()`
+/// - `nu`: Log₂ of number of rows (constraint: nu ≤ sigma for non-square matrices)
+/// - `sigma`: Log₂ of number of columns
+/// - `setup`: Prover setup
+/// - `transcript`: Fiat-Shamir transcript
+///
+/// # Returns
+/// The evaluation proof containing VMV message, reduce messages, and final message
+///
+/// # Homomorphic Properties
+/// Proofs can be created for homomorphically combined polynomials. If you have
+/// commitments Com(P₁), Com(P₂), ..., Com(Pₙ) and want to prove evaluation of
+/// r₁·P₁ + r₂·P₂ + ... + rₙ·Pₙ, you can:
+/// 1. Combine tier-2 commitments: r₁·Com(P₁) + r₂·Com(P₂) + ... + rₙ·Com(Pₙ)
+/// 2. Combine tier-1 commitments element-wise
+/// 3. Generate proof using this function with the combined polynomial
+///
+/// See `examples/homomorphic.rs` for a complete demonstration.
+///
+/// # Errors
+/// Returns `DoryError` if:
+/// - Point dimension doesn't match nu + sigma
+/// - Polynomial size doesn't match 2^(nu + sigma)
+/// - Number of row commitments doesn't match 2^nu
+#[allow(clippy::type_complexity)]
+#[tracing::instrument(skip_all, name = "prove")]
+pub fn prove_compressed<F, E, M1, M2, P, T>(
+    polynomial: &P,
+    point: &[F],
+    row_commitments: Vec<E::G1>,
+    nu: usize,
+    sigma: usize,
+    setup: &ProverSetup<E>,
+    transcript: &mut T,
+) -> Result<DoryProof<E::G1, E::G2, E::CompressedGT>, DoryError>
+where
+    F: Field,
+    E: CompressedPairingCurve,
+    E::G1: Group<Scalar = F>,
+    E::G2: Group<Scalar = F>,
+    E::GT: Group<Scalar = F>,
+    M1: DoryRoutines<E::G1>,
+    M2: DoryRoutines<E::G2>,
+    P: MultilinearLagrange<F>,
+    T: primitives::transcript::Transcript<Curve = E>,
+{
+    // Create evaluation proof using row_commitments
+    evaluation_proof::create_evaluation_proof_compressed::<F, E, M1, M2, T, P>(
+        polynomial,
+        point,
+        Some(row_commitments),
+        nu,
+        sigma,
+        setup,
+        transcript,
+    )
+}
+
 /// Verify an evaluation proof
 ///
 /// Verifies that a committed polynomial evaluates to the claimed value at the given point.
@@ -335,6 +408,53 @@ where
     T: primitives::transcript::Transcript<Curve = E>,
 {
     evaluation_proof::verify_evaluation_proof::<F, E, M1, M2, T>(
+        commitment, evaluation, point, proof, setup, transcript,
+    )
+}
+
+/// Verify a compressed evaluation proof
+///
+/// Verifies that a committed polynomial evaluates to the claimed value at the given point.
+/// The matrix dimensions (nu, sigma) are extracted from the proof.
+///
+/// Works with both square and non-square matrix layouts (nu ≤ sigma), and can verify
+/// proofs for homomorphically combined polynomials.
+///
+/// # Parameters
+/// - `commitment`: Polynomial commitment (in GT) - can be a combined commitment for homomorphic proofs
+/// - `evaluation`: Claimed evaluation result
+/// - `point`: Evaluation point (length must equal proof.nu + proof.sigma)
+/// - `proof`: Evaluation proof to verify (contains nu and sigma)
+/// - `setup`: Verifier setup
+/// - `transcript`: Fiat-Shamir transcript
+///
+/// # Returns
+/// `Ok(())` if proof is valid, `Err(DoryError)` otherwise
+///
+/// # Errors
+/// Returns `DoryError::InvalidProof` if the proof is invalid, or other variants
+/// if the input parameters are incorrect (e.g., point dimension mismatch).
+#[tracing::instrument(skip_all, name = "verify")]
+pub fn verify_compressed<F, E, M1, M2, T>(
+    commitment: E::CompressedGT,
+    evaluation: F,
+    point: &[F],
+    proof: &DoryProof<E::G1, E::G2, E::CompressedGT>,
+    setup: VerifierSetup<E>,
+    transcript: &mut T,
+) -> Result<(), DoryError>
+where
+    F: Field,
+    E: CompressedPairingCurve + Clone,
+    E::G1: Group<Scalar = F>,
+    E::G2: Group<Scalar = F>,
+    E::GT: Group<Scalar = F>,
+    M1: DoryRoutines<E::G1>,
+    M2: DoryRoutines<E::G2>,
+    T: primitives::transcript::Transcript<Curve = E>,
+    E::CompressedGT: Into<E::GT>,
+{
+    evaluation_proof::verify_evaluation_proof_compressed::<F, E, M1, M2, T>(
         commitment, evaluation, point, proof, setup, transcript,
     )
 }
