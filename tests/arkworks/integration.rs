@@ -3,7 +3,7 @@
 use super::*;
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{prove, setup, verify};
+use dory_pcs::{prove, setup, verify, Transparent};
 
 #[test]
 fn test_full_workflow() {
@@ -24,7 +24,7 @@ fn test_full_workflow() {
     let expected_evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -32,6 +32,7 @@ fn test_full_workflow() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
@@ -67,7 +68,7 @@ fn test_workflow_without_precommitment() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -75,6 +76,7 @@ fn test_workflow_without_precommitment() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
@@ -109,7 +111,7 @@ fn test_batched_proofs() {
         let point = random_point(8);
 
         let mut prover_transcript = Blake2bTranscript::new(format!("test-{}", i).as_bytes());
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1.clone(),
@@ -117,6 +119,7 @@ fn test_batched_proofs() {
             sigma,
             &prover_setup,
             &mut prover_transcript,
+            &mut rng,
         )
         .unwrap();
         let evaluation = poly.evaluate(&point);
@@ -162,7 +165,7 @@ fn test_linear_polynomial() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -170,6 +173,7 @@ fn test_linear_polynomial() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
 
@@ -206,7 +210,7 @@ fn test_zero_polynomial() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -214,6 +218,7 @@ fn test_zero_polynomial() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
 
@@ -254,7 +259,7 @@ fn test_soundness_wrong_commitment() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly2,
         &point,
         tier_1_poly2,
@@ -262,6 +267,7 @@ fn test_soundness_wrong_commitment() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
     let evaluation = poly2.evaluate(&point);

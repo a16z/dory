@@ -92,6 +92,7 @@
 pub mod error;
 pub mod evaluation_proof;
 pub mod messages;
+pub mod mode;
 pub mod primitives;
 pub mod proof;
 pub mod reduce_and_fold;
@@ -102,11 +103,20 @@ pub mod backends;
 
 pub use error::DoryError;
 pub use evaluation_proof::create_evaluation_proof;
+#[cfg(feature = "zk")]
+pub use evaluation_proof::{create_zk_evaluation_proof, verify_zk_evaluation_proof};
 pub use messages::{FirstReduceMessage, ScalarProductMessage, SecondReduceMessage, VMVMessage};
+#[cfg(feature = "zk")]
+pub use messages::{ScalarProductProof, Sigma1Proof, Sigma2Proof, ZkVMVMessage};
+#[cfg(feature = "zk")]
+pub use mode::ZK;
+pub use mode::{Mode, Transparent};
 use primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 pub use primitives::poly::{MultilinearLagrange, Polynomial};
 use primitives::serialization::{DoryDeserialize, DorySerialize};
 pub use proof::DoryProof;
+#[cfg(feature = "zk")]
+pub use proof::ZkDoryProof;
 pub use reduce_and_fold::{DoryProverState, DoryVerifierState};
 pub use setup::{ProverSetup, VerifierSetup};
 
@@ -260,8 +270,9 @@ where
 /// - Polynomial size doesn't match 2^(nu + sigma)
 /// - Number of row commitments doesn't match 2^nu
 #[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 #[tracing::instrument(skip_all, name = "prove")]
-pub fn prove<F, E, M1, M2, P, T>(
+pub fn prove<F, E, M1, M2, P, T, Mo, R>(
     polynomial: &P,
     point: &[F],
     row_commitments: Vec<E::G1>,
@@ -269,6 +280,7 @@ pub fn prove<F, E, M1, M2, P, T>(
     sigma: usize,
     setup: &ProverSetup<E>,
     transcript: &mut T,
+    rng: &mut R,
 ) -> Result<DoryProof<E::G1, E::G2, E::GT>, DoryError>
 where
     F: Field,
@@ -280,9 +292,11 @@ where
     M2: DoryRoutines<E::G2>,
     P: MultilinearLagrange<F>,
     T: primitives::transcript::Transcript<Curve = E>,
+    Mo: Mode,
+    R: rand_core::RngCore,
 {
     // Create evaluation proof using row_commitments
-    evaluation_proof::create_evaluation_proof::<F, E, M1, M2, T, P>(
+    evaluation_proof::create_evaluation_proof::<F, E, M1, M2, T, P, Mo, R>(
         polynomial,
         point,
         Some(row_commitments),
@@ -290,6 +304,7 @@ where
         sigma,
         setup,
         transcript,
+        rng,
     )
 }
 

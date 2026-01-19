@@ -422,6 +422,8 @@ impl CanonicalDeserialize for ArkDoryProof {
             first_messages,
             second_messages,
             final_message,
+            #[cfg(feature = "zk")]
+            scalar_product_proof: None,
             nu,
             sigma,
         })

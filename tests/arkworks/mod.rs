@@ -18,6 +18,10 @@ pub mod integration;
 pub mod non_square;
 pub mod setup;
 pub mod soundness;
+#[cfg(feature = "zk")]
+pub mod zk;
+#[cfg(feature = "zk")]
+pub mod zk_statistical;
 
 pub fn random_polynomial(size: usize) -> ArkworksPolynomial {
     let mut rng = thread_rng();

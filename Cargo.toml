@@ -33,6 +33,7 @@ all-features = true
 
 [features]
 default = []
+zk = []
 backends = ["arkworks", "disk-persistence"]
 arkworks = [
     "dep:ark-bn254",

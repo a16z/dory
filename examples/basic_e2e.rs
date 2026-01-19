@@ -13,7 +13,7 @@ use dory_pcs::backends::arkworks::{
 };
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{prove, setup, verify};
+use dory_pcs::{prove, setup, verify, Transparent};
 use rand::thread_rng;
 use tracing::info;
 
@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 5: Prove
     info!("5. Generating evaluation proof...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-basic-example");
-    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _>(
+    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -74,6 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )?;
     info!("   ✓ Proof generated (logarithmic size)\n");
 
