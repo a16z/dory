@@ -4,7 +4,7 @@ use super::*;
 use dory_pcs::backends::arkworks::ArkG1;
 use dory_pcs::primitives::arithmetic::{Field, Group};
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{prove, setup, verify};
+use dory_pcs::{prove, setup, verify, Transparent};
 
 #[test]
 fn test_homomorphic_combination_e2e() {
@@ -87,7 +87,7 @@ fn test_homomorphic_combination_e2e() {
 
     // Create evaluation proof using combined commitment
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -95,6 +95,7 @@ fn test_homomorphic_combination_e2e() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
 
@@ -177,7 +178,7 @@ fn test_homomorphic_combination_small() {
     let evaluation = combined_poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -185,6 +186,7 @@ fn test_homomorphic_combination_small() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
 

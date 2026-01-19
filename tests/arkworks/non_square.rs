@@ -2,7 +2,7 @@
 
 use super::*;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{prove, setup, verify};
+use dory_pcs::{prove, setup, verify, Transparent};
 
 #[test]
 fn test_non_square_matrix_nu_eq_sigma_minus_1() {
@@ -23,7 +23,7 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -31,6 +31,7 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .expect("Proof generation should succeed");
 
@@ -68,7 +69,7 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let proof_result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof_result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -76,6 +77,7 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     );
 
     assert!(
@@ -103,7 +105,7 @@ fn test_non_square_matrix_small() {
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -111,6 +113,7 @@ fn test_non_square_matrix_small() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .expect("Proof generation should succeed");
 
@@ -152,7 +155,7 @@ fn test_non_square_matrix_very_rectangular() {
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -160,6 +163,7 @@ fn test_non_square_matrix_very_rectangular() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .expect("Proof generation should succeed");
 
