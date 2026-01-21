@@ -71,3 +71,5 @@ jobs:
         run: cargo run --example homomorphic --features backends
       - name: Run non_square example
         run: cargo run --example non_square --features backends
+      - name: Run homomorphic_mixed_sizes example
+        run: cargo run --example homomorphic_mixed_sizes --features backends
