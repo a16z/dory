@@ -1,10 +1,11 @@
-//! Integration tests for recursion feature (witness generation and hint-based verification)
+//! Integration tests for recursion feature (witness generation, hint-based verification, AST generation)
 
 use std::rc::Rc;
 
 use super::*;
 use dory_pcs::backends::arkworks::{SimpleWitnessBackend, SimpleWitnessGenerator};
 use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::recursion::ast::ValueType;
 use dory_pcs::recursion::TraceContext;
 use dory_pcs::{prove, setup, verify_recursive};
 
@@ -311,5 +312,256 @@ fn test_hint_map_size_reduction() {
         hints.len(),
         total_ops,
         "HintMap should have one entry per operation"
+    );
+}
+
+#[test]
+fn test_ast_generation() {
+    let mut rng = rand::thread_rng();
+    let max_log_n = 6;
+
+    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+
+    let poly = random_polynomial(16);
+    let nu = 2;
+    let sigma = 2;
+
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
+    let point = random_point(4);
+
+    let mut prover_transcript = fresh_transcript();
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        &poly,
+        &point,
+        tier_1,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
+    let evaluation = poly.evaluate(&point);
+
+    // Create context with AST generation enabled
+    let ctx = Rc::new(TestCtx::for_witness_gen_with_ast());
+    let mut witness_transcript = fresh_transcript();
+
+    verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+        tier_2,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut witness_transcript,
+        ctx.clone(),
+    )
+    .expect("Verification should succeed");
+
+    // Extract and validate the AST
+    let ctx_owned = Rc::try_unwrap(ctx)
+        .ok()
+        .expect("Should have sole ownership");
+    let ast_graph = ctx_owned.take_ast().expect("Should have AST");
+
+    // Validate the AST structure
+    let result = ast_graph.validate();
+    assert!(result.is_ok(), "AST validation failed: {:?}", result.err());
+
+    // Check that the AST has meaningful content
+    assert!(
+        !ast_graph.nodes.is_empty(),
+        "AST should have nodes after verification"
+    );
+
+    // Count node types
+    let mut g1_count = 0usize;
+    let mut g2_count = 0usize;
+    let mut gt_count = 0usize;
+    let mut input_count = 0usize;
+
+    for node in &ast_graph.nodes {
+        match node.out_ty {
+            ValueType::G1 => g1_count += 1,
+            ValueType::G2 => g2_count += 1,
+            ValueType::GT => gt_count += 1,
+        }
+        if matches!(node.op, dory_pcs::recursion::ast::AstOp::Input { .. }) {
+            input_count += 1;
+        }
+    }
+
+    println!("\n========== AST GENERATION RESULTS ==========");
+    println!("Total nodes: {}", ast_graph.nodes.len());
+    println!("  G1 nodes: {}", g1_count);
+    println!("  G2 nodes: {}", g2_count);
+    println!("  GT nodes: {}", gt_count);
+    println!("  Input nodes: {}", input_count);
+    println!("\n--- First 30 AST Nodes ---");
+    for (i, node) in ast_graph.nodes.iter().take(30).enumerate() {
+        let op_str = match &node.op {
+            dory_pcs::recursion::ast::AstOp::Input { source } => format!("Input({:?})", source),
+            dory_pcs::recursion::ast::AstOp::G1Add { a, b } => format!("G1Add({}, {})", a.0, b.0),
+            dory_pcs::recursion::ast::AstOp::G1Neg { a } => format!("G1Neg({})", a.0),
+            dory_pcs::recursion::ast::AstOp::G1ScalarMul { point, scalar, .. } => {
+                let name = scalar.name.unwrap_or("anon");
+                format!("G1ScalarMul({}, scalar={})", point.0, name)
+            }
+            dory_pcs::recursion::ast::AstOp::G2Add { a, b } => format!("G2Add({}, {})", a.0, b.0),
+            dory_pcs::recursion::ast::AstOp::G2Neg { a } => format!("G2Neg({})", a.0),
+            dory_pcs::recursion::ast::AstOp::G2ScalarMul { point, scalar, .. } => {
+                let name = scalar.name.unwrap_or("anon");
+                format!("G2ScalarMul({}, scalar={})", point.0, name)
+            }
+            dory_pcs::recursion::ast::AstOp::GTMul { lhs, rhs, .. } => format!("GTMul({}, {})", lhs.0, rhs.0),
+            dory_pcs::recursion::ast::AstOp::GTExp { base, scalar, .. } => {
+                let name = scalar.name.unwrap_or("anon");
+                format!("GTExp({}, scalar={})", base.0, name)
+            }
+            dory_pcs::recursion::ast::AstOp::GTNeg { a } => format!("GTNeg({})", a.0),
+            dory_pcs::recursion::ast::AstOp::Pairing { g1, g2, .. } => format!("Pairing({}, {})", g1.0, g2.0),
+            dory_pcs::recursion::ast::AstOp::MultiPairing { g1s, g2s, .. } => {
+                format!("MultiPairing(g1s={:?}, g2s={:?})", 
+                    g1s.iter().map(|v| v.0).collect::<Vec<_>>(),
+                    g2s.iter().map(|v| v.0).collect::<Vec<_>>())
+            }
+            dory_pcs::recursion::ast::AstOp::MsmG1 { points, scalars, .. } => {
+                format!("MsmG1(points={:?}, {} scalars)", 
+                    points.iter().map(|v| v.0).collect::<Vec<_>>(), scalars.len())
+            }
+            dory_pcs::recursion::ast::AstOp::MsmG2 { points, scalars, .. } => {
+                format!("MsmG2(points={:?}, {} scalars)", 
+                    points.iter().map(|v| v.0).collect::<Vec<_>>(), scalars.len())
+            }
+        };
+        println!("[{:3}] {:?} -> {} = {}", i, node.out_ty, node.out.0, op_str);
+    }
+    if ast_graph.nodes.len() > 30 {
+        println!("... ({} nodes in middle) ...", ast_graph.nodes.len() - 40);
+        println!("\n--- Last 10 AST Nodes ---");
+        let start = ast_graph.nodes.len().saturating_sub(10);
+        for (i, node) in ast_graph.nodes.iter().skip(start).enumerate() {
+            let idx = start + i;
+            let op_str = match &node.op {
+                dory_pcs::recursion::ast::AstOp::Input { source } => format!("Input({:?})", source),
+                dory_pcs::recursion::ast::AstOp::G1Add { a, b } => format!("G1Add({}, {})", a.0, b.0),
+                dory_pcs::recursion::ast::AstOp::G1Neg { a } => format!("G1Neg({})", a.0),
+                dory_pcs::recursion::ast::AstOp::G1ScalarMul { point, scalar, .. } => {
+                    let name = scalar.name.unwrap_or("anon");
+                    format!("G1ScalarMul({}, scalar={})", point.0, name)
+                }
+                dory_pcs::recursion::ast::AstOp::G2Add { a, b } => format!("G2Add({}, {})", a.0, b.0),
+                dory_pcs::recursion::ast::AstOp::G2Neg { a } => format!("G2Neg({})", a.0),
+                dory_pcs::recursion::ast::AstOp::G2ScalarMul { point, scalar, .. } => {
+                    let name = scalar.name.unwrap_or("anon");
+                    format!("G2ScalarMul({}, scalar={})", point.0, name)
+                }
+                dory_pcs::recursion::ast::AstOp::GTMul { lhs, rhs, .. } => format!("GTMul({}, {})", lhs.0, rhs.0),
+                dory_pcs::recursion::ast::AstOp::GTExp { base, scalar, .. } => {
+                    let name = scalar.name.unwrap_or("anon");
+                    format!("GTExp({}, scalar={})", base.0, name)
+                }
+                dory_pcs::recursion::ast::AstOp::GTNeg { a } => format!("GTNeg({})", a.0),
+                dory_pcs::recursion::ast::AstOp::Pairing { g1, g2, .. } => format!("Pairing({}, {})", g1.0, g2.0),
+                dory_pcs::recursion::ast::AstOp::MultiPairing { g1s, g2s, .. } => {
+                    format!("MultiPairing(g1s={:?}, g2s={:?})", 
+                        g1s.iter().map(|v| v.0).collect::<Vec<_>>(),
+                        g2s.iter().map(|v| v.0).collect::<Vec<_>>())
+                }
+                dory_pcs::recursion::ast::AstOp::MsmG1 { points, scalars, .. } => {
+                    format!("MsmG1(points={:?}, {} scalars)", 
+                        points.iter().map(|v| v.0).collect::<Vec<_>>(), scalars.len())
+                }
+                dory_pcs::recursion::ast::AstOp::MsmG2 { points, scalars, .. } => {
+                    format!("MsmG2(points={:?}, {} scalars)", 
+                        points.iter().map(|v| v.0).collect::<Vec<_>>(), scalars.len())
+                }
+            };
+            println!("[{:3}] {:?} -> {} = {}", idx, node.out_ty, node.out.0, op_str);
+        }
+    }
+    println!("=============================================\n");
+
+    // We expect nodes of each type given the verification process
+    assert!(gt_count > 0, "Should have GT nodes for GT exponentiation and multiplication");
+    assert!(input_count > 0, "Should have input nodes for setup and proof elements");
+}
+
+#[test]
+fn test_ast_input_interning() {
+    let mut rng = rand::thread_rng();
+    let max_log_n = 6;
+
+    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+
+    let poly = random_polynomial(16);
+    let nu = 2;
+    let sigma = 2;
+
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
+    let point = random_point(4);
+
+    let mut prover_transcript = fresh_transcript();
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        &poly,
+        &point,
+        tier_1,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
+    let evaluation = poly.evaluate(&point);
+
+    // Run verification with AST
+    let ctx = Rc::new(TestCtx::for_witness_gen_with_ast());
+    let mut witness_transcript = fresh_transcript();
+
+    verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+        tier_2,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut witness_transcript,
+        ctx.clone(),
+    )
+    .expect("Verification should succeed");
+
+    let ctx_owned = Rc::try_unwrap(ctx)
+        .ok()
+        .expect("Should have sole ownership");
+    let ast_graph = ctx_owned.take_ast().expect("Should have AST");
+
+    // Check interning: count unique input sources
+    use std::collections::HashSet;
+    let mut input_sources = HashSet::new();
+
+    for node in &ast_graph.nodes {
+        if let dory_pcs::recursion::ast::AstOp::Input { ref source } = node.op {
+            input_sources.insert(format!("{:?}", source));
+        }
+    }
+
+    // Each unique input source should appear exactly once due to interning
+    let input_count = ast_graph.nodes.iter()
+        .filter(|n| matches!(n.op, dory_pcs::recursion::ast::AstOp::Input { .. }))
+        .count();
+
+    assert_eq!(
+        input_count,
+        input_sources.len(),
+        "Input interning should deduplicate identical sources"
+    );
+
+    tracing::info!(
+        unique_input_sources = input_sources.len(),
+        "Interned input sources"
     );
 }

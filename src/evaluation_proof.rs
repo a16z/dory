@@ -452,6 +452,7 @@ where
     W: WitnessBackend,
     Gen: WitnessGenerator<W, E>,
 {
+    use crate::recursion::ast::RoundMsg;
     use crate::recursion::{TraceG1, TraceG2, TraceGT, TracePairing};
     use std::rc::Rc;
 
@@ -474,8 +475,9 @@ where
     let pairing = TracePairing::new(Rc::clone(&ctx));
 
     // VMV check pairing: d2 == e(e1, h2)
-    let e1_trace = TraceG1::new(vmv_message.e1, Rc::clone(&ctx));
-    let h2_trace = TraceG2::new(setup.h2, Rc::clone(&ctx));
+    // Intern setup and proof elements for AST tracking
+    let e1_trace = TraceG1::from_proof(vmv_message.e1, Rc::clone(&ctx), "vmv.e1");
+    let h2_trace = TraceG2::from_setup(setup.h2, Rc::clone(&ctx), "h2", None);
     let pairing_check = pairing.pair(&e1_trace, &h2_trace);
 
     if vmv_message.d2 != *pairing_check.inner() {
@@ -492,11 +494,11 @@ where
     let row_coords = &point[sigma..sigma + nu];
     s2_coords[..nu].copy_from_slice(&row_coords[..nu]);
 
-    // Initialize traced verifier state
-    let mut c = TraceGT::new(vmv_message.c, Rc::clone(&ctx));
-    let mut d1 = TraceGT::new(commitment, Rc::clone(&ctx));
-    let mut d2 = TraceGT::new(vmv_message.d2, Rc::clone(&ctx));
-    let mut e1 = TraceG1::new(vmv_message.e1, Rc::clone(&ctx));
+    // Initialize traced verifier state with proper AST tracking
+    let mut c = TraceGT::from_proof(vmv_message.c, Rc::clone(&ctx), "vmv.c");
+    let mut d1 = TraceGT::from_proof(commitment, Rc::clone(&ctx), "commitment");
+    let mut d2 = TraceGT::from_proof(vmv_message.d2, Rc::clone(&ctx), "vmv.d2");
+    let mut e1 = TraceG1::from_proof(vmv_message.e1, Rc::clone(&ctx), "vmv.e1");
     let mut e2_state = e2;
     let mut s1_acc = F::one();
     let mut s2_acc = F::one();
@@ -531,7 +533,8 @@ where
 
         // Update C with traced operations
         let chi = &setup.chi[remaining_rounds];
-        c = c + TraceGT::new(*chi, Rc::clone(&ctx));
+        let chi_trace = TraceGT::from_setup(*chi, Rc::clone(&ctx), "chi", Some(remaining_rounds));
+        c = c + chi_trace;
 
         // d2.scale(beta) - traced GT exp
         let d2_scaled = d2.scale(&beta);
@@ -543,12 +546,12 @@ where
         c = c + d1_scaled;
 
         // c_plus.scale(alpha) - traced GT exp
-        let c_plus_trace = TraceGT::new(second_msg.c_plus, Rc::clone(&ctx));
+        let c_plus_trace = TraceGT::from_proof_round(second_msg.c_plus, Rc::clone(&ctx), round, RoundMsg::Second, "c_plus");
         let c_plus_scaled = c_plus_trace.scale(&alpha);
         c = c + c_plus_scaled;
 
         // c_minus.scale(alpha_inv) - traced GT exp
-        let c_minus_trace = TraceGT::new(second_msg.c_minus, Rc::clone(&ctx));
+        let c_minus_trace = TraceGT::from_proof_round(second_msg.c_minus, Rc::clone(&ctx), round, RoundMsg::Second, "c_minus");
         let c_minus_scaled = c_minus_trace.scale(&alpha_inv);
         c = c + c_minus_scaled;
 
@@ -556,42 +559,44 @@ where
         let delta_1l = &setup.delta_1l[remaining_rounds];
         let delta_1r = &setup.delta_1r[remaining_rounds];
         let alpha_beta = alpha * beta;
-        let d1_left_trace = TraceGT::new(first_msg.d1_left, Rc::clone(&ctx));
+        let d1_left_trace = TraceGT::from_proof_round(first_msg.d1_left, Rc::clone(&ctx), round, RoundMsg::First, "d1_left");
         d1 = d1_left_trace.scale(&alpha);
-        d1 = d1 + TraceGT::new(first_msg.d1_right, Rc::clone(&ctx));
-        let delta_1l_trace = TraceGT::new(*delta_1l, Rc::clone(&ctx));
+        let d1_right_trace = TraceGT::from_proof_round(first_msg.d1_right, Rc::clone(&ctx), round, RoundMsg::First, "d1_right");
+        d1 = d1 + d1_right_trace;
+        let delta_1l_trace = TraceGT::from_setup(*delta_1l, Rc::clone(&ctx), "delta_1l", Some(remaining_rounds));
         d1 = d1 + delta_1l_trace.scale(&alpha_beta);
-        let delta_1r_trace = TraceGT::new(*delta_1r, Rc::clone(&ctx));
+        let delta_1r_trace = TraceGT::from_setup(*delta_1r, Rc::clone(&ctx), "delta_1r", Some(remaining_rounds));
         d1 = d1 + delta_1r_trace.scale(&beta);
 
         // Update D2 (GT operations - traced via scale and add)
         let delta_2l = &setup.delta_2l[remaining_rounds];
         let delta_2r = &setup.delta_2r[remaining_rounds];
         let alpha_inv_beta_inv = alpha_inv * beta_inv;
-        let d2_left_trace = TraceGT::new(first_msg.d2_left, Rc::clone(&ctx));
+        let d2_left_trace = TraceGT::from_proof_round(first_msg.d2_left, Rc::clone(&ctx), round, RoundMsg::First, "d2_left");
         d2 = d2_left_trace.scale(&alpha_inv);
-        d2 = d2 + TraceGT::new(first_msg.d2_right, Rc::clone(&ctx));
-        let delta_2l_trace = TraceGT::new(*delta_2l, Rc::clone(&ctx));
+        let d2_right_trace = TraceGT::from_proof_round(first_msg.d2_right, Rc::clone(&ctx), round, RoundMsg::First, "d2_right");
+        d2 = d2 + d2_right_trace;
+        let delta_2l_trace = TraceGT::from_setup(*delta_2l, Rc::clone(&ctx), "delta_2l", Some(remaining_rounds));
         d2 = d2 + delta_2l_trace.scale(&alpha_inv_beta_inv);
-        let delta_2r_trace = TraceGT::new(*delta_2r, Rc::clone(&ctx));
+        let delta_2r_trace = TraceGT::from_setup(*delta_2r, Rc::clone(&ctx), "delta_2r", Some(remaining_rounds));
         d2 = d2 + delta_2r_trace.scale(&beta_inv);
 
         // Update E1 (G1 operations - traced via scale)
-        let e1_beta_trace = TraceG1::new(first_msg.e1_beta, Rc::clone(&ctx));
+        let e1_beta_trace = TraceG1::from_proof_round(first_msg.e1_beta, Rc::clone(&ctx), round, RoundMsg::First, "e1_beta");
         let e1_beta_scaled = e1_beta_trace.scale(&beta);
         e1 = e1 + e1_beta_scaled;
-        let e1_plus_trace = TraceG1::new(second_msg.e1_plus, Rc::clone(&ctx));
+        let e1_plus_trace = TraceG1::from_proof_round(second_msg.e1_plus, Rc::clone(&ctx), round, RoundMsg::Second, "e1_plus");
         e1 = e1 + e1_plus_trace.scale(&alpha);
-        let e1_minus_trace = TraceG1::new(second_msg.e1_minus, Rc::clone(&ctx));
+        let e1_minus_trace = TraceG1::from_proof_round(second_msg.e1_minus, Rc::clone(&ctx), round, RoundMsg::Second, "e1_minus");
         e1 = e1 + e1_minus_trace.scale(&alpha_inv);
 
         // Update E2 (G2 operations - traced via scale)
-        let e2_beta_trace = TraceG2::new(first_msg.e2_beta, Rc::clone(&ctx));
+        let e2_beta_trace = TraceG2::from_proof_round(first_msg.e2_beta, Rc::clone(&ctx), round, RoundMsg::First, "e2_beta");
         let e2_beta_scaled = e2_beta_trace.scale(&beta_inv);
         e2_state = e2_state + e2_beta_scaled;
-        let e2_plus_trace = TraceG2::new(second_msg.e2_plus, Rc::clone(&ctx));
+        let e2_plus_trace = TraceG2::from_proof_round(second_msg.e2_plus, Rc::clone(&ctx), round, RoundMsg::Second, "e2_plus");
         e2_state = e2_state + e2_plus_trace.scale(&alpha);
-        let e2_minus_trace = TraceG2::new(second_msg.e2_minus, Rc::clone(&ctx));
+        let e2_minus_trace = TraceG2::from_proof_round(second_msg.e2_minus, Rc::clone(&ctx), round, RoundMsg::Second, "e2_minus");
         e2_state = e2_state + e2_minus_trace.scale(&alpha_inv);
 
         // Update scalar accumulators (field ops, not traced)
@@ -617,12 +622,12 @@ where
 
     // Final verification with tracing
     let s_product = s1_acc * s2_acc;
-    let ht_trace = TraceGT::new(setup.ht, Rc::clone(&ctx));
+    let ht_trace = TraceGT::from_setup(setup.ht, Rc::clone(&ctx), "ht", None);
     let ht_scaled = ht_trace.scale(&s_product);
     c = c + ht_scaled;
 
     // Traced pairings
-    let h1_trace = TraceG1::new(setup.h1, Rc::clone(&ctx));
+    let h1_trace = TraceG1::from_setup(setup.h1, Rc::clone(&ctx), "h1", None);
     let pairing_h1_e2 = pairing.pair(&h1_trace, &e2_state);
     let pairing_e1_h2 = pairing.pair(&e1, &h2_trace);
 
@@ -631,7 +636,7 @@ where
 
     // D1 update with traced operations
     let scalar_for_g2_in_d1 = s1_acc * gamma;
-    let g2_0_trace = TraceG2::new(setup.g2_0, Rc::clone(&ctx));
+    let g2_0_trace = TraceG2::from_setup(setup.g2_0, Rc::clone(&ctx), "g2_0", None);
     let g2_0_scaled = g2_0_trace.scale(&scalar_for_g2_in_d1);
 
     let pairing_h1_g2 = pairing.pair(&h1_trace, &g2_0_scaled);
@@ -639,25 +644,26 @@ where
 
     // D2 update with traced operations
     let scalar_for_g1_in_d2 = s2_acc * gamma_inv;
-    let g1_0_trace = TraceG1::new(setup.g1_0, Rc::clone(&ctx));
+    let g1_0_trace = TraceG1::from_setup(setup.g1_0, Rc::clone(&ctx), "g1_0", None);
     let g1_0_scaled = g1_0_trace.scale(&scalar_for_g1_in_d2);
 
     let pairing_g1_h2 = pairing.pair(&g1_0_scaled, &h2_trace);
     d2 = d2 + pairing_g1_h2;
 
     // Final pairing check
-    let e1_final = TraceG1::new(proof.final_message.e1, Rc::clone(&ctx));
+    let e1_final = TraceG1::from_proof(proof.final_message.e1, Rc::clone(&ctx), "final.e1");
     let g1_0_d_scaled = g1_0_trace.scale(&d_challenge);
     let e1_modified = e1_final + g1_0_d_scaled;
 
-    let e2_final = TraceG2::new(proof.final_message.e2, Rc::clone(&ctx));
+    let e2_final = TraceG2::from_proof(proof.final_message.e2, Rc::clone(&ctx), "final.e2");
     let g2_0_d_inv_scaled = g2_0_trace.scale(&d_inv);
     let e2_modified = e2_final + g2_0_d_inv_scaled;
 
     let lhs = pairing.pair(&e1_modified, &e2_modified);
 
     let mut rhs = c;
-    rhs = rhs + TraceGT::new(setup.chi[0], Rc::clone(&ctx));
+    let chi_0_trace = TraceGT::from_setup(setup.chi[0], Rc::clone(&ctx), "chi", Some(0));
+    rhs = rhs + chi_0_trace;
     rhs = rhs + d2.scale(&d_challenge);
     rhs = rhs + d1.scale(&d_inv);
 

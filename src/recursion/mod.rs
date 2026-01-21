@@ -42,6 +42,7 @@
 //! )?;
 //! ```
 
+pub mod ast;
 mod collection;
 mod collector;
 mod context;

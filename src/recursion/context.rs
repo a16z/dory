@@ -5,10 +5,11 @@
 //! through trace types automatically record witnesses or use hints based on
 //! the context's mode.
 
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+use super::ast::{AstBuilder, AstGraph};
 use super::witness::{OpId, OpType, WitnessBackend};
 use crate::primitives::arithmetic::{Group, PairingCurve};
 
@@ -48,6 +49,7 @@ pub struct TraceContext<W, E, Gen>
 where
     W: WitnessBackend,
     E: PairingCurve,
+    E::G1: Group,
     Gen: WitnessGenerator<W, E>,
 {
     mode: ExecutionMode,
@@ -55,6 +57,8 @@ where
     collector: RefCell<Option<WitnessCollector<W, E, Gen>>>,
     hints: Option<HintMap<E>>,
     missing_hints: RefCell<Vec<OpId>>,
+    /// Optional AST builder for recording operation wiring.
+    ast: RefCell<Option<AstBuilder<E>>>,
     _phantom: PhantomData<(W, E, Gen)>,
 }
 
@@ -62,6 +66,7 @@ impl<W, E, Gen> TraceContext<W, E, Gen>
 where
     W: WitnessBackend,
     E: PairingCurve,
+    E::G1: Group,
     Gen: WitnessGenerator<W, E>,
 {
     /// Create a context for witness generation mode.
@@ -74,6 +79,7 @@ where
             collector: RefCell::new(Some(WitnessCollector::new())),
             hints: None,
             missing_hints: RefCell::new(Vec::new()),
+            ast: RefCell::new(None),
             _phantom: PhantomData,
         }
     }
@@ -89,7 +95,42 @@ where
             collector: RefCell::new(None),
             hints: Some(hints),
             missing_hints: RefCell::new(Vec::new()),
+            ast: RefCell::new(None),
             _phantom: PhantomData,
+        }
+    }
+
+    /// Create a context for witness generation with AST tracing enabled.
+    ///
+    /// This combines `for_witness_gen()` with `with_ast()`.
+    pub fn for_witness_gen_with_ast() -> Self {
+        Self::for_witness_gen().with_ast()
+    }
+
+    /// Enable AST tracing for this context.
+    ///
+    /// When enabled, all operations will record AST nodes for circuit wiring.
+    /// The AST is independent of execution mode (witness gen or hint-based).
+    pub fn with_ast(self) -> Self {
+        *self.ast.borrow_mut() = Some(AstBuilder::new());
+        self
+    }
+
+    /// Check if AST tracing is enabled.
+    #[inline]
+    pub fn has_ast(&self) -> bool {
+        self.ast.borrow().is_some()
+    }
+
+    /// Get mutable access to the AST builder, if enabled.
+    ///
+    /// Returns `None` if AST tracing is not enabled.
+    pub fn ast_mut(&self) -> Option<RefMut<'_, AstBuilder<E>>> {
+        let borrow = self.ast.borrow_mut();
+        if borrow.is_some() {
+            Some(RefMut::map(borrow, |opt| opt.as_mut().unwrap()))
+        } else {
+            None
         }
     }
 
@@ -144,8 +185,27 @@ where
     /// Finalize and return the collected witnesses (if in witness generation mode).
     ///
     /// Returns `None` if no collector was active (pure hint mode without recording).
+    /// Note: This consumes the context. Use `finalize_with_ast()` if you also need the AST.
     pub fn finalize(self) -> Option<WitnessCollection<W>> {
         self.collector.into_inner().map(|c| c.finalize())
+    }
+
+    /// Finalize and return both witnesses and AST graph.
+    ///
+    /// Returns a tuple of:
+    /// - `Option<WitnessCollection<W>>`: Collected witnesses (if in witness generation mode)
+    /// - `Option<AstGraph<E>>`: The AST graph (if AST tracing was enabled)
+    pub fn finalize_with_ast(self) -> (Option<WitnessCollection<W>>, Option<AstGraph<E>>) {
+        let witnesses = self.collector.into_inner().map(|c| c.finalize());
+        let ast = self.ast.into_inner().map(|b| b.finalize());
+        (witnesses, ast)
+    }
+
+    /// Finalize and return just the AST graph (without consuming witnesses).
+    ///
+    /// Useful when you only care about the AST for circuit generation.
+    pub fn take_ast(&self) -> Option<AstGraph<E>> {
+        self.ast.borrow_mut().take().map(|b| b.finalize())
     }
 
     /// Get a G1 hint for the given operation.
