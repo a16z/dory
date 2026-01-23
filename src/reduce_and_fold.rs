@@ -16,9 +16,22 @@ use crate::setup::{ProverSetup, VerifierSetup};
 use std::marker::PhantomData;
 
 #[cfg(feature = "zk")]
-use crate::mode::ZK;
-#[cfg(feature = "zk")]
 use crate::primitives::transcript::Transcript;
+
+/// Scalar field type alias for a pairing curve.
+type Scalar<E> = <<E as PairingCurve>::G1 as Group>::Scalar;
+
+/// Accumulated blinds tuple (r_c, r_d1, r_d2) for ZK mode.
+type Blinds<E> = (Scalar<E>, Scalar<E>, Scalar<E>);
+
+/// ZK scalar product proof type alias.
+#[cfg(feature = "zk")]
+type ZkScalarProductProof<E> = ScalarProductProof<
+    <E as PairingCurve>::G1,
+    <E as PairingCurve>::G2,
+    Scalar<E>,
+    <E as PairingCurve>::GT,
+>;
 
 /// Prover state for the Dory opening protocol
 ///
@@ -113,42 +126,6 @@ pub struct DoryVerifierState<E: PairingCurve> {
     setup: VerifierSetup<E>,
 }
 
-/// Type alias for first message with blinds (r_d1_l, r_d1_r, r_d2_l, r_d2_r)
-pub type FirstMessageWithBlinds<E> = (
-    FirstReduceMessage<<E as PairingCurve>::G1, <E as PairingCurve>::G2, <E as PairingCurve>::GT>,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-);
-
-/// Type alias for second message with blinds (r_c_plus, r_c_minus, r_e1_plus, r_e1_minus, r_e2_plus, r_e2_minus)
-pub type SecondMessageWithBlinds<E> = (
-    SecondReduceMessage<<E as PairingCurve>::G1, <E as PairingCurve>::G2, <E as PairingCurve>::GT>,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-);
-
-/// Type alias for accumulated blinds (r_c, r_d1, r_d2)
-pub type Blinds<E> = (
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-);
-
-/// Type alias for ZK scalar product proof
-#[cfg(feature = "zk")]
-pub type ZkScalarProductProof<E> = ScalarProductProof<
-    <E as PairingCurve>::G1,
-    <E as PairingCurve>::G2,
-    <<E as PairingCurve>::G1 as Group>::Scalar,
-    <E as PairingCurve>::GT,
->;
-
 impl<'a, E: PairingCurve, M: Mode> DoryProverState<'a, E, M>
 where
     <E::G1 as Group>::Scalar: Field,
@@ -226,20 +203,21 @@ where
         state
     }
 
-    /// Compute first reduce message for current round
-    ///
-    /// Computes D1L, D1R, D2L, D2R, E1β, E2β based on current state.
-    /// In ZK mode, samples blinds and masks the D values.
-    ///
-    /// Returns the message and the four sampled blinds (r_d1_l, r_d1_r, r_d2_l, r_d2_r)
-    /// which are needed by `apply_first_challenge` to accumulate blinds.
+    /// Compute first reduce message for current round. Returns (message, d1_blinds, d2_blinds).
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_first_message")]
-    pub fn compute_first_message<M1, M2, R>(&self, rng: &mut R) -> FirstMessageWithBlinds<E>
-    where
+    #[allow(clippy::type_complexity)]
+    pub fn compute_first_message<
         M1: DoryRoutines<E::G1>,
         M2: DoryRoutines<E::G2>,
         R: rand_core::RngCore,
-    {
+    >(
+        &self,
+        rng: &mut R,
+    ) -> (
+        FirstReduceMessage<E::G1, E::G2, E::GT>,
+        [<E::G1 as Group>::Scalar; 2],
+        [<E::G1 as Group>::Scalar; 2],
+    ) {
         assert!(
             self.num_rounds > 0,
             "Not enough rounds left in prover state"
@@ -295,16 +273,18 @@ where
         // E₂β = ⟨Γ₂, s₁⟩
         let e2_beta = M2::msm(&self.setup.g2_vec[..1 << self.num_rounds], &self.s1[..]);
 
-        let msg = FirstReduceMessage {
-            d1_left,
-            d1_right,
-            d2_left,
-            d2_right,
-            e1_beta,
-            e2_beta,
-        };
-
-        (msg, r_d1_l, r_d1_r, r_d2_l, r_d2_r)
+        (
+            FirstReduceMessage {
+                d1_left,
+                d1_right,
+                d2_left,
+                d2_right,
+                e1_beta,
+                e2_beta,
+            },
+            [r_d1_l, r_d1_r],
+            [r_d2_l, r_d2_r],
+        )
     }
 
     /// Apply first challenge (beta) and combine vectors
@@ -336,20 +316,22 @@ where
         self.r_c = self.r_c + self.r_d2 * *beta + self.r_d1 * beta_inv;
     }
 
-    /// Compute second reduce message for current round
-    ///
-    /// Computes C+, C-, E1+, E1-, E2+, E2- based on current state.
-    /// In ZK mode, samples blinds and masks the values.
-    ///
-    /// Returns the message and six sampled blinds needed by `apply_second_challenge`.
+    /// Compute second reduce message for current round. Returns (message, c_blinds, e1_blinds, e2_blinds).
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_second_message")]
     #[allow(clippy::type_complexity)]
-    pub fn compute_second_message<M1, M2, R>(&self, rng: &mut R) -> SecondMessageWithBlinds<E>
-    where
+    pub fn compute_second_message<
         M1: DoryRoutines<E::G1>,
         M2: DoryRoutines<E::G2>,
         R: rand_core::RngCore,
-    {
+    >(
+        &self,
+        rng: &mut R,
+    ) -> (
+        SecondReduceMessage<E::G1, E::G2, E::GT>,
+        [<E::G1 as Group>::Scalar; 2],
+        [<E::G1 as Group>::Scalar; 2],
+        [<E::G1 as Group>::Scalar; 2],
+    ) {
         let n2 = 1 << (self.num_rounds - 1); // n/2
 
         // Split all vectors into left and right halves
@@ -392,44 +374,32 @@ where
         let e2_plus = M::mask(e2_plus_base, &self.setup.h2, &r_e2_plus);
         let e2_minus = M::mask(e2_minus_base, &self.setup.h2, &r_e2_minus);
 
-        let msg = SecondReduceMessage {
-            c_plus,
-            c_minus,
-            e1_plus,
-            e1_minus,
-            e2_plus,
-            e2_minus,
-        };
-
         (
-            msg, r_c_plus, r_c_minus, r_e1_plus, r_e1_minus, r_e2_plus, r_e2_minus,
+            SecondReduceMessage {
+                c_plus,
+                c_minus,
+                e1_plus,
+                e1_minus,
+                e2_plus,
+                e2_minus,
+            },
+            [r_c_plus, r_c_minus],
+            [r_e1_plus, r_e1_minus],
+            [r_e2_plus, r_e2_minus],
         )
     }
 
-    /// Apply second challenge (alpha) and fold vectors
-    ///
-    /// Reduces the vector size by half using the alpha challenge.
-    /// Also accumulates blinds from compute_first_message and compute_second_message.
+    /// Apply second challenge (alpha) and fold vectors.
     #[tracing::instrument(skip_all, name = "DoryProverState::apply_second_challenge")]
-    #[allow(clippy::too_many_arguments)]
-    pub fn apply_second_challenge<M1, M2>(
+    pub fn apply_second_challenge<M1: DoryRoutines<E::G1>, M2: DoryRoutines<E::G2>>(
         &mut self,
         alpha: &<E::G1 as Group>::Scalar,
-        r_d1_l: <E::G1 as Group>::Scalar,
-        r_d1_r: <E::G1 as Group>::Scalar,
-        r_d2_l: <E::G1 as Group>::Scalar,
-        r_d2_r: <E::G1 as Group>::Scalar,
-        r_c_plus: <E::G1 as Group>::Scalar,
-        r_c_minus: <E::G1 as Group>::Scalar,
-        r_e1_plus: <E::G1 as Group>::Scalar,
-        r_e1_minus: <E::G1 as Group>::Scalar,
-        r_e2_plus: <E::G1 as Group>::Scalar,
-        r_e2_minus: <E::G1 as Group>::Scalar,
-    ) where
-        M1: DoryRoutines<E::G1>,
-        M2: DoryRoutines<E::G2>,
-        E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
-    {
+        d1_blinds: [<E::G1 as Group>::Scalar; 2],
+        d2_blinds: [<E::G1 as Group>::Scalar; 2],
+        c_blinds: [<E::G1 as Group>::Scalar; 2],
+        e1_blinds: [<E::G1 as Group>::Scalar; 2],
+        e2_blinds: [<E::G1 as Group>::Scalar; 2],
+    ) {
         let alpha_inv = (*alpha).inv().expect("alpha must be invertible");
         let n2 = 1 << (self.num_rounds - 1); // n/2
 
@@ -454,16 +424,11 @@ where
         self.s2.truncate(n2);
 
         // ZK: update accumulated blinds
-        // r_c ← r_c + α·r_c+ + α⁻¹·r_c-
-        self.r_c = self.r_c + r_c_plus * *alpha + r_c_minus * alpha_inv;
-        // r_d1 ← α·r_d1_l + r_d1_r
-        self.r_d1 = r_d1_l * *alpha + r_d1_r;
-        // r_d2 ← α⁻¹·r_d2_l + r_d2_r
-        self.r_d2 = r_d2_l * alpha_inv + r_d2_r;
-        // r_e1 ← r_e1 + α·r_e1+ + α⁻¹·r_e1-
-        self.r_e1 = self.r_e1 + r_e1_plus * *alpha + r_e1_minus * alpha_inv;
-        // r_e2 ← r_e2 + α·r_e2+ + α⁻¹·r_e2-
-        self.r_e2 = self.r_e2 + r_e2_plus * *alpha + r_e2_minus * alpha_inv;
+        self.r_c = self.r_c + c_blinds[0] * *alpha + c_blinds[1] * alpha_inv;
+        self.r_d1 = d1_blinds[0] * *alpha + d1_blinds[1];
+        self.r_d2 = d2_blinds[0] * alpha_inv + d2_blinds[1];
+        self.r_e1 = self.r_e1 + e1_blinds[0] * *alpha + e1_blinds[1] * alpha_inv;
+        self.r_e2 = self.r_e2 + e2_blinds[0] * *alpha + e2_blinds[1] * alpha_inv;
 
         // Decrement round counter
         self.num_rounds -= 1;
@@ -507,9 +472,7 @@ where
         ScalarProductMessage { e1, e2 }
     }
 
-    /// Get accumulated blinds (for ZK mode Σ-protocol)
-    ///
-    /// Returns (r_c, r_d1, r_d2) which are needed for the ZK scalar product proof.
+    /// Get accumulated blinds (r_c, r_d1, r_d2) for ZK mode Σ-protocol.
     pub fn blinds(&self) -> Blinds<E> {
         (self.r_c, self.r_d1, self.r_d2)
     }
@@ -596,112 +559,9 @@ where
     }
 }
 
-/// ZK-specific methods for DoryProverState
-///
-/// These methods are only available when the `zk` feature is enabled and
-/// the prover state is parameterized with the `ZK` mode marker.
+/// Generate Sigma1 proof: proves knowledge of (y, rE2) s.t. E2 = y·Γ2,fin + rE2·H2.
 #[cfg(feature = "zk")]
-impl<E: PairingCurve> DoryProverState<'_, E, ZK>
-where
-    <E::G1 as Group>::Scalar: Field,
-    E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
-    E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
-{
-    /// Generate ZK scalar product proof (Σ-protocol)
-    ///
-    /// Proves knowledge of (v1, v2, rC, rD1, rD2) for relation L1:
-    /// - C = e(v1, v2) + rC·HT
-    /// - D1 = e(v1, Γ2) + rD1·HT
-    /// - D2 = e(Γ1, v2) + rD2·HT
-    ///
-    /// Must be called after `compute_final_message` when v1 and v2 are length 1.
-    ///
-    /// # Parameters
-    /// - `transcript`: Fiat-Shamir transcript for deriving challenge
-    /// - `rng`: Random number generator for sampling private blinds
-    ///
-    /// # Returns
-    /// `ScalarProductProof` containing (P1, P2, Q, R, E1, E2, r1, r2, r3)
-    pub fn scalar_product_proof<T: Transcript<Curve = E>, R: rand_core::RngCore>(
-        &self,
-        transcript: &mut T,
-        rng: &mut R,
-    ) -> ZkScalarProductProof<E> {
-        debug_assert_eq!(self.v1.len(), 1, "v1 must be length 1 after folding");
-        debug_assert_eq!(self.v2.len(), 1, "v2 must be length 1 after folding");
-
-        let v1 = self.v1[0];
-        let v2 = self.v2[0];
-        let gamma1 = self.setup.g1_vec[0];
-        let gamma2 = self.setup.g2_vec[0];
-
-        type F<E> = <<E as PairingCurve>::G1 as Group>::Scalar;
-
-        // Sample random scalars from RNG (private to prover)
-        let s_d1: F<E> = Field::random(rng);
-        let s_d2: F<E> = Field::random(rng);
-        let d1 = gamma1.scale(&s_d1);
-        let d2 = gamma2.scale(&s_d2);
-
-        // Sample blinding scalars from RNG (private to prover)
-        let r_p1: F<E> = Field::random(rng);
-        let r_p2: F<E> = Field::random(rng);
-        let r_q: F<E> = Field::random(rng);
-        let r_r: F<E> = Field::random(rng);
-
-        // Compute first message: P1, P2, Q, R
-        // P1 = e(d1, Γ2) + rP1·HT
-        let p1 = E::pair(&d1, &gamma2) + self.setup.ht.scale(&r_p1);
-        // P2 = e(Γ1, d2) + rP2·HT
-        let p2 = E::pair(&gamma1, &d2) + self.setup.ht.scale(&r_p2);
-        // Q = e(d1, v2) + e(v1, d2) + rQ·HT
-        let q = E::pair(&d1, &v2) + E::pair(&v1, &d2) + self.setup.ht.scale(&r_q);
-        // R = e(d1, d2) + rR·HT
-        let r = E::pair(&d1, &d2) + self.setup.ht.scale(&r_r);
-
-        // Append first message to transcript and derive challenge
-        transcript.append_serde(b"sigma_p1", &p1);
-        transcript.append_serde(b"sigma_p2", &p2);
-        transcript.append_serde(b"sigma_q", &q);
-        transcript.append_serde(b"sigma_r", &r);
-        let c = transcript.challenge_scalar(b"sigma_c");
-
-        // Compute response: E1, E2, r1, r2, r3
-        // E1 = d1 + c·v1
-        let e1 = d1 + v1.scale(&c);
-        // E2 = d2 + c·v2
-        let e2 = d2 + v2.scale(&c);
-        // r1 = rP1 + c·rD1
-        let r1 = r_p1 + c * self.r_d1;
-        // r2 = rP2 + c·rD2
-        let r2 = r_p2 + c * self.r_d2;
-        // r3 = rR + c·rQ + c²·rC
-        let c_sq = c * c;
-        let r3 = r_r + c * r_q + c_sq * self.r_c;
-
-        ScalarProductProof {
-            p1,
-            p2,
-            q,
-            r,
-            e1,
-            e2,
-            r1,
-            r2,
-            r3,
-        }
-    }
-}
-
-/// Generate Sigma1 proof: proves knowledge of (y, rE2) such that E2 = y·Γ2,fin + rE2·H2
-///
-/// Also proves yC = y·Γ1,fin + ry·H1 for commitment consistency.
-///
-/// # Generator semantics
-/// - Γ1,fin = g1_vec\[0\], Γ2,fin = g2_vec\[0\] (commitment bases)
-/// - H1 = h1, H2 = h2 (blinding bases, linearly independent from Γ_fin)
-#[cfg(feature = "zk")]
-pub fn generate_sigma1_proof<E, T, R>(
+pub fn generate_sigma1_proof<E: PairingCurve, T: Transcript<Curve = E>, R: rand_core::RngCore>(
     y: &<E::G1 as Group>::Scalar,
     r_e2: &<E::G1 as Group>::Scalar,
     r_y: &<E::G1 as Group>::Scalar,
@@ -710,48 +570,32 @@ pub fn generate_sigma1_proof<E, T, R>(
     rng: &mut R,
 ) -> Sigma1Proof<E::G1, E::G2, <E::G1 as Group>::Scalar>
 where
-    E: PairingCurve,
     <E::G1 as Group>::Scalar: Field,
     E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
-    T: Transcript<Curve = E>,
-    R: rand_core::RngCore,
 {
-    // Γ2,fin = g2_vec[0], Γ1,fin = g1_vec[0]
-    let g2_fin = &setup.g2_vec[0];
-    let g1_fin = &setup.g1_vec[0];
-
-    // Sample random k1, k2, k3 from RNG (private to prover)
-    let k1 = <E::G1 as Group>::Scalar::random(rng);
-    let k2 = <E::G1 as Group>::Scalar::random(rng);
-    let k3 = <E::G1 as Group>::Scalar::random(rng);
-
-    // A1 = k1·Γ2,fin + k2·H2 (commitment for E2 relation)
+    let (g2_fin, g1_fin) = (&setup.g2_vec[0], &setup.g1_vec[0]);
+    let (k1, k2, k3) = (
+        <E::G1 as Group>::Scalar::random(rng),
+        <E::G1 as Group>::Scalar::random(rng),
+        <E::G1 as Group>::Scalar::random(rng),
+    );
     let a1 = g2_fin.scale(&k1) + setup.h2.scale(&k2);
-    // A2 = k1·Γ1,fin + k3·H1 (commitment for yC relation)
     let a2 = g1_fin.scale(&k1) + setup.h1.scale(&k3);
-
-    // Append commitments to transcript
     transcript.append_serde(b"sigma1_a1", &a1);
     transcript.append_serde(b"sigma1_a2", &a2);
-
-    // Get challenge
     let c = transcript.challenge_scalar(b"sigma1_c");
-
-    // Compute responses
-    let z1 = k1 + c * *y;
-    let z2 = k2 + c * *r_e2;
-    let z3 = k3 + c * *r_y;
-
-    Sigma1Proof { a1, a2, z1, z2, z3 }
+    Sigma1Proof {
+        a1,
+        a2,
+        z1: k1 + c * *y,
+        z2: k2 + c * *r_e2,
+        z3: k3 + c * *r_y,
+    }
 }
 
-/// Verify Sigma1 proof
-///
-/// # Generator semantics
-/// - g1_0 = Γ1,fin, g2_0 = Γ2,fin (commitment bases in verifier setup)
-/// - h1 = H1, h2 = H2 (blinding bases)
+/// Verify Sigma1 proof.
 #[cfg(feature = "zk")]
-pub fn verify_sigma1_proof<E, T>(
+pub fn verify_sigma1_proof<E: PairingCurve, T: Transcript<Curve = E>>(
     e2: &E::G2,
     y_commit: &E::G1,
     proof: &Sigma1Proof<E::G1, E::G2, <E::G1 as Group>::Scalar>,
@@ -759,89 +603,57 @@ pub fn verify_sigma1_proof<E, T>(
     transcript: &mut T,
 ) -> Result<(), DoryError>
 where
-    E: PairingCurve,
     <E::G1 as Group>::Scalar: Field,
     E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
-    T: Transcript<Curve = E>,
 {
-    // Reconstruct challenge
     transcript.append_serde(b"sigma1_a1", &proof.a1);
     transcript.append_serde(b"sigma1_a2", &proof.a2);
     let c = transcript.challenge_scalar(b"sigma1_c");
-
     // Check E2 relation: z1·Γ2,fin + z2·H2 = A1 + c·E2
-    // Γ2,fin = g2_0, H2 = h2
-    let lhs1 = setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2);
-    let rhs1 = proof.a1 + e2.scale(&c);
-    if lhs1 != rhs1 {
+    if setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2) != proof.a1 + e2.scale(&c) {
         return Err(DoryError::InvalidProof);
     }
-
     // Check yC relation: z1·Γ1,fin + z3·H1 = A2 + c·yC
-    // Γ1,fin = g1_0, H1 = h1
-    let lhs2 = setup.g1_0.scale(&proof.z1) + setup.h1.scale(&proof.z3);
-    let rhs2 = proof.a2 + y_commit.scale(&c);
-    if lhs2 != rhs2 {
+    if setup.g1_0.scale(&proof.z1) + setup.h1.scale(&proof.z3) != proof.a2 + y_commit.scale(&c) {
         return Err(DoryError::InvalidProof);
     }
-
     Ok(())
 }
 
-/// Generate Sigma2 proof: proves e(E1, Γ2,fin) - D2 = e(H1, t1·Γ2,fin + t2·H2)
-///
-/// Where t1 = rE1 + rv and t2 = -rD2.
-///
-/// # Generator semantics
-/// - Γ2,fin = g2_vec\[0\] (commitment base)
-/// - H1 = h1, H2 = h2 (blinding bases)
+/// Generate Sigma2 proof: proves e(E1, Γ2,fin) - D2 = e(H1, t1·Γ2,fin + t2·H2).
 #[cfg(feature = "zk")]
-pub fn generate_sigma2_proof<E, T, R>(
-    t1: &<E::G1 as Group>::Scalar, // rE1 + rv
-    t2: &<E::G1 as Group>::Scalar, // -rD2
+pub fn generate_sigma2_proof<E: PairingCurve, T: Transcript<Curve = E>, R: rand_core::RngCore>(
+    t1: &<E::G1 as Group>::Scalar,
+    t2: &<E::G1 as Group>::Scalar,
     setup: &ProverSetup<E>,
     transcript: &mut T,
     rng: &mut R,
 ) -> Sigma2Proof<<E::G1 as Group>::Scalar, E::GT>
 where
-    E: PairingCurve,
     <E::G1 as Group>::Scalar: Field,
     E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
     E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
-    T: Transcript<Curve = E>,
-    R: rand_core::RngCore,
 {
-    // Γ2,fin = g2_vec[0]
-    let g2_fin = &setup.g2_vec[0];
-
-    // Sample random k1, k2 from RNG (private to prover)
-    let k1 = <E::G1 as Group>::Scalar::random(rng);
-    let k2 = <E::G1 as Group>::Scalar::random(rng);
-
-    // A = e(H1, k1·Γ2,fin + k2·H2)
-    let g2_term = g2_fin.scale(&k1) + setup.h2.scale(&k2);
-    let a = E::pair(&setup.h1, &g2_term);
-
-    // Append commitment to transcript
+    let (k1, k2) = (
+        <E::G1 as Group>::Scalar::random(rng),
+        <E::G1 as Group>::Scalar::random(rng),
+    );
+    let a = E::pair(
+        &setup.h1,
+        &(setup.g2_vec[0].scale(&k1) + setup.h2.scale(&k2)),
+    );
     transcript.append_serde(b"sigma2_a", &a);
-
-    // Get challenge
     let c = transcript.challenge_scalar(b"sigma2_c");
-
-    // Compute responses
-    let z1 = k1 + c * *t1;
-    let z2 = k2 + c * *t2;
-
-    Sigma2Proof { a, z1, z2 }
+    Sigma2Proof {
+        a,
+        z1: k1 + c * *t1,
+        z2: k2 + c * *t2,
+    }
 }
 
-/// Verify Sigma2 proof: e(E1, Γ2,fin) - D2 = e(H1, t1·Γ2,fin + t2·H2)
-///
-/// # Generator semantics
-/// - g2_0 = Γ2,fin (commitment base in verifier setup)
-/// - h1 = H1, h2 = H2 (blinding bases)
+/// Verify Sigma2 proof.
 #[cfg(feature = "zk")]
-pub fn verify_sigma2_proof<E, T>(
+pub fn verify_sigma2_proof<E: PairingCurve, T: Transcript<Curve = E>>(
     e1: &E::G1,
     d2: &E::GT,
     proof: &Sigma2Proof<<E::G1 as Group>::Scalar, E::GT>,
@@ -849,28 +661,18 @@ pub fn verify_sigma2_proof<E, T>(
     transcript: &mut T,
 ) -> Result<(), DoryError>
 where
-    E: PairingCurve,
     <E::G1 as Group>::Scalar: Field,
     E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
     E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
-    T: Transcript<Curve = E>,
 {
-    // Reconstruct challenge
     transcript.append_serde(b"sigma2_a", &proof.a);
     let c = transcript.challenge_scalar(b"sigma2_c");
-
-    // Compute expected value: e(E1, Γ2,fin) - D2
-    // Γ2,fin = g2_0
-    let e1_pair = E::pair(e1, &setup.g2_0);
-    let expected = e1_pair - *d2;
-
-    // Check: e(H1, z1·Γ2,fin + z2·H2) = A + c·expected
-    // Γ2,fin = g2_0, H2 = h2
-    let g2_term = setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2);
-    let lhs = E::pair(&setup.h1, &g2_term);
-    let rhs = proof.a + expected.scale(&c);
-
-    if lhs == rhs {
+    let expected = E::pair(e1, &setup.g2_0) - *d2;
+    let lhs = E::pair(
+        &setup.h1,
+        &(setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2)),
+    );
+    if lhs == proof.a + expected.scale(&c) {
         Ok(())
     } else {
         Err(DoryError::InvalidProof)
@@ -878,26 +680,7 @@ where
 }
 
 impl<E: PairingCurve> DoryVerifierState<E> {
-    /// Create new verifier state
-    ///
-    /// # Parameters
-    /// - `c`: Initial inner product value
-    /// - `d1`: Initial d1 value (from VMV)
-    /// - `d2`: Initial d2 value (from VMV)
-    /// - `e1`: Initial e1 value
-    /// - `e2`: Initial e2 value
-    ///
-    /// Construct verifier state for O(1) accumulation
-    ///
-    /// - `s1_coords`: Per-round coordinates for s1 (right_vec in prover)
-    /// - `s2_coords`: Per-round coordinates for s2 (left_vec in prover)
-    /// - `num_rounds`: Number of rounds
-    /// - `setup`: Verifier setup parameters
-    ///
-    /// Note: `e1` and `d2` are stored both as initial values (for batched VMV check)
-    /// and as accumulators (updated during reduce rounds)
-    /// this is because the VMV check happens before the folding rounds, so we need to save
-    /// the value for the final batched pairing check.
+    /// Create new verifier state for O(1) accumulation.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         c: E::GT,
@@ -1003,56 +786,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         self.num_rounds -= 1;
     }
 
-    /// Verify final scalar product message
-    ///
-    /// Applies fold-scalars transformation and checks the final pairing equation.
-    /// Must be called when num_rounds=0 after all reduce rounds are complete.
-    ///
-    /// # Generator semantics
-    /// - g1_0, g2_0: Final generators (Γ1,fin, Γ2,fin) used as commitment bases
-    /// - h1, h2: Blinding generators (H1, H2) used for zero-knowledge masking
-    ///
-    /// # Non-optimized Protocol Equations
-    ///
-    /// ## VMV Check (batched together with the final pairing check)
-    ///
-    /// The VMV protocol requires: `D₂_init = e(E₁_init, Γ2,fin)` = `e(E₁_init, g2_0)`
-    ///
-    /// This was originally checked as a standalone pairing in `verify_evaluation_proof`.
-    /// We defer it here to batch with other pairings.
-    ///
-    /// ## Fold-Scalars Updates
-    ///
-    /// ```text
-    /// C' ← C + (s₁·s₂)·HT + γ·e(H₁, E₂) + γ⁻¹·e(E₁, H₂)
-    /// D₁' ← D₁ + e(H₁, (s₁·γ)·Γ₂₀)
-    /// D₂' ← D₂ + e((s₂·γ⁻¹)·Γ₁₀, H₂)
-    /// ```
-    ///
-    /// ## Final Verification
-    ///
-    /// ```text
-    /// e(E₁ + d·Γ₁₀, E₂ + d⁻¹·Γ₂₀) = C' + χ₀ + d·D₂' + d⁻¹·D₁'
-    /// ```
-    ///
-    /// # Multi-Pairing Optimization
-    ///
-    /// ## Batching the VMV Check
-    ///
-    /// We use random linear combination with challenge `d²` to defer the VMV check.
-    /// The VMV check uses Γ2,fin (g2_0), separate from the fold-scalars blinding which uses H₂ (h2).
-    ///
-    /// ## Final Combined Check (4 pairings)
-    ///
-    /// ```text
-    /// e(E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)           // Pair 1: main verification
-    ///   · e(H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))           // Pair 2: γ·e(H₁, E₂) term
-    ///   · e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀), H₂)           // Pair 3: γ⁻¹·e(E₁, H₂) term
-    ///   · e(d²·E₁_init, Γ2,fin)                          // Pair 4: deferred VMV check
-    ///   = T + d²·D₂_init
-    /// ```
-    ///
-    /// This is 4 miller loops + 1 final exponentiation (vs 7+ for naive check)
+    /// Verify final scalar product message (4 pairings batched with VMV check).
     #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
     pub fn verify_final(
         &mut self,
@@ -1119,87 +853,14 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         }
     }
 
-    /// Verify final scalar product with ZK proof (Σ-protocol)
-    ///
-    /// Verifies knowledge of (v1, v2, rC, rD1, rD2) for relation L1:
-    /// - C = e(v1, v2) + rC·HT
-    /// - D1 = e(v1, Γ2) + rD1·HT
-    /// - D2 = e(Γ1, v2) + rD2·HT
-    ///
-    /// Verification equation from Dory paper:
-    /// e(E1 + d·Γ1, E2 + d⁻¹·Γ2) = χ + R + c·Q + c²·C + d·P2 + d·c·D2
-    ///                            + d⁻¹·P1 + d⁻¹·c·D1 - (r3 + d·r2 + d⁻¹·r1)·HT
-    ///
-    /// # Parameters
-    /// - `proof`: ZK Σ-protocol proof containing (P1, P2, Q, R, E1, E2, r1, r2, r3)
-    /// - `d`: Final batching challenge from transcript
-    /// - `transcript`: Fiat-Shamir transcript for deriving challenge c
-    #[cfg(feature = "zk")]
-    #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final_zk")]
-    pub fn verify_final_zk<T: Transcript<Curve = E>>(
-        &mut self,
-        proof: &ZkScalarProductProof<E>,
-        d: &<E::G1 as Group>::Scalar,
-        transcript: &mut T,
-    ) -> Result<(), DoryError>
-    where
-        E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
-        E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
-        <E::G1 as Group>::Scalar: Field,
-    {
-        debug_assert_eq!(
-            self.num_rounds, 0,
-            "num_rounds must be 0 for final verification"
-        );
-
-        let d_inv = (*d).inv().expect("d must be invertible");
-
-        // Reconstruct challenge c from transcript (must match prover's derivation)
-        transcript.append_serde(b"sigma_p1", &proof.p1);
-        transcript.append_serde(b"sigma_p2", &proof.p2);
-        transcript.append_serde(b"sigma_q", &proof.q);
-        transcript.append_serde(b"sigma_r", &proof.r);
-        let c = transcript.challenge_scalar(b"sigma_c");
-        let c_sq = c * c;
-
-        // LHS: e(E1 + d·Γ1, E2 + d⁻¹·Γ2)
-        let lhs_g1 = proof.e1 + self.setup.g1_0.scale(d);
-        let lhs_g2 = proof.e2 + self.setup.g2_0.scale(&d_inv);
-        let lhs = E::pair(&lhs_g1, &lhs_g2);
-
-        // RHS: χ + R + c·Q + c²·C + d·P2 + d·c·D2 + d⁻¹·P1 + d⁻¹·c·D1 - (r3 + d·r2 + d⁻¹·r1)·HT
-        let mut rhs = self.setup.chi[0]; // χ
-        rhs = rhs + proof.r; // + R
-        rhs = rhs + proof.q.scale(&c); // + c·Q
-        rhs = rhs + self.c.scale(&c_sq); // + c²·C
-        rhs = rhs + proof.p2.scale(d); // + d·P2
-        rhs = rhs + self.d2.scale(&(*d * c)); // + d·c·D2
-        rhs = rhs + proof.p1.scale(&d_inv); // + d⁻¹·P1
-        rhs = rhs + self.d1.scale(&(d_inv * c)); // + d⁻¹·c·D1
-
-        // Blind correction: -(r3 + d·r2 + d⁻¹·r1)·HT
-        let r_total = proof.r3 + *d * proof.r2 + d_inv * proof.r1;
-        rhs = rhs - self.setup.ht.scale(&r_total);
-
-        if lhs == rhs {
-            Ok(())
-        } else {
-            Err(DoryError::InvalidProof)
-        }
-    }
-
-    /// Verify final scalar product with ZK proof using pre-derived challenge
-    ///
-    /// Same as `verify_final_zk` but takes the challenge `c` as a parameter
-    /// instead of deriving it from transcript. Use when the caller needs to
-    /// control transcript ordering (e.g., appending P1..R before final_message).
+    /// Verify final scalar product with ZK proof using pre-derived challenge.
     #[cfg(feature = "zk")]
     #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final_zk_with_challenge")]
     pub fn verify_final_zk_with_challenge(
         &mut self,
         proof: &ZkScalarProductProof<E>,
-        c: &<E::G1 as Group>::Scalar,
-        d: &<E::G1 as Group>::Scalar,
+        c: &Scalar<E>,
+        d: &Scalar<E>,
     ) -> Result<(), DoryError>
     where
         E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
