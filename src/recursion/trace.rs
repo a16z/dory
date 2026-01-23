@@ -238,11 +238,15 @@ where
             }
         };
 
-        // AST tracking: record G1Add
+        // AST tracking: record G1Add with OpId for witness linkage
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G1Add lhs must have ValueId when AST enabled");
             let b = rhs.value_id.expect("G1Add rhs must have ValueId when AST enabled");
-            Some(ast.push(ValueType::G1, AstOp::G1Add { a, b }))
+            Some(ast.push_with_opid(
+                ValueType::G1,
+                AstOp::G1Add { op_id: Some(id), a, b },
+                id,
+            ))
         } else {
             None
         };
@@ -290,11 +294,15 @@ where
             }
         };
 
-        // AST tracking: record G1Add
+        // AST tracking: record G1Add with OpId for witness linkage
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G1Add lhs must have ValueId when AST enabled");
             let b = rhs.value_id.expect("G1Add rhs must have ValueId when AST enabled");
-            Some(ast.push(ValueType::G1, AstOp::G1Add { a, b }))
+            Some(ast.push_with_opid(
+                ValueType::G1,
+                AstOp::G1Add { op_id: Some(id), a, b },
+                id,
+            ))
         } else {
             None
         };
@@ -366,7 +374,11 @@ where
             let b_orig = rhs.value_id.expect("G1Sub rhs must have ValueId when AST enabled");
             // First negate rhs, then add
             let b_neg = ast.push(ValueType::G1, AstOp::G1Neg { a: b_orig });
-            Some(ast.push(ValueType::G1, AstOp::G1Add { a, b: b_neg }))
+            Some(ast.push_with_opid(
+                ValueType::G1,
+                AstOp::G1Add { op_id: Some(add_id), a, b: b_neg },
+                add_id,
+            ))
         } else {
             None
         };
@@ -634,11 +646,15 @@ where
             }
         };
 
-        // AST tracking: record G2Add
+        // AST tracking: record G2Add with OpId for witness linkage
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G2Add lhs must have ValueId when AST enabled");
             let b = rhs.value_id.expect("G2Add rhs must have ValueId when AST enabled");
-            Some(ast.push(ValueType::G2, AstOp::G2Add { a, b }))
+            Some(ast.push_with_opid(
+                ValueType::G2,
+                AstOp::G2Add { op_id: Some(id), a, b },
+                id,
+            ))
         } else {
             None
         };
@@ -686,11 +702,15 @@ where
             }
         };
 
-        // AST tracking: record G2Add
+        // AST tracking: record G2Add with OpId for witness linkage
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G2Add lhs must have ValueId when AST enabled");
             let b = rhs.value_id.expect("G2Add rhs must have ValueId when AST enabled");
-            Some(ast.push(ValueType::G2, AstOp::G2Add { a, b }))
+            Some(ast.push_with_opid(
+                ValueType::G2,
+                AstOp::G2Add { op_id: Some(id), a, b },
+                id,
+            ))
         } else {
             None
         };
@@ -762,7 +782,11 @@ where
             let b_orig = rhs.value_id.expect("G2Sub rhs must have ValueId when AST enabled");
             // First negate rhs, then add
             let b_neg = ast.push(ValueType::G2, AstOp::G2Neg { a: b_orig });
-            Some(ast.push(ValueType::G2, AstOp::G2Add { a, b: b_neg }))
+            Some(ast.push_with_opid(
+                ValueType::G2,
+                AstOp::G2Add { op_id: Some(add_id), a, b: b_neg },
+                add_id,
+            ))
         } else {
             None
         };

@@ -184,6 +184,8 @@ where
     // ===== G1 operations =====
     /// G1 addition: a + b
     G1Add {
+        /// OpId for witness/hint linkage.
+        op_id: Option<OpId>,
         /// Left operand.
         a: ValueId,
         /// Right operand.
@@ -207,6 +209,8 @@ where
     // ===== G2 operations =====
     /// G2 addition: a + b
     G2Add {
+        /// OpId for witness/hint linkage.
+        op_id: Option<OpId>,
         /// Left operand.
         a: ValueId,
         /// Right operand.
@@ -324,7 +328,7 @@ where
     pub fn input_ids(&self) -> Vec<ValueId> {
         match self {
             AstOp::Input { .. } => vec![],
-            AstOp::G1Add { a, b } | AstOp::G2Add { a, b } => vec![*a, *b],
+            AstOp::G1Add { a, b, .. } | AstOp::G2Add { a, b, .. } => vec![*a, *b],
             AstOp::GTMul { lhs, rhs, .. } => vec![*lhs, *rhs],
             AstOp::G1Neg { a } | AstOp::G2Neg { a } => vec![*a],
             AstOp::G1ScalarMul { point, .. }
@@ -379,7 +383,12 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AstOp::Input { source } => f.debug_struct("Input").field("source", source).finish(),
-            AstOp::G1Add { a, b } => f.debug_struct("G1Add").field("a", a).field("b", b).finish(),
+            AstOp::G1Add { op_id, a, b } => f
+                .debug_struct("G1Add")
+                .field("op_id", op_id)
+                .field("a", a)
+                .field("b", b)
+                .finish(),
             AstOp::G1Neg { a } => f.debug_struct("G1Neg").field("a", a).finish(),
             AstOp::G1ScalarMul { op_id, point, scalar } => f
                 .debug_struct("G1ScalarMul")
@@ -387,7 +396,12 @@ where
                 .field("point", point)
                 .field("scalar_name", &scalar.name)
                 .finish(),
-            AstOp::G2Add { a, b } => f.debug_struct("G2Add").field("a", a).field("b", b).finish(),
+            AstOp::G2Add { op_id, a, b } => f
+                .debug_struct("G2Add")
+                .field("op_id", op_id)
+                .field("a", a)
+                .field("b", b)
+                .finish(),
             AstOp::G2Neg { a } => f.debug_struct("G2Neg").field("a", a).finish(),
             AstOp::G2ScalarMul { op_id, point, scalar } => f
                 .debug_struct("G2ScalarMul")
@@ -713,13 +727,13 @@ where
                 // Inputs have no dependencies
                 Ok(())
             }
-            AstOp::G1Add { a, b } => {
+            AstOp::G1Add { a, b, .. } => {
                 check_input(*a, ValueType::G1)?;
                 check_input(*b, ValueType::G1)
             }
             AstOp::G1Neg { a } => check_input(*a, ValueType::G1),
             AstOp::G1ScalarMul { point, .. } => check_input(*point, ValueType::G1),
-            AstOp::G2Add { a, b } => {
+            AstOp::G2Add { a, b, .. } => {
                 check_input(*a, ValueType::G2)?;
                 check_input(*b, ValueType::G2)
             }
@@ -1038,7 +1052,7 @@ mod tests {
                 index: Some(1),
             },
         );
-        let c = builder.push(ValueType::G1, AstOp::G1Add { a, b });
+        let c = builder.push(ValueType::G1, AstOp::G1Add { op_id: None, a, b });
 
         assert_eq!(c, ValueId(2));
 

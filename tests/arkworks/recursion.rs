@@ -403,13 +403,17 @@ fn test_ast_generation() {
     for (i, node) in ast_graph.nodes.iter().take(30).enumerate() {
         let op_str = match &node.op {
             dory_pcs::recursion::ast::AstOp::Input { source } => format!("Input({:?})", source),
-            dory_pcs::recursion::ast::AstOp::G1Add { a, b } => format!("G1Add({}, {})", a.0, b.0),
+            dory_pcs::recursion::ast::AstOp::G1Add { op_id, a, b } => {
+                format!("G1Add({}, {}, op_id={:?})", a.0, b.0, op_id)
+            }
             dory_pcs::recursion::ast::AstOp::G1Neg { a } => format!("G1Neg({})", a.0),
             dory_pcs::recursion::ast::AstOp::G1ScalarMul { point, scalar, .. } => {
                 let name = scalar.name.unwrap_or("anon");
                 format!("G1ScalarMul({}, scalar={})", point.0, name)
             }
-            dory_pcs::recursion::ast::AstOp::G2Add { a, b } => format!("G2Add({}, {})", a.0, b.0),
+            dory_pcs::recursion::ast::AstOp::G2Add { op_id, a, b } => {
+                format!("G2Add({}, {}, op_id={:?})", a.0, b.0, op_id)
+            }
             dory_pcs::recursion::ast::AstOp::G2Neg { a } => format!("G2Neg({})", a.0),
             dory_pcs::recursion::ast::AstOp::G2ScalarMul { point, scalar, .. } => {
                 let name = scalar.name.unwrap_or("anon");
@@ -445,13 +449,17 @@ fn test_ast_generation() {
             let idx = start + i;
             let op_str = match &node.op {
                 dory_pcs::recursion::ast::AstOp::Input { source } => format!("Input({:?})", source),
-                dory_pcs::recursion::ast::AstOp::G1Add { a, b } => format!("G1Add({}, {})", a.0, b.0),
+                dory_pcs::recursion::ast::AstOp::G1Add { op_id, a, b } => {
+                format!("G1Add({}, {}, op_id={:?})", a.0, b.0, op_id)
+            }
                 dory_pcs::recursion::ast::AstOp::G1Neg { a } => format!("G1Neg({})", a.0),
                 dory_pcs::recursion::ast::AstOp::G1ScalarMul { point, scalar, .. } => {
                     let name = scalar.name.unwrap_or("anon");
                     format!("G1ScalarMul({}, scalar={})", point.0, name)
                 }
-                dory_pcs::recursion::ast::AstOp::G2Add { a, b } => format!("G2Add({}, {})", a.0, b.0),
+                dory_pcs::recursion::ast::AstOp::G2Add { op_id, a, b } => {
+                format!("G2Add({}, {}, op_id={:?})", a.0, b.0, op_id)
+            }
                 dory_pcs::recursion::ast::AstOp::G2Neg { a } => format!("G2Neg({})", a.0),
                 dory_pcs::recursion::ast::AstOp::G2ScalarMul { point, scalar, .. } => {
                     let name = scalar.name.unwrap_or("anon");
@@ -773,9 +781,10 @@ fn test_ast_opid_witness_join() {
             AstOp::MultiPairing { op_id, .. } => op_id.as_ref(),
             AstOp::MsmG1 { op_id, .. } => op_id.as_ref(),
             AstOp::MsmG2 { op_id, .. } => op_id.as_ref(),
-            // These operations don't have OpIds in the AST (cheap ops tracked separately)
-            AstOp::Input { .. } | AstOp::G1Add { .. } | AstOp::G1Neg { .. } 
-                | AstOp::G2Add { .. } | AstOp::G2Neg { .. } => None,
+            // Add operations now have OpIds for direct witness linkage
+            AstOp::G1Add { op_id, .. } | AstOp::G2Add { op_id, .. } => op_id.as_ref(),
+            // These operations don't have OpIds (inputs and negations are not traced)
+            AstOp::Input { .. } | AstOp::G1Neg { .. } | AstOp::G2Neg { .. } => None,
         };
 
         if let Some(opid) = op_id {
