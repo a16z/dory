@@ -2,7 +2,7 @@
 
 use super::*;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{create_zk_evaluation_proof, prove, setup, verify, verify_zk_evaluation_proof, ZK};
+use dory_pcs::{create_evaluation_proof, prove, setup, verify, ZK};
 
 #[test]
 fn test_zk_full_workflow() {
@@ -190,6 +190,7 @@ fn test_zk_non_square_matrix() {
 }
 
 /// Test the full ZK API where y is hidden from the verifier
+/// With unified API, verifier extracts y_com from proof.y_com
 #[test]
 fn test_zk_hidden_evaluation() {
     let mut rng = rand::thread_rng();
@@ -204,29 +205,33 @@ fn test_zk_hidden_evaluation() {
         .unwrap();
 
     let point = random_point(4);
+    let evaluation = poly.evaluate(&point);
 
-    // Create ZK proof - returns (proof, y_com) instead of revealing y
+    // Create ZK proof using unified API with ZK mode
     let mut prover_transcript = fresh_transcript();
-    let (zk_proof, y_com) =
-        create_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
-            &poly,
-            &point,
-            Some(tier_1),
-            nu,
-            sigma,
-            &prover_setup,
-            &mut prover_transcript,
-            &mut rng,
-        )
-        .unwrap();
-
-    // Verify ZK proof - verifier does NOT receive y, only y_com
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        tier_2,
-        y_com,
+    let proof = create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+        &poly,
         &point,
-        &zk_proof,
+        Some(tier_1),
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+        &mut rng,
+    )
+    .unwrap();
+
+    // Verify y_com is present in proof
+    assert!(proof.y_com.is_some(), "ZK proof should contain y_com");
+    assert!(proof.e2.is_some(), "ZK proof should contain e2");
+
+    // Verify ZK proof - for ZK proofs, evaluation is ignored (e2 from proof is used)
+    let mut verifier_transcript = fresh_transcript();
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+        tier_2,
+        evaluation,
+        &point,
+        &proof,
         verifier_setup,
         &mut verifier_transcript,
     );
@@ -238,9 +243,9 @@ fn test_zk_hidden_evaluation() {
     );
 }
 
-/// Test that wrong y_com is rejected
+/// Test that tampered e2 in proof is rejected
 #[test]
-fn test_zk_wrong_y_com_rejected() {
+fn test_zk_tampered_e2_rejected() {
     use dory_pcs::primitives::arithmetic::Group;
 
     let mut rng = rand::thread_rng();
@@ -255,10 +260,11 @@ fn test_zk_wrong_y_com_rejected() {
         .unwrap();
 
     let point = random_point(4);
+    let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (zk_proof, y_com) =
-        create_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+    let mut proof =
+        create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
             &poly,
             &point,
             Some(tier_1),
@@ -270,20 +276,22 @@ fn test_zk_wrong_y_com_rejected() {
         )
         .unwrap();
 
-    // Tamper with y_com - add a random element
-    let wrong_y_com = y_com + prover_setup.h1.scale(&ArkFr::from_u64(42));
+    // Tamper with e2 in the proof
+    if let Some(ref mut e2) = proof.e2 {
+        *e2 = *e2 + prover_setup.h2.scale(&ArkFr::from_u64(42));
+    }
 
     let mut verifier_transcript = fresh_transcript();
-    let result = verify_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
         tier_2,
-        wrong_y_com,
+        evaluation,
         &point,
-        &zk_proof,
+        &proof,
         verifier_setup,
         &mut verifier_transcript,
     );
 
-    assert!(result.is_err(), "Verification should fail with wrong y_com");
+    assert!(result.is_err(), "Verification should fail with tampered e2");
 }
 
 /// Test full ZK with larger polynomial
@@ -301,27 +309,27 @@ fn test_zk_hidden_evaluation_larger() {
         .unwrap();
 
     let point = random_point(8);
+    let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (zk_proof, y_com) =
-        create_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
-            &poly,
-            &point,
-            Some(tier_1),
-            nu,
-            sigma,
-            &prover_setup,
-            &mut prover_transcript,
-            &mut rng,
-        )
-        .unwrap();
+    let proof = create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+        &poly,
+        &point,
+        Some(tier_1),
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+        &mut rng,
+    )
+    .unwrap();
 
     let mut verifier_transcript = fresh_transcript();
-    let result = verify_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
         tier_2,
-        y_com,
+        evaluation,
         &point,
-        &zk_proof,
+        &proof,
         verifier_setup,
         &mut verifier_transcript,
     );

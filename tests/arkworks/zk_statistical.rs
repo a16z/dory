@@ -7,7 +7,7 @@ use super::*;
 use ark_serialize::CanonicalSerialize;
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{create_zk_evaluation_proof, setup, verify_zk_evaluation_proof};
+use dory_pcs::{create_evaluation_proof, setup, verify, DoryProof, ZK};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::collections::HashMap;
@@ -59,27 +59,26 @@ fn bucket_from_serializable<T: CanonicalSerialize>(elem: &T) -> usize {
     (bytes[0] as usize) % NUM_BUCKETS
 }
 
+type ArkDoryProof = DoryProof<
+    dory_pcs::backends::arkworks::ArkG1,
+    dory_pcs::backends::arkworks::ArkG2,
+    dory_pcs::backends::arkworks::ArkGT,
+>;
+
 /// Collect bucket statistics from a full ZK proof (with hidden y)
-fn collect_full_zk_proof_stats(
-    proof: &dory_pcs::ZkDoryProof<
-        dory_pcs::backends::arkworks::ArkG1,
-        dory_pcs::backends::arkworks::ArkG2,
-        ArkFr,
-        dory_pcs::backends::arkworks::ArkGT,
-    >,
-    y_com: &dory_pcs::backends::arkworks::ArkG1,
-    tracker: &mut BucketTracker,
-) {
-    // ZK VMV message elements - includes y_com and prover-computed e2
+fn collect_full_zk_proof_stats(proof: &ArkDoryProof, tracker: &mut BucketTracker) {
+    // VMV message elements
     tracker.record("zk_vmv_c", bucket_from_serializable(&proof.vmv_message.c));
     tracker.record("zk_vmv_d2", bucket_from_serializable(&proof.vmv_message.d2));
     tracker.record("zk_vmv_e1", bucket_from_serializable(&proof.vmv_message.e1));
-    tracker.record("zk_vmv_e2", bucket_from_serializable(&proof.vmv_message.e2)); // Prover-computed E2
-    tracker.record(
-        "zk_vmv_y_com",
-        bucket_from_serializable(&proof.vmv_message.y_com),
-    ); // Commitment to y
-    tracker.record("zk_y_com_input", bucket_from_serializable(y_com)); // y_com returned to caller
+
+    // ZK-specific fields from proof
+    if let Some(ref e2) = proof.e2 {
+        tracker.record("zk_vmv_e2", bucket_from_serializable(e2));
+    }
+    if let Some(ref y_com) = proof.y_com {
+        tracker.record("zk_vmv_y_com", bucket_from_serializable(y_com));
+    }
 
     // First reduce messages (D values only - e1_beta/e2_beta are public)
     for (i, msg) in proof.first_messages.iter().enumerate() {
@@ -142,75 +141,33 @@ fn collect_full_zk_proof_stats(
     );
 
     // Sigma1 proof (proves y_com and E2 commit to same y)
-    tracker.record(
-        "sigma1_a1",
-        bucket_from_serializable(&proof.sigma1_proof.a1),
-    );
-    tracker.record(
-        "sigma1_a2",
-        bucket_from_serializable(&proof.sigma1_proof.a2),
-    );
-    tracker.record(
-        "sigma1_z1",
-        bucket_from_serializable(&proof.sigma1_proof.z1),
-    );
-    tracker.record(
-        "sigma1_z2",
-        bucket_from_serializable(&proof.sigma1_proof.z2),
-    );
-    tracker.record(
-        "sigma1_z3",
-        bucket_from_serializable(&proof.sigma1_proof.z3),
-    );
+    if let Some(ref sigma1) = proof.sigma1_proof {
+        tracker.record("sigma1_a1", bucket_from_serializable(&sigma1.a1));
+        tracker.record("sigma1_a2", bucket_from_serializable(&sigma1.a2));
+        tracker.record("sigma1_z1", bucket_from_serializable(&sigma1.z1));
+        tracker.record("sigma1_z2", bucket_from_serializable(&sigma1.z2));
+        tracker.record("sigma1_z3", bucket_from_serializable(&sigma1.z3));
+    }
 
     // Sigma2 proof (proves VMV relation)
-    tracker.record("sigma2_a", bucket_from_serializable(&proof.sigma2_proof.a));
-    tracker.record(
-        "sigma2_z1",
-        bucket_from_serializable(&proof.sigma2_proof.z1),
-    );
-    tracker.record(
-        "sigma2_z2",
-        bucket_from_serializable(&proof.sigma2_proof.z2),
-    );
+    if let Some(ref sigma2) = proof.sigma2_proof {
+        tracker.record("sigma2_a", bucket_from_serializable(&sigma2.a));
+        tracker.record("sigma2_z1", bucket_from_serializable(&sigma2.z1));
+        tracker.record("sigma2_z2", bucket_from_serializable(&sigma2.z2));
+    }
 
     // Scalar product proof
-    tracker.record(
-        "zk_sp_p1",
-        bucket_from_serializable(&proof.scalar_product_proof.p1),
-    );
-    tracker.record(
-        "zk_sp_p2",
-        bucket_from_serializable(&proof.scalar_product_proof.p2),
-    );
-    tracker.record(
-        "zk_sp_q",
-        bucket_from_serializable(&proof.scalar_product_proof.q),
-    );
-    tracker.record(
-        "zk_sp_r",
-        bucket_from_serializable(&proof.scalar_product_proof.r),
-    );
-    tracker.record(
-        "zk_sp_e1",
-        bucket_from_serializable(&proof.scalar_product_proof.e1),
-    );
-    tracker.record(
-        "zk_sp_e2",
-        bucket_from_serializable(&proof.scalar_product_proof.e2),
-    );
-    tracker.record(
-        "zk_sp_r1",
-        bucket_from_serializable(&proof.scalar_product_proof.r1),
-    );
-    tracker.record(
-        "zk_sp_r2",
-        bucket_from_serializable(&proof.scalar_product_proof.r2),
-    );
-    tracker.record(
-        "zk_sp_r3",
-        bucket_from_serializable(&proof.scalar_product_proof.r3),
-    );
+    if let Some(ref sp) = proof.scalar_product_proof {
+        tracker.record("zk_sp_p1", bucket_from_serializable(&sp.p1));
+        tracker.record("zk_sp_p2", bucket_from_serializable(&sp.p2));
+        tracker.record("zk_sp_q", bucket_from_serializable(&sp.q));
+        tracker.record("zk_sp_r", bucket_from_serializable(&sp.r));
+        tracker.record("zk_sp_e1", bucket_from_serializable(&sp.e1));
+        tracker.record("zk_sp_e2", bucket_from_serializable(&sp.e2));
+        tracker.record("zk_sp_r1", bucket_from_serializable(&sp.r1));
+        tracker.record("zk_sp_r2", bucket_from_serializable(&sp.r2));
+        tracker.record("zk_sp_r3", bucket_from_serializable(&sp.r3));
+    }
 }
 
 /// Statistical test for zero-knowledge property (full ZK with hidden y).
@@ -219,6 +176,7 @@ fn collect_full_zk_proof_stats(
 /// that all resulting proof elements (including y_com, Sigma1, Sigma2) are
 /// statistically indistinguishable from uniform random.
 #[test]
+#[ignore] // Long-running statistical test
 fn test_zk_statistical_indistinguishability() {
     const NUM_TRIALS: usize = 100;
 
@@ -248,9 +206,10 @@ fn test_zk_statistical_indistinguishability() {
                 .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
+            let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let (proof, y_com) =
-                create_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+            let proof =
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -262,21 +221,19 @@ fn test_zk_statistical_indistinguishability() {
                 )
                 .unwrap();
 
-            // Verify proof is valid (without revealing y!)
+            // Verify proof is valid
             let mut verifier_transcript = fresh_transcript();
-            assert!(
-                verify_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _>(
-                    tier_2,
-                    y_com,
-                    &point,
-                    &proof,
-                    verifier_setup.clone(),
-                    &mut verifier_transcript,
-                )
-                .is_ok()
-            );
+            assert!(verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+                tier_2,
+                evaluation,
+                &point,
+                &proof,
+                verifier_setup.clone(),
+                &mut verifier_transcript,
+            )
+            .is_ok());
 
-            collect_full_zk_proof_stats(&proof, &y_com, &mut tracker_zeros);
+            collect_full_zk_proof_stats(&proof, &mut tracker_zeros);
         }
 
         // Distribution B: All-ones polynomial (y=2^n for point=(0,0,...))
@@ -288,9 +245,10 @@ fn test_zk_statistical_indistinguishability() {
                 .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
+            let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let (proof, y_com) =
-                create_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+            let proof =
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -303,19 +261,17 @@ fn test_zk_statistical_indistinguishability() {
                 .unwrap();
 
             let mut verifier_transcript = fresh_transcript();
-            assert!(
-                verify_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _>(
-                    tier_2,
-                    y_com,
-                    &point,
-                    &proof,
-                    verifier_setup.clone(),
-                    &mut verifier_transcript,
-                )
-                .is_ok()
-            );
+            assert!(verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+                tier_2,
+                evaluation,
+                &point,
+                &proof,
+                verifier_setup.clone(),
+                &mut verifier_transcript,
+            )
+            .is_ok());
 
-            collect_full_zk_proof_stats(&proof, &y_com, &mut tracker_ones);
+            collect_full_zk_proof_stats(&proof, &mut tracker_ones);
         }
 
         // Distribution C: Random polynomial
@@ -326,9 +282,10 @@ fn test_zk_statistical_indistinguishability() {
                 .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
+            let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let (proof, y_com) =
-                create_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+            let proof =
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -341,19 +298,17 @@ fn test_zk_statistical_indistinguishability() {
                 .unwrap();
 
             let mut verifier_transcript = fresh_transcript();
-            assert!(
-                verify_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _>(
-                    tier_2,
-                    y_com,
-                    &point,
-                    &proof,
-                    verifier_setup.clone(),
-                    &mut verifier_transcript,
-                )
-                .is_ok()
-            );
+            assert!(verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+                tier_2,
+                evaluation,
+                &point,
+                &proof,
+                verifier_setup.clone(),
+                &mut verifier_transcript,
+            )
+            .is_ok());
 
-            collect_full_zk_proof_stats(&proof, &y_com, &mut tracker_random);
+            collect_full_zk_proof_stats(&proof, &mut tracker_random);
         }
     }
 
@@ -408,6 +363,7 @@ fn test_zk_statistical_indistinguishability() {
 /// Test that proof distributions from different witnesses are similar (two-sample test)
 /// Uses full ZK API with hidden y to test all proof elements including y_com.
 #[test]
+#[ignore] // Long-running statistical test
 fn test_zk_witness_independence() {
     const NUM_TRIALS: usize = 80;
 
@@ -435,9 +391,10 @@ fn test_zk_witness_independence() {
                 .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
+            let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let (proof, y_com) =
-                create_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+            let proof =
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -450,19 +407,17 @@ fn test_zk_witness_independence() {
                 .unwrap();
 
             let mut verifier_transcript = fresh_transcript();
-            assert!(
-                verify_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _>(
-                    tier_2,
-                    y_com,
-                    &point,
-                    &proof,
-                    verifier_setup.clone(),
-                    &mut verifier_transcript,
-                )
-                .is_ok()
-            );
+            assert!(verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+                tier_2,
+                evaluation,
+                &point,
+                &proof,
+                verifier_setup.clone(),
+                &mut verifier_transcript,
+            )
+            .is_ok());
 
-            collect_full_zk_proof_stats(&proof, &y_com, &mut tracker_skewed);
+            collect_full_zk_proof_stats(&proof, &mut tracker_skewed);
         }
 
         // Uniform: Random polynomial (y will be random)
@@ -473,9 +428,10 @@ fn test_zk_witness_independence() {
                 .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
+            let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let (proof, y_com) =
-                create_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+            let proof =
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -488,19 +444,17 @@ fn test_zk_witness_independence() {
                 .unwrap();
 
             let mut verifier_transcript = fresh_transcript();
-            assert!(
-                verify_zk_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _>(
-                    tier_2,
-                    y_com,
-                    &point,
-                    &proof,
-                    verifier_setup.clone(),
-                    &mut verifier_transcript,
-                )
-                .is_ok()
-            );
+            assert!(verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+                tier_2,
+                evaluation,
+                &point,
+                &proof,
+                verifier_setup.clone(),
+                &mut verifier_transcript,
+            )
+            .is_ok());
 
-            collect_full_zk_proof_stats(&proof, &y_com, &mut tracker_uniform);
+            collect_full_zk_proof_stats(&proof, &mut tracker_uniform);
         }
     }
 

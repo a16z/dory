@@ -103,11 +103,9 @@ pub mod backends;
 
 pub use error::DoryError;
 pub use evaluation_proof::create_evaluation_proof;
-#[cfg(feature = "zk")]
-pub use evaluation_proof::{create_zk_evaluation_proof, verify_zk_evaluation_proof};
 pub use messages::{FirstReduceMessage, ScalarProductMessage, SecondReduceMessage, VMVMessage};
 #[cfg(feature = "zk")]
-pub use messages::{ScalarProductProof, Sigma1Proof, Sigma2Proof, ZkVMVMessage};
+pub use messages::{ScalarProductProof, Sigma1Proof, Sigma2Proof};
 #[cfg(feature = "zk")]
 pub use mode::ZK;
 pub use mode::{Mode, Transparent};
@@ -115,8 +113,6 @@ use primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 pub use primitives::poly::{MultilinearLagrange, Polynomial};
 use primitives::serialization::{DoryDeserialize, DorySerialize};
 pub use proof::DoryProof;
-#[cfg(feature = "zk")]
-pub use proof::ZkDoryProof;
 pub use reduce_and_fold::{DoryProverState, DoryVerifierState};
 pub use setup::{ProverSetup, VerifierSetup};
 

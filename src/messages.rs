@@ -44,7 +44,7 @@ pub struct SecondReduceMessage<G1, G2, GT> {
 /// Vector-Matrix-Vector message for polynomial commitment transformation
 ///
 /// Contains C, D₂, E₁. In transparent mode, E₂ = y·Γ₂,fin is computed by verifier.
-/// In ZK mode, y is committed rather than revealed.
+/// In ZK mode, E₂ and y_com are stored in the proof's optional fields.
 #[derive(Clone, Debug)]
 pub struct VMVMessage<G1, GT> {
     /// C = e(MSM(T_vec', v_vec), Γ₂,fin) + r_c·HT
@@ -53,27 +53,6 @@ pub struct VMVMessage<G1, GT> {
     pub d2: GT,
     /// E₁ = MSM(T_vec', L_vec) + r_e1·H1
     pub e1: G1,
-}
-
-/// ZK VMV message with committed evaluation
-///
-/// In ZK mode, the evaluation y is not revealed. Instead, we commit to it:
-/// `y_com = y·Γ1,fin + r_y·H1`
-///
-/// The Sigma1 proof ties y_com to E2, proving they commit to the same y.
-#[cfg(feature = "zk")]
-#[derive(Clone, Debug)]
-pub struct ZkVMVMessage<G1, G2, GT> {
-    /// C = e(MSM(T_vec', v_vec), Γ₂,fin) + r_c·HT
-    pub c: GT,
-    /// D₂ = e(MSM(Γ₁\[nu\], v_vec), Γ₂,fin) + r_d2·HT
-    pub d2: GT,
-    /// E₁ = MSM(T_vec', L_vec) + r_e1·H1
-    pub e1: G1,
-    /// E₂ = y·Γ2,fin + r_e2·H2 (committed evaluation on G2 side)
-    pub e2: G2,
-    /// y_com = y·Γ1,fin + r_y·H1 (commitment to evaluation)
-    pub y_com: G1,
 }
 
 /// Final scalar product message (Section 3.1)
