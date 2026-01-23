@@ -368,15 +368,13 @@ where
             }
         };
 
-        // AST tracking: record G1Neg and G1Add for wiring
+        // AST tracking: record G1Add (subtraction is add with negated operand, but AST only tracks add)
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G1Sub lhs must have ValueId when AST enabled");
-            let b_orig = rhs.value_id.expect("G1Sub rhs must have ValueId when AST enabled");
-            // First negate rhs, then add
-            let b_neg = ast.push(ValueType::G1, AstOp::G1Neg { a: b_orig });
+            let b = rhs.value_id.expect("G1Sub rhs must have ValueId when AST enabled");
             Some(ast.push_with_opid(
                 ValueType::G1,
-                AstOp::G1Add { op_id: Some(add_id), a, b: b_neg },
+                AstOp::G1Add { op_id: Some(add_id), a, b },
                 add_id,
             ))
         } else {
@@ -405,18 +403,11 @@ where
         // Negation is cheap - no witness/hint tracking needed, just compute directly
         let result = -self.inner;
 
-        // AST tracking: record G1Neg for wiring purposes
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
-            let a = self.value_id.expect("G1Neg operand must have ValueId when AST enabled");
-            Some(ast.push(ValueType::G1, AstOp::G1Neg { a }))
-        } else {
-            None
-        };
-
+        // No AST tracking for negation - it's a cheap inline operation
         Self {
             inner: result,
             ctx: self.ctx,
-            value_id: out_value_id,
+            value_id: None,
         }
     }
 }
@@ -776,15 +767,13 @@ where
             }
         };
 
-        // AST tracking: record G2Neg and G2Add for wiring
+        // AST tracking: record G2Add (subtraction is add with negated operand, but AST only tracks add)
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G2Sub lhs must have ValueId when AST enabled");
-            let b_orig = rhs.value_id.expect("G2Sub rhs must have ValueId when AST enabled");
-            // First negate rhs, then add
-            let b_neg = ast.push(ValueType::G2, AstOp::G2Neg { a: b_orig });
+            let b = rhs.value_id.expect("G2Sub rhs must have ValueId when AST enabled");
             Some(ast.push_with_opid(
                 ValueType::G2,
-                AstOp::G2Add { op_id: Some(add_id), a, b: b_neg },
+                AstOp::G2Add { op_id: Some(add_id), a, b },
                 add_id,
             ))
         } else {
@@ -813,18 +802,11 @@ where
         // Negation is cheap - no witness/hint tracking needed, just compute directly
         let result = -self.inner;
 
-        // AST tracking: record G2Neg for wiring purposes
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
-            let a = self.value_id.expect("G2Neg operand must have ValueId when AST enabled");
-            Some(ast.push(ValueType::G2, AstOp::G2Neg { a }))
-        } else {
-            None
-        };
-
+        // No AST tracking for negation - it's a cheap inline operation
         Self {
             inner: result,
             ctx: self.ctx,
-            value_id: out_value_id,
+            value_id: None,
         }
     }
 }

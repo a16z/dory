@@ -191,11 +191,6 @@ where
         /// Right operand.
         b: ValueId,
     },
-    /// G1 negation: -a
-    G1Neg {
-        /// Operand to negate.
-        a: ValueId,
-    },
     /// G1 scalar multiplication: scalar * point
     G1ScalarMul {
         /// OpId for witness/hint linkage (traced operations only).
@@ -215,11 +210,6 @@ where
         a: ValueId,
         /// Right operand.
         b: ValueId,
-    },
-    /// G2 negation: -a
-    G2Neg {
-        /// Operand to negate.
-        a: ValueId,
     },
     /// G2 scalar multiplication: scalar * point
     G2ScalarMul {
@@ -315,9 +305,9 @@ where
                     _ => ValueType::G1, // Default, should be overridden
                 }
             }
-            AstOp::G1Add { .. } | AstOp::G1Neg { .. } | AstOp::G1ScalarMul { .. } => ValueType::G1,
+            AstOp::G1Add { .. } | AstOp::G1ScalarMul { .. } => ValueType::G1,
             AstOp::MsmG1 { .. } => ValueType::G1,
-            AstOp::G2Add { .. } | AstOp::G2Neg { .. } | AstOp::G2ScalarMul { .. } => ValueType::G2,
+            AstOp::G2Add { .. } | AstOp::G2ScalarMul { .. } => ValueType::G2,
             AstOp::MsmG2 { .. } => ValueType::G2,
             AstOp::GTMul { .. } | AstOp::GTExp { .. } => ValueType::GT,
             AstOp::Pairing { .. } | AstOp::MultiPairing { .. } => ValueType::GT,
@@ -330,7 +320,6 @@ where
             AstOp::Input { .. } => vec![],
             AstOp::G1Add { a, b, .. } | AstOp::G2Add { a, b, .. } => vec![*a, *b],
             AstOp::GTMul { lhs, rhs, .. } => vec![*lhs, *rhs],
-            AstOp::G1Neg { a } | AstOp::G2Neg { a } => vec![*a],
             AstOp::G1ScalarMul { point, .. }
             | AstOp::G2ScalarMul { point, .. }
             | AstOp::GTExp { base: point, .. } => vec![*point],
@@ -389,7 +378,6 @@ where
                 .field("a", a)
                 .field("b", b)
                 .finish(),
-            AstOp::G1Neg { a } => f.debug_struct("G1Neg").field("a", a).finish(),
             AstOp::G1ScalarMul { op_id, point, scalar } => f
                 .debug_struct("G1ScalarMul")
                 .field("op_id", op_id)
@@ -402,7 +390,6 @@ where
                 .field("a", a)
                 .field("b", b)
                 .finish(),
-            AstOp::G2Neg { a } => f.debug_struct("G2Neg").field("a", a).finish(),
             AstOp::G2ScalarMul { op_id, point, scalar } => f
                 .debug_struct("G2ScalarMul")
                 .field("op_id", op_id)
@@ -731,13 +718,11 @@ where
                 check_input(*a, ValueType::G1)?;
                 check_input(*b, ValueType::G1)
             }
-            AstOp::G1Neg { a } => check_input(*a, ValueType::G1),
             AstOp::G1ScalarMul { point, .. } => check_input(*point, ValueType::G1),
             AstOp::G2Add { a, b, .. } => {
                 check_input(*a, ValueType::G2)?;
                 check_input(*b, ValueType::G2)
             }
-            AstOp::G2Neg { a } => check_input(*a, ValueType::G2),
             AstOp::G2ScalarMul { point, .. } => check_input(*point, ValueType::G2),
             AstOp::GTMul { lhs, rhs, .. } => {
                 check_input(*lhs, ValueType::GT)?;

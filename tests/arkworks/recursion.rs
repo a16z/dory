@@ -406,7 +406,6 @@ fn test_ast_generation() {
             dory_pcs::recursion::ast::AstOp::G1Add { op_id, a, b } => {
                 format!("G1Add({}, {}, op_id={:?})", a.0, b.0, op_id)
             }
-            dory_pcs::recursion::ast::AstOp::G1Neg { a } => format!("G1Neg({})", a.0),
             dory_pcs::recursion::ast::AstOp::G1ScalarMul { point, scalar, .. } => {
                 let name = scalar.name.unwrap_or("anon");
                 format!("G1ScalarMul({}, scalar={})", point.0, name)
@@ -414,7 +413,6 @@ fn test_ast_generation() {
             dory_pcs::recursion::ast::AstOp::G2Add { op_id, a, b } => {
                 format!("G2Add({}, {}, op_id={:?})", a.0, b.0, op_id)
             }
-            dory_pcs::recursion::ast::AstOp::G2Neg { a } => format!("G2Neg({})", a.0),
             dory_pcs::recursion::ast::AstOp::G2ScalarMul { point, scalar, .. } => {
                 let name = scalar.name.unwrap_or("anon");
                 format!("G2ScalarMul({}, scalar={})", point.0, name)
@@ -452,7 +450,6 @@ fn test_ast_generation() {
                 dory_pcs::recursion::ast::AstOp::G1Add { op_id, a, b } => {
                 format!("G1Add({}, {}, op_id={:?})", a.0, b.0, op_id)
             }
-                dory_pcs::recursion::ast::AstOp::G1Neg { a } => format!("G1Neg({})", a.0),
                 dory_pcs::recursion::ast::AstOp::G1ScalarMul { point, scalar, .. } => {
                     let name = scalar.name.unwrap_or("anon");
                     format!("G1ScalarMul({}, scalar={})", point.0, name)
@@ -460,7 +457,6 @@ fn test_ast_generation() {
                 dory_pcs::recursion::ast::AstOp::G2Add { op_id, a, b } => {
                 format!("G2Add({}, {}, op_id={:?})", a.0, b.0, op_id)
             }
-                dory_pcs::recursion::ast::AstOp::G2Neg { a } => format!("G2Neg({})", a.0),
                 dory_pcs::recursion::ast::AstOp::G2ScalarMul { point, scalar, .. } => {
                     let name = scalar.name.unwrap_or("anon");
                     format!("G2ScalarMul({}, scalar={})", point.0, name)
@@ -781,10 +777,8 @@ fn test_ast_opid_witness_join() {
             AstOp::MultiPairing { op_id, .. } => op_id.as_ref(),
             AstOp::MsmG1 { op_id, .. } => op_id.as_ref(),
             AstOp::MsmG2 { op_id, .. } => op_id.as_ref(),
-            // Add operations now have OpIds for direct witness linkage
             AstOp::G1Add { op_id, .. } | AstOp::G2Add { op_id, .. } => op_id.as_ref(),
-            // These operations don't have OpIds (inputs and negations are not traced)
-            AstOp::Input { .. } | AstOp::G1Neg { .. } | AstOp::G2Neg { .. } => None,
+            AstOp::Input { .. } => None,
         };
 
         if let Some(opid) = op_id {
