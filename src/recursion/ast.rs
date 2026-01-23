@@ -246,11 +246,6 @@ where
         /// The scalar exponent with optional debug name.
         scalar: ScalarValue<<E::G1 as Group>::Scalar>,
     },
-    /// GT negation/inversion: 1/a (this is "neg" in Group trait for GT)
-    GTNeg {
-        /// Operand to invert.
-        a: ValueId,
-    },
 
     // ===== Pairing operations =====
     /// Single pairing: e(g1, g2) -> GT
@@ -320,7 +315,7 @@ where
             AstOp::MsmG1 { .. } => ValueType::G1,
             AstOp::G2Add { .. } | AstOp::G2Neg { .. } | AstOp::G2ScalarMul { .. } => ValueType::G2,
             AstOp::MsmG2 { .. } => ValueType::G2,
-            AstOp::GTMul { .. } | AstOp::GTExp { .. } | AstOp::GTNeg { .. } => ValueType::GT,
+            AstOp::GTMul { .. } | AstOp::GTExp { .. } => ValueType::GT,
             AstOp::Pairing { .. } | AstOp::MultiPairing { .. } => ValueType::GT,
         }
     }
@@ -331,7 +326,7 @@ where
             AstOp::Input { .. } => vec![],
             AstOp::G1Add { a, b } | AstOp::G2Add { a, b } => vec![*a, *b],
             AstOp::GTMul { lhs, rhs, .. } => vec![*lhs, *rhs],
-            AstOp::G1Neg { a } | AstOp::G2Neg { a } | AstOp::GTNeg { a } => vec![*a],
+            AstOp::G1Neg { a } | AstOp::G2Neg { a } => vec![*a],
             AstOp::G1ScalarMul { point, .. }
             | AstOp::G2ScalarMul { point, .. }
             | AstOp::GTExp { base: point, .. } => vec![*point],
@@ -412,7 +407,6 @@ where
                 .field("base", base)
                 .field("scalar_name", &scalar.name)
                 .finish(),
-            AstOp::GTNeg { a } => f.debug_struct("GTNeg").field("a", a).finish(),
             AstOp::Pairing { op_id, g1, g2 } => f
                 .debug_struct("Pairing")
                 .field("op_id", op_id)
@@ -736,7 +730,6 @@ where
                 check_input(*rhs, ValueType::GT)
             }
             AstOp::GTExp { base, .. } => check_input(*base, ValueType::GT),
-            AstOp::GTNeg { a } => check_input(*a, ValueType::GT),
             AstOp::Pairing { g1, g2, .. } => {
                 check_input(*g1, ValueType::G1)?;
                 check_input(*g2, ValueType::G2)

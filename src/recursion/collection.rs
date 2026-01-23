@@ -19,29 +19,30 @@ pub struct WitnessCollection<W: WitnessBackend> {
     /// Number of reduce-and-fold rounds in the verification
     pub num_rounds: usize,
 
-    /// GT exponentiation witnesses (base^scalar)
-    pub gt_exp: HashMap<OpId, W::GtExpWitness>,
-
+    /// G1 addition witnesses
+    pub g1_add: HashMap<OpId, W::G1AddWitness>,
     /// G1 scalar multiplication witnesses
     pub g1_scalar_mul: HashMap<OpId, W::G1ScalarMulWitness>,
-
-    /// G2 scalar multiplication witnesses
-    pub g2_scalar_mul: HashMap<OpId, W::G2ScalarMulWitness>,
-
-    /// GT multiplication witnesses
-    pub gt_mul: HashMap<OpId, W::GtMulWitness>,
-
-    /// Single pairing witnesses
-    pub pairing: HashMap<OpId, W::PairingWitness>,
-
-    /// Multi-pairing witnesses
-    pub multi_pairing: HashMap<OpId, W::MultiPairingWitness>,
-
     /// G1 MSM witnesses
     pub msm_g1: HashMap<OpId, W::MsmG1Witness>,
 
+    /// G2 addition witnesses
+    pub g2_add: HashMap<OpId, W::G2AddWitness>,
+    /// G2 scalar multiplication witnesses
+    pub g2_scalar_mul: HashMap<OpId, W::G2ScalarMulWitness>,
     /// G2 MSM witnesses
     pub msm_g2: HashMap<OpId, W::MsmG2Witness>,
+
+    /// GT multiplication witnesses
+    pub gt_mul: HashMap<OpId, W::GtMulWitness>,
+    /// GT exponentiation witnesses (base^scalar)
+    pub gt_exp: HashMap<OpId, W::GtExpWitness>,
+
+
+    /// Single pairing witnesses
+    pub pairing: HashMap<OpId, W::PairingWitness>,
+    /// Multi-pairing witnesses
+    pub multi_pairing: HashMap<OpId, W::MultiPairingWitness>,
 }
 
 impl<W: WitnessBackend> WitnessCollection<W> {
@@ -49,27 +50,39 @@ impl<W: WitnessBackend> WitnessCollection<W> {
     pub fn new() -> Self {
         Self {
             num_rounds: 0,
-            gt_exp: HashMap::new(),
+    
+            g1_add: HashMap::new(),
             g1_scalar_mul: HashMap::new(),
+            msm_g1: HashMap::new(),
+    
+            g2_add: HashMap::new(),
             g2_scalar_mul: HashMap::new(),
+            msm_g2: HashMap::new(),
+    
             gt_mul: HashMap::new(),
+            gt_exp: HashMap::new(),
+        
             pairing: HashMap::new(),
             multi_pairing: HashMap::new(),
-            msm_g1: HashMap::new(),
-            msm_g2: HashMap::new(),
         }
     }
 
     /// Total number of witnesses across all operation types.
     pub fn total_witnesses(&self) -> usize {
-        self.gt_exp.len()
+
+        self.g1_add.len()
             + self.g1_scalar_mul.len()
+            + self.msm_g1.len()
+    
+            + self.g2_add.len()
             + self.g2_scalar_mul.len()
+            + self.msm_g2.len()
+    
             + self.gt_mul.len()
+            + self.gt_exp.len()
+        
             + self.pairing.len()
             + self.multi_pairing.len()
-            + self.msm_g1.len()
-            + self.msm_g2.len()
     }
 
     /// Check if the collection is empty.
@@ -93,40 +106,29 @@ impl<W: WitnessBackend> WitnessCollection<W> {
     pub fn to_hints<E>(&self) -> HintMap<E>
     where
         E: PairingCurve,
-        W::GtExpWitness: WitnessResult<E::GT>,
+
+        W::G1AddWitness: WitnessResult<E::G1>,
         W::G1ScalarMulWitness: WitnessResult<E::G1>,
+        W::MsmG1Witness: WitnessResult<E::G1>,
+
+        W::G2AddWitness: WitnessResult<E::G2>,
         W::G2ScalarMulWitness: WitnessResult<E::G2>,
+        W::MsmG2Witness: WitnessResult<E::G2>,
+
         W::GtMulWitness: WitnessResult<E::GT>,
+        W::GtExpWitness: WitnessResult<E::GT>,
+    
         W::PairingWitness: WitnessResult<E::GT>,
         W::MultiPairingWitness: WitnessResult<E::GT>,
-        W::MsmG1Witness: WitnessResult<E::G1>,
-        W::MsmG2Witness: WitnessResult<E::G2>,
     {
         let mut hints = HintMap::new(self.num_rounds);
 
-        // Extract GT results
-        for (id, w) in &self.gt_exp {
+        // G1 results
+        for (id, w) in &self.g1_add {
             if let Some(result) = w.result() {
-                hints.insert_gt(*id, *result);
+                hints.insert_g1(*id, *result);
             }
         }
-        for (id, w) in &self.gt_mul {
-            if let Some(result) = w.result() {
-                hints.insert_gt(*id, *result);
-            }
-        }
-        for (id, w) in &self.pairing {
-            if let Some(result) = w.result() {
-                hints.insert_gt(*id, *result);
-            }
-        }
-        for (id, w) in &self.multi_pairing {
-            if let Some(result) = w.result() {
-                hints.insert_gt(*id, *result);
-            }
-        }
-
-        // Extract G1 results
         for (id, w) in &self.g1_scalar_mul {
             if let Some(result) = w.result() {
                 hints.insert_g1(*id, *result);
@@ -138,7 +140,12 @@ impl<W: WitnessBackend> WitnessCollection<W> {
             }
         }
 
-        // Extract G2 results
+        // G2 results
+        for (id, w) in &self.g2_add {
+            if let Some(result) = w.result() {
+                hints.insert_g2(*id, *result);
+            }
+        }
         for (id, w) in &self.g2_scalar_mul {
             if let Some(result) = w.result() {
                 hints.insert_g2(*id, *result);
@@ -147,6 +154,30 @@ impl<W: WitnessBackend> WitnessCollection<W> {
         for (id, w) in &self.msm_g2 {
             if let Some(result) = w.result() {
                 hints.insert_g2(*id, *result);
+            }
+        }
+
+        // GT results
+        for (id, w) in &self.gt_mul {
+            if let Some(result) = w.result() {
+                hints.insert_gt(*id, *result);
+            }
+        }
+        for (id, w) in &self.gt_exp {
+            if let Some(result) = w.result() {
+                hints.insert_gt(*id, *result);
+            }
+        }
+
+        // Pairing results
+        for (id, w) in &self.pairing {
+            if let Some(result) = w.result() {
+                hints.insert_gt(*id, *result);
+            }
+        }
+        for (id, w) in &self.multi_pairing {
+            if let Some(result) = w.result() {
+                hints.insert_gt(*id, *result);
             }
         }
 

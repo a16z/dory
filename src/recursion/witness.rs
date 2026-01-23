@@ -4,22 +4,33 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum OpType {
-    /// GT exponentiation: base^scalar in the target group
-    GtExp = 0,
+    // G1 operations
+    /// G1 addition: a + b
+    G1Add = 0,
     /// G1 scalar multiplication: scalar * point
     G1ScalarMul = 1,
-    /// G2 scalar multiplication: scalar * point
-    G2ScalarMul = 2,
-    /// GT multiplication: lhs * rhs in the target group
-    GtMul = 3,
-    /// Single pairing: e(G1, G2) -> GT
-    Pairing = 4,
-    /// Multi-pairing: product of pairings
-    MultiPairing = 5,
     /// Multi-scalar multiplication in G1
-    MsmG1 = 6,
+    MsmG1 = 2,
+
+    // G2 operations
+    /// G2 addition: a + b
+    G2Add = 3,
+    /// G2 scalar multiplication: scalar * point
+    G2ScalarMul = 4,
     /// Multi-scalar multiplication in G2
-    MsmG2 = 7,
+    MsmG2 = 5,
+
+    // GT operations
+    /// GT multiplication: lhs * rhs in the target group
+    GtMul = 6,
+    /// GT exponentiation: base^scalar in the target group
+    GtExp = 7,
+
+    // Pairing operations
+    /// Single pairing: e(G1, G2) -> GT
+    Pairing = 8,
+    /// Multi-pairing: product of pairings
+    MultiPairing = 9,
 }
 
 /// Unique identifier for an arithmetic operation in the verification protocol.
@@ -73,29 +84,33 @@ impl OpId {
 /// the structure of witness data for each operation type. This allows different
 /// proof systems to capture the level of detail they need.
 pub trait WitnessBackend: Sized + Send + Sync + 'static {
-    /// Witness type for GT exponentiation (base^scalar).
-    type GtExpWitness: Clone + Send + Sync;
-
+    // G1 operations
+    /// Witness type for G1 addition.
+    type G1AddWitness: Clone + Send + Sync;
     /// Witness type for G1 scalar multiplication.
     type G1ScalarMulWitness: Clone + Send + Sync;
-
-    /// Witness type for G2 scalar multiplication.
-    type G2ScalarMulWitness: Clone + Send + Sync;
-
-    /// Witness type for GT multiplication (Fq12 multiplication).
-    type GtMulWitness: Clone + Send + Sync;
-
-    /// Witness type for single pairing e(G1, G2) -> GT.
-    type PairingWitness: Clone + Send + Sync;
-
-    /// Witness type for multi-pairing (product of pairings).
-    type MultiPairingWitness: Clone + Send + Sync;
-
     /// Witness type for G1 multi-scalar multiplication.
     type MsmG1Witness: Clone + Send + Sync;
 
+    // G2 operations
+    /// Witness type for G2 addition.
+    type G2AddWitness: Clone + Send + Sync;
+    /// Witness type for G2 scalar multiplication.
+    type G2ScalarMulWitness: Clone + Send + Sync;
     /// Witness type for G2 multi-scalar multiplication.
     type MsmG2Witness: Clone + Send + Sync;
+
+    // GT operations
+    /// Witness type for GT multiplication (Fq12 multiplication).
+    type GtMulWitness: Clone + Send + Sync;
+    /// Witness type for GT exponentiation (base^scalar).
+    type GtExpWitness: Clone + Send + Sync;
+
+    // Pairing operations
+    /// Witness type for single pairing e(G1, G2) -> GT.
+    type PairingWitness: Clone + Send + Sync;
+    /// Witness type for multi-pairing (product of pairings).
+    type MultiPairingWitness: Clone + Send + Sync;
 }
 
 /// Trait for extracting the result from a witness.

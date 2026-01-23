@@ -20,14 +20,20 @@ const SCALAR_BITS: usize = 254;
 pub struct SimpleWitnessBackend;
 
 impl WitnessBackend for SimpleWitnessBackend {
-    type GtExpWitness = GtExpWitness;
+    // G1 operations
+    type G1AddWitness = G1AddWitness;
     type G1ScalarMulWitness = G1ScalarMulWitness;
+    type MsmG1Witness = MsmG1Witness;
+    // G2 operations
+    type G2AddWitness = G2AddWitness;
     type G2ScalarMulWitness = G2ScalarMulWitness;
+    type MsmG2Witness = MsmG2Witness;
+    // GT operations
     type GtMulWitness = GtMulWitness;
+    type GtExpWitness = GtExpWitness;
+    // Pairing operations
     type PairingWitness = PairingWitness;
     type MultiPairingWitness = MultiPairingWitness;
-    type MsmG1Witness = MsmG1Witness;
-    type MsmG2Witness = MsmG2Witness;
 }
 
 /// Witness for GT exponentiation using square-and-multiply.
@@ -216,6 +222,40 @@ impl WitnessResult<ArkG2> for MsmG2Witness {
     }
 }
 
+/// Witness for G1 addition.
+#[derive(Clone, Debug)]
+pub struct G1AddWitness {
+    /// First operand
+    pub a: ArkG1,
+    /// Second operand
+    pub b: ArkG1,
+    /// Result: a + b
+    pub result: ArkG1,
+}
+
+impl WitnessResult<ArkG1> for G1AddWitness {
+    fn result(&self) -> Option<&ArkG1> {
+        Some(&self.result)
+    }
+}
+
+/// Witness for G2 addition.
+#[derive(Clone, Debug)]
+pub struct G2AddWitness {
+    /// First operand
+    pub a: ArkG2,
+    /// Second operand
+    pub b: ArkG2,
+    /// Result: a + b
+    pub result: ArkG2,
+}
+
+impl WitnessResult<ArkG2> for G2AddWitness {
+    fn result(&self) -> Option<&ArkG2> {
+        Some(&self.result)
+    }
+}
+
 /// Simplified witness generator for the Arkworks backend.
 ///
 /// This generator creates basic witnesses with inputs, outputs, and scalar
@@ -320,6 +360,22 @@ impl WitnessGenerator<SimpleWitnessBackend, BN254> for SimpleWitnessGenerator {
             scalars: scalars.to_vec(),
             bucket_sums: vec![],
             running_sums: vec![],
+            result: *result,
+        }
+    }
+
+    fn generate_g1_add(a: &ArkG1, b: &ArkG1, result: &ArkG1) -> G1AddWitness {
+        G1AddWitness {
+            a: *a,
+            b: *b,
+            result: *result,
+        }
+    }
+
+    fn generate_g2_add(a: &ArkG2, b: &ArkG2, result: &ArkG2) -> G2AddWitness {
+        G2AddWitness {
+            a: *a,
+            b: *b,
             result: *result,
         }
     }

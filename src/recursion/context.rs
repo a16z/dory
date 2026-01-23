@@ -226,16 +226,12 @@ where
         self.hints.as_ref().and_then(|h| h.get_gt(id).copied())
     }
 
-    /// Record a GT exponentiation witness.
-    pub fn record_gt_exp(
-        &self,
-        id: OpId,
-        base: &E::GT,
-        scalar: &<E::G1 as Group>::Scalar,
-        result: &E::GT,
-    ) {
+    // ===== G1 operations =====
+
+    /// Record a G1 addition witness.
+    pub fn record_g1_add(&self, id: OpId, a: &E::G1, b: &E::G1, result: &E::G1) {
         if let Some(ref mut collector) = *self.collector.borrow_mut() {
-            collector.collect_gt_exp(id, base, scalar, result);
+            collector.collect_g1_add(id, a, b, result);
         }
     }
 
@@ -252,40 +248,6 @@ where
         }
     }
 
-    /// Record a G2 scalar multiplication witness.
-    pub fn record_g2_scalar_mul(
-        &self,
-        id: OpId,
-        point: &E::G2,
-        scalar: &<E::G1 as Group>::Scalar,
-        result: &E::G2,
-    ) {
-        if let Some(ref mut collector) = *self.collector.borrow_mut() {
-            collector.collect_g2_scalar_mul(id, point, scalar, result);
-        }
-    }
-
-    /// Record a GT multiplication witness.
-    pub fn record_gt_mul(&self, id: OpId, lhs: &E::GT, rhs: &E::GT, result: &E::GT) {
-        if let Some(ref mut collector) = *self.collector.borrow_mut() {
-            collector.collect_gt_mul(id, lhs, rhs, result);
-        }
-    }
-
-    /// Record a pairing witness.
-    pub fn record_pairing(&self, id: OpId, g1: &E::G1, g2: &E::G2, result: &E::GT) {
-        if let Some(ref mut collector) = *self.collector.borrow_mut() {
-            collector.collect_pairing(id, g1, g2, result);
-        }
-    }
-
-    /// Record a multi-pairing witness.
-    pub fn record_multi_pairing(&self, id: OpId, g1s: &[E::G1], g2s: &[E::G2], result: &E::GT) {
-        if let Some(ref mut collector) = *self.collector.borrow_mut() {
-            collector.collect_multi_pairing(id, g1s, g2s, result);
-        }
-    }
-
     /// Record a G1 MSM witness.
     pub fn record_msm_g1(
         &self,
@@ -299,6 +261,28 @@ where
         }
     }
 
+    // ===== G2 operations =====
+
+    /// Record a G2 addition witness.
+    pub fn record_g2_add(&self, id: OpId, a: &E::G2, b: &E::G2, result: &E::G2) {
+        if let Some(ref mut collector) = *self.collector.borrow_mut() {
+            collector.collect_g2_add(id, a, b, result);
+        }
+    }
+
+    /// Record a G2 scalar multiplication witness.
+    pub fn record_g2_scalar_mul(
+        &self,
+        id: OpId,
+        point: &E::G2,
+        scalar: &<E::G1 as Group>::Scalar,
+        result: &E::G2,
+    ) {
+        if let Some(ref mut collector) = *self.collector.borrow_mut() {
+            collector.collect_g2_scalar_mul(id, point, scalar, result);
+        }
+    }
+
     /// Record a G2 MSM witness.
     pub fn record_msm_g2(
         &self,
@@ -309,6 +293,44 @@ where
     ) {
         if let Some(ref mut collector) = *self.collector.borrow_mut() {
             collector.collect_msm_g2(id, bases, scalars, result);
+        }
+    }
+
+    // ===== GT operations =====
+
+    /// Record a GT multiplication witness.
+    pub fn record_gt_mul(&self, id: OpId, lhs: &E::GT, rhs: &E::GT, result: &E::GT) {
+        if let Some(ref mut collector) = *self.collector.borrow_mut() {
+            collector.collect_gt_mul(id, lhs, rhs, result);
+        }
+    }
+
+    /// Record a GT exponentiation witness.
+    pub fn record_gt_exp(
+        &self,
+        id: OpId,
+        base: &E::GT,
+        scalar: &<E::G1 as Group>::Scalar,
+        result: &E::GT,
+    ) {
+        if let Some(ref mut collector) = *self.collector.borrow_mut() {
+            collector.collect_gt_exp(id, base, scalar, result);
+        }
+    }
+
+    // ===== Pairing operations =====
+
+    /// Record a pairing witness.
+    pub fn record_pairing(&self, id: OpId, g1: &E::G1, g2: &E::G2, result: &E::GT) {
+        if let Some(ref mut collector) = *self.collector.borrow_mut() {
+            collector.collect_pairing(id, g1, g2, result);
+        }
+    }
+
+    /// Record a multi-pairing witness.
+    pub fn record_multi_pairing(&self, id: OpId, g1s: &[E::G1], g2s: &[E::G2], result: &E::GT) {
+        if let Some(ref mut collector) = *self.collector.borrow_mut() {
+            collector.collect_multi_pairing(id, g1s, g2s, result);
         }
     }
 }

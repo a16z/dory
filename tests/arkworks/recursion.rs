@@ -420,7 +420,6 @@ fn test_ast_generation() {
                 let name = scalar.name.unwrap_or("anon");
                 format!("GTExp({}, scalar={})", base.0, name)
             }
-            dory_pcs::recursion::ast::AstOp::GTNeg { a } => format!("GTNeg({})", a.0),
             dory_pcs::recursion::ast::AstOp::Pairing { g1, g2, .. } => format!("Pairing({}, {})", g1.0, g2.0),
             dory_pcs::recursion::ast::AstOp::MultiPairing { g1s, g2s, .. } => {
                 format!("MultiPairing(g1s={:?}, g2s={:?})", 
@@ -463,7 +462,6 @@ fn test_ast_generation() {
                     let name = scalar.name.unwrap_or("anon");
                     format!("GTExp({}, scalar={})", base.0, name)
                 }
-                dory_pcs::recursion::ast::AstOp::GTNeg { a } => format!("GTNeg({})", a.0),
                 dory_pcs::recursion::ast::AstOp::Pairing { g1, g2, .. } => format!("Pairing({}, {})", g1.0, g2.0),
                 dory_pcs::recursion::ast::AstOp::MultiPairing { g1s, g2s, .. } => {
                     format!("MultiPairing(g1s={:?}, g2s={:?})", 
@@ -564,4 +562,257 @@ fn test_ast_input_interning() {
         unique_input_sources = input_sources.len(),
         "Interned input sources"
     );
+}
+
+/// Test that AST structure is identical whether running in witness-gen or hint-based mode.
+/// This ensures the AST is deterministic and independent of execution mode.
+#[test]
+fn test_ast_structural_equivalence() {
+    let mut rng = rand::thread_rng();
+    let max_log_n = 6;
+
+    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+
+    let poly = random_polynomial(16);
+    let nu = 2;
+    let sigma = 2;
+
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
+    let point = random_point(4);
+
+    let mut prover_transcript = fresh_transcript();
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        &poly,
+        &point,
+        tier_1,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
+    let evaluation = poly.evaluate(&point);
+
+    // Phase 1: Witness generation with AST
+    let ctx1 = Rc::new(TestCtx::for_witness_gen_with_ast());
+    let mut transcript1 = fresh_transcript();
+
+    verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+        tier_2,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup.clone(),
+        &mut transcript1,
+        ctx1.clone(),
+    )
+    .expect("Witness-gen verification should succeed");
+
+    let ctx1_owned = Rc::try_unwrap(ctx1).ok().expect("Should have sole ownership");
+    let (witnesses, ast1) = ctx1_owned.finalize_with_ast();
+    let witnesses = witnesses.expect("Should have witnesses");
+    let ast1 = ast1.expect("Should have AST");
+
+    // Phase 2: Hint-based verification with AST
+    let hints = witnesses.to_hints::<BN254>();
+    let ctx2 = Rc::new(TestCtx::for_hints(hints).with_ast());
+    let mut transcript2 = fresh_transcript();
+
+    verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+        tier_2,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut transcript2,
+        ctx2.clone(),
+    )
+    .expect("Hint-based verification should succeed");
+
+    let ctx2_owned = Rc::try_unwrap(ctx2).ok().expect("Should have sole ownership");
+    let ast2 = ctx2_owned.take_ast().expect("Should have AST");
+
+    // Compare AST structures
+    assert_eq!(
+        ast1.nodes.len(),
+        ast2.nodes.len(),
+        "AST node counts should match between witness-gen and hint-based modes"
+    );
+
+    assert_eq!(
+        ast1.constraints.len(),
+        ast2.constraints.len(),
+        "AST constraint counts should match"
+    );
+
+    // Compare each node's structure (not values, just structure)
+    for (i, (n1, n2)) in ast1.nodes.iter().zip(ast2.nodes.iter()).enumerate() {
+        assert_eq!(
+            n1.out, n2.out,
+            "Node {} ValueId mismatch: {:?} vs {:?}",
+            i, n1.out, n2.out
+        );
+        assert_eq!(
+            n1.out_ty, n2.out_ty,
+            "Node {} ValueType mismatch: {:?} vs {:?}",
+            i, n1.out_ty, n2.out_ty
+        );
+
+        // Compare operation structure (input ValueIds match)
+        let inputs1 = n1.op.input_ids();
+        let inputs2 = n2.op.input_ids();
+        assert_eq!(
+            inputs1, inputs2,
+            "Node {} input ValueIds mismatch: {:?} vs {:?}",
+            i, inputs1, inputs2
+        );
+
+        // Compare operation kind
+        let kind1 = std::mem::discriminant(&n1.op);
+        let kind2 = std::mem::discriminant(&n2.op);
+        assert_eq!(
+            kind1, kind2,
+            "Node {} operation kind mismatch",
+            i
+        );
+    }
+
+    // Compare OpId -> ValueId mapping
+    assert_eq!(
+        ast1.opid_to_value.len(),
+        ast2.opid_to_value.len(),
+        "OpId mapping sizes should match"
+    );
+
+    for (opid, valueid1) in &ast1.opid_to_value {
+        let valueid2 = ast2.opid_to_value.get(opid);
+        assert_eq!(
+            Some(valueid1),
+            valueid2,
+            "OpId {:?} ValueId mismatch: {:?} vs {:?}",
+            opid, valueid1, valueid2
+        );
+    }
+
+    println!("\n========== AST STRUCTURAL EQUIVALENCE ==========");
+    println!("Witness-gen AST nodes: {}", ast1.nodes.len());
+    println!("Hint-based AST nodes: {}", ast2.nodes.len());
+    println!("OpId mappings: {}", ast1.opid_to_value.len());
+    println!("All structures match ✓");
+}
+
+/// Test that all OpIds in the AST have corresponding entries in WitnessCollection.
+/// This ensures the AST and witness system are properly synchronized.
+#[test]
+fn test_ast_opid_witness_join() {
+    use dory_pcs::recursion::ast::AstOp;
+
+    let mut rng = rand::thread_rng();
+    let max_log_n = 6;
+
+    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+
+    let poly = random_polynomial(16);
+    let nu = 2;
+    let sigma = 2;
+
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
+    let point = random_point(4);
+
+    let mut prover_transcript = fresh_transcript();
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        &poly,
+        &point,
+        tier_1,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
+    let evaluation = poly.evaluate(&point);
+
+    // Run verification with both AST and witness generation
+    let ctx = Rc::new(TestCtx::for_witness_gen_with_ast());
+    let mut transcript = fresh_transcript();
+
+    verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+        tier_2,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut transcript,
+        ctx.clone(),
+    )
+    .expect("Verification should succeed");
+
+    let ctx_owned = Rc::try_unwrap(ctx).ok().expect("Should have sole ownership");
+    let (witnesses, ast) = ctx_owned.finalize_with_ast();
+    let witnesses = witnesses.expect("Should have witnesses");
+    let ast = ast.expect("Should have AST");
+    let hints = witnesses.to_hints::<BN254>();
+
+    // For each node with an OpId, verify the OpId exists in witnesses/hints
+    let mut verified_opids = 0;
+    let mut missing_opids = Vec::new();
+
+    for node in &ast.nodes {
+        let op_id = match &node.op {
+            AstOp::G1ScalarMul { op_id, .. } => op_id.as_ref(),
+            AstOp::G2ScalarMul { op_id, .. } => op_id.as_ref(),
+            AstOp::GTMul { op_id, .. } => op_id.as_ref(),
+            AstOp::GTExp { op_id, .. } => op_id.as_ref(),
+            AstOp::Pairing { op_id, .. } => op_id.as_ref(),
+            AstOp::MultiPairing { op_id, .. } => op_id.as_ref(),
+            AstOp::MsmG1 { op_id, .. } => op_id.as_ref(),
+            AstOp::MsmG2 { op_id, .. } => op_id.as_ref(),
+            // These operations don't have OpIds in the AST (cheap ops tracked separately)
+            AstOp::Input { .. } | AstOp::G1Add { .. } | AstOp::G1Neg { .. } 
+                | AstOp::G2Add { .. } | AstOp::G2Neg { .. } => None,
+        };
+
+        if let Some(opid) = op_id {
+            // Verify the OpId exists in the hint map
+            if hints.contains(*opid) {
+                verified_opids += 1;
+            } else {
+                missing_opids.push(*opid);
+            }
+        }
+    }
+
+    // Also check the opid_to_value mapping
+    for opid in ast.opid_to_value.keys() {
+        if !hints.contains(*opid) {
+            if !missing_opids.contains(opid) {
+                missing_opids.push(*opid);
+            }
+        }
+    }
+
+    println!("\n========== OPID-WITNESS JOIN TEST ==========");
+    println!("AST nodes with OpId: {}", verified_opids + missing_opids.len());
+    println!("Verified OpIds in hints: {}", verified_opids);
+    println!("Missing OpIds: {}", missing_opids.len());
+    if !missing_opids.is_empty() {
+        println!("Missing: {:?}", missing_opids);
+    }
+
+    assert!(
+        missing_opids.is_empty(),
+        "All OpIds in AST should have corresponding witness entries. Missing: {:?}",
+        missing_opids
+    );
+    assert!(
+        verified_opids > 0,
+        "Should have verified at least one OpId"
+    );
+    println!("All OpIds have witness entries ✓");
 }

@@ -296,14 +296,16 @@ impl<E: PairingCurve> DoryDeserialize for HintMap<E> {
             let index = u16::deserialize_with_mode(&mut reader, compress, validate)?;
 
             let op_type = match op_type_byte {
-                0 => OpType::GtExp,
+                0 => OpType::G1Add,
                 1 => OpType::G1ScalarMul,
-                2 => OpType::G2ScalarMul,
-                3 => OpType::GtMul,
-                4 => OpType::Pairing,
-                5 => OpType::MultiPairing,
-                6 => OpType::MsmG1,
-                7 => OpType::MsmG2,
+                2 => OpType::MsmG1,
+                3 => OpType::G2Add,
+                4 => OpType::G2ScalarMul,
+                5 => OpType::MsmG2,
+                6 => OpType::GtMul,
+                7 => OpType::GtExp,
+                8 => OpType::Pairing,
+                9 => OpType::MultiPairing,
                 _ => {
                     return Err(SerializationError::InvalidData(format!(
                         "Invalid OpType: {op_type_byte}"

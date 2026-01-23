@@ -213,7 +213,30 @@ where
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self {
-        let result = self.inner + rhs.inner;
+        let id = self.ctx.next_id(OpType::G1Add);
+
+        let result = match self.ctx.mode() {
+            ExecutionMode::WitnessGeneration => {
+                let result = self.inner + rhs.inner;
+                self.ctx.record_g1_add(id, &self.inner, &rhs.inner, &result);
+                result
+            }
+            ExecutionMode::HintBased => {
+                if let Some(result) = self.ctx.get_hint_g1(id) {
+                    result
+                } else {
+                    tracing::warn!(
+                        op_id = ?id,
+                        op_type = "G1Add",
+                        round = id.round,
+                        index = id.index,
+                        "Missing hint, computing fallback"
+                    );
+                    self.ctx.record_missing_hint(id);
+                    self.inner + rhs.inner
+                }
+            }
+        };
 
         // AST tracking: record G1Add
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
@@ -242,7 +265,30 @@ where
     type Output = Self;
 
     fn add(self, rhs: &Self) -> Self {
-        let result = self.inner + rhs.inner;
+        let id = self.ctx.next_id(OpType::G1Add);
+
+        let result = match self.ctx.mode() {
+            ExecutionMode::WitnessGeneration => {
+                let result = self.inner + rhs.inner;
+                self.ctx.record_g1_add(id, &self.inner, &rhs.inner, &result);
+                result
+            }
+            ExecutionMode::HintBased => {
+                if let Some(result) = self.ctx.get_hint_g1(id) {
+                    result
+                } else {
+                    tracing::warn!(
+                        op_id = ?id,
+                        op_type = "G1Add",
+                        round = id.round,
+                        index = id.index,
+                        "Missing hint, computing fallback"
+                    );
+                    self.ctx.record_missing_hint(id);
+                    self.inner + rhs.inner
+                }
+            }
+        };
 
         // AST tracking: record G1Add
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
@@ -286,9 +332,35 @@ where
     type Output = Self;
 
     fn sub(self, rhs: &Self) -> Self {
-        let result = self.inner - rhs.inner;
+        // Compute negation directly (cheap, no witness tracking)
+        let neg_result = -rhs.inner;
 
-        // AST tracking: record G1Add with negated rhs
+        // Record addition with witness/hint tracking
+        let add_id = self.ctx.next_id(OpType::G1Add);
+        let result = match self.ctx.mode() {
+            ExecutionMode::WitnessGeneration => {
+                let result = self.inner + neg_result;
+                self.ctx.record_g1_add(add_id, &self.inner, &neg_result, &result);
+                result
+            }
+            ExecutionMode::HintBased => {
+                if let Some(result) = self.ctx.get_hint_g1(add_id) {
+                    result
+                } else {
+                    tracing::warn!(
+                        op_id = ?add_id,
+                        op_type = "G1Add",
+                        round = add_id.round,
+                        index = add_id.index,
+                        "Missing hint, computing fallback"
+                    );
+                    self.ctx.record_missing_hint(add_id);
+                    self.inner + neg_result
+                }
+            }
+        };
+
+        // AST tracking: record G1Neg and G1Add for wiring
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G1Sub lhs must have ValueId when AST enabled");
             let b_orig = rhs.value_id.expect("G1Sub rhs must have ValueId when AST enabled");
@@ -318,9 +390,10 @@ where
     type Output = Self;
 
     fn neg(self) -> Self {
+        // Negation is cheap - no witness/hint tracking needed, just compute directly
         let result = -self.inner;
 
-        // AST tracking: record G1Neg
+        // AST tracking: record G1Neg for wiring purposes
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G1Neg operand must have ValueId when AST enabled");
             Some(ast.push(ValueType::G1, AstOp::G1Neg { a }))
@@ -536,7 +609,30 @@ where
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self {
-        let result = self.inner + rhs.inner;
+        let id = self.ctx.next_id(OpType::G2Add);
+
+        let result = match self.ctx.mode() {
+            ExecutionMode::WitnessGeneration => {
+                let result = self.inner + rhs.inner;
+                self.ctx.record_g2_add(id, &self.inner, &rhs.inner, &result);
+                result
+            }
+            ExecutionMode::HintBased => {
+                if let Some(result) = self.ctx.get_hint_g2(id) {
+                    result
+                } else {
+                    tracing::warn!(
+                        op_id = ?id,
+                        op_type = "G2Add",
+                        round = id.round,
+                        index = id.index,
+                        "Missing hint, computing fallback"
+                    );
+                    self.ctx.record_missing_hint(id);
+                    self.inner + rhs.inner
+                }
+            }
+        };
 
         // AST tracking: record G2Add
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
@@ -565,7 +661,30 @@ where
     type Output = Self;
 
     fn add(self, rhs: &Self) -> Self {
-        let result = self.inner + rhs.inner;
+        let id = self.ctx.next_id(OpType::G2Add);
+
+        let result = match self.ctx.mode() {
+            ExecutionMode::WitnessGeneration => {
+                let result = self.inner + rhs.inner;
+                self.ctx.record_g2_add(id, &self.inner, &rhs.inner, &result);
+                result
+            }
+            ExecutionMode::HintBased => {
+                if let Some(result) = self.ctx.get_hint_g2(id) {
+                    result
+                } else {
+                    tracing::warn!(
+                        op_id = ?id,
+                        op_type = "G2Add",
+                        round = id.round,
+                        index = id.index,
+                        "Missing hint, computing fallback"
+                    );
+                    self.ctx.record_missing_hint(id);
+                    self.inner + rhs.inner
+                }
+            }
+        };
 
         // AST tracking: record G2Add
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
@@ -609,9 +728,35 @@ where
     type Output = Self;
 
     fn sub(self, rhs: &Self) -> Self {
-        let result = self.inner - rhs.inner;
+        // Compute negation directly (cheap, no witness tracking)
+        let neg_result = -rhs.inner;
 
-        // AST tracking: record G2Add with negated rhs
+        // Record addition with witness/hint tracking
+        let add_id = self.ctx.next_id(OpType::G2Add);
+        let result = match self.ctx.mode() {
+            ExecutionMode::WitnessGeneration => {
+                let result = self.inner + neg_result;
+                self.ctx.record_g2_add(add_id, &self.inner, &neg_result, &result);
+                result
+            }
+            ExecutionMode::HintBased => {
+                if let Some(result) = self.ctx.get_hint_g2(add_id) {
+                    result
+                } else {
+                    tracing::warn!(
+                        op_id = ?add_id,
+                        op_type = "G2Add",
+                        round = add_id.round,
+                        index = add_id.index,
+                        "Missing hint, computing fallback"
+                    );
+                    self.ctx.record_missing_hint(add_id);
+                    self.inner + neg_result
+                }
+            }
+        };
+
+        // AST tracking: record G2Neg and G2Add for wiring
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G2Sub lhs must have ValueId when AST enabled");
             let b_orig = rhs.value_id.expect("G2Sub rhs must have ValueId when AST enabled");
@@ -641,9 +786,10 @@ where
     type Output = Self;
 
     fn neg(self) -> Self {
+        // Negation is cheap - no witness/hint tracking needed, just compute directly
         let result = -self.inner;
 
-        // AST tracking: record G2Neg
+        // AST tracking: record G2Neg for wiring purposes
         let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
             let a = self.value_id.expect("G2Neg operand must have ValueId when AST enabled");
             Some(ast.push(ValueType::G2, AstOp::G2Neg { a }))
@@ -940,20 +1086,14 @@ where
     type Output = Self;
 
     fn neg(self) -> Self {
+        // GT negation (inversion) - compute directly, no AST tracking
+        // (GT negation is not used in Dory verification)
         let result = -self.inner;
-
-        // AST tracking: record GTNeg
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
-            let a = self.value_id.expect("GTNeg operand must have ValueId when AST enabled");
-            Some(ast.push(ValueType::GT, AstOp::GTNeg { a }))
-        } else {
-            None
-        };
 
         Self {
             inner: result,
             ctx: self.ctx,
-            value_id: out_value_id,
+            value_id: None, // No AST node for GT negation
         }
     }
 }

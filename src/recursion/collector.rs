@@ -64,12 +64,9 @@ impl Default for OpIdBuilder {
 /// Backend implementations provide this to create witnesses with intermediate
 /// computation steps (e.g., Miller loop iterations, square-and-multiply steps).
 pub trait WitnessGenerator<W: WitnessBackend, E: PairingCurve> {
-    /// Generate a GT exponentiation witness with intermediate steps.
-    fn generate_gt_exp(
-        base: &E::GT,
-        scalar: &<E::G1 as Group>::Scalar,
-        result: &E::GT,
-    ) -> W::GtExpWitness;
+    // G1 operations
+    /// Generate a G1 addition witness.
+    fn generate_g1_add(a: &E::G1, b: &E::G1, result: &E::G1) -> W::G1AddWitness;
 
     /// Generate a G1 scalar multiplication witness with intermediate steps.
     fn generate_g1_scalar_mul(
@@ -78,6 +75,17 @@ pub trait WitnessGenerator<W: WitnessBackend, E: PairingCurve> {
         result: &E::G1,
     ) -> W::G1ScalarMulWitness;
 
+    /// Generate a G1 MSM witness with bucket and accumulator states.
+    fn generate_msm_g1(
+        bases: &[E::G1],
+        scalars: &[<E::G1 as Group>::Scalar],
+        result: &E::G1,
+    ) -> W::MsmG1Witness;
+
+    // G2 operations
+    /// Generate a G2 addition witness.
+    fn generate_g2_add(a: &E::G2, b: &E::G2, result: &E::G2) -> W::G2AddWitness;
+
     /// Generate a G2 scalar multiplication witness with intermediate steps.
     fn generate_g2_scalar_mul(
         point: &E::G2,
@@ -85,9 +93,25 @@ pub trait WitnessGenerator<W: WitnessBackend, E: PairingCurve> {
         result: &E::G2,
     ) -> W::G2ScalarMulWitness;
 
+    /// Generate a G2 MSM witness with bucket and accumulator states.
+    fn generate_msm_g2(
+        bases: &[E::G2],
+        scalars: &[<E::G1 as Group>::Scalar],
+        result: &E::G2,
+    ) -> W::MsmG2Witness;
+
+    // GT operations
     /// Generate a GT multiplication witness with intermediate steps.
     fn generate_gt_mul(lhs: &E::GT, rhs: &E::GT, result: &E::GT) -> W::GtMulWitness;
 
+    /// Generate a GT exponentiation witness with intermediate steps.
+    fn generate_gt_exp(
+        base: &E::GT,
+        scalar: &<E::G1 as Group>::Scalar,
+        result: &E::GT,
+    ) -> W::GtExpWitness;
+
+    // Pairing operations
     /// Generate a single pairing witness with Miller loop steps.
     fn generate_pairing(g1: &E::G1, g2: &E::G2, result: &E::GT) -> W::PairingWitness;
 
@@ -97,20 +121,6 @@ pub trait WitnessGenerator<W: WitnessBackend, E: PairingCurve> {
         g2s: &[E::G2],
         result: &E::GT,
     ) -> W::MultiPairingWitness;
-
-    /// Generate a G1 MSM witness with bucket and accumulator states.
-    fn generate_msm_g1(
-        bases: &[E::G1],
-        scalars: &[<E::G1 as Group>::Scalar],
-        result: &E::G1,
-    ) -> W::MsmG1Witness;
-
-    /// Generate a G2 MSM witness with bucket and accumulator states.
-    fn generate_msm_g2(
-        bases: &[E::G2],
-        scalars: &[<E::G1 as Group>::Scalar],
-        result: &E::G2,
-    ) -> W::MsmG2Witness;
 }
 
 /// Witness collector that generates and stores witnesses during verification.
@@ -154,16 +164,18 @@ where
         self.collection
     }
 
-    /// Collect a GT exponentiation witness.
-    pub(crate) fn collect_gt_exp(
+    // ===== G1 operations =====
+
+    /// Collect a G1 addition witness.
+    pub(crate) fn collect_g1_add(
         &mut self,
         id: OpId,
-        base: &E::GT,
-        scalar: &<E::G1 as Group>::Scalar,
-        result: &E::GT,
-    ) -> W::GtExpWitness {
-        let witness = Gen::generate_gt_exp(base, scalar, result);
-        self.collection.gt_exp.insert(id, witness.clone());
+        a: &E::G1,
+        b: &E::G1,
+        result: &E::G1,
+    ) -> W::G1AddWitness {
+        let witness = Gen::generate_g1_add(a, b, result);
+        self.collection.g1_add.insert(id, witness.clone());
         witness
     }
 
@@ -180,6 +192,34 @@ where
         witness
     }
 
+    /// Collect a G1 MSM witness.
+    pub(crate) fn collect_msm_g1(
+        &mut self,
+        id: OpId,
+        bases: &[E::G1],
+        scalars: &[<E::G1 as Group>::Scalar],
+        result: &E::G1,
+    ) -> W::MsmG1Witness {
+        let witness = Gen::generate_msm_g1(bases, scalars, result);
+        self.collection.msm_g1.insert(id, witness.clone());
+        witness
+    }
+
+    // ===== G2 operations =====
+
+    /// Collect a G2 addition witness.
+    pub(crate) fn collect_g2_add(
+        &mut self,
+        id: OpId,
+        a: &E::G2,
+        b: &E::G2,
+        result: &E::G2,
+    ) -> W::G2AddWitness {
+        let witness = Gen::generate_g2_add(a, b, result);
+        self.collection.g2_add.insert(id, witness.clone());
+        witness
+    }
+
     /// Collect a G2 scalar multiplication witness.
     pub(crate) fn collect_g2_scalar_mul(
         &mut self,
@@ -193,6 +233,21 @@ where
         witness
     }
 
+    /// Collect a G2 MSM witness.
+    pub(crate) fn collect_msm_g2(
+        &mut self,
+        id: OpId,
+        bases: &[E::G2],
+        scalars: &[<E::G1 as Group>::Scalar],
+        result: &E::G2,
+    ) -> W::MsmG2Witness {
+        let witness = Gen::generate_msm_g2(bases, scalars, result);
+        self.collection.msm_g2.insert(id, witness.clone());
+        witness
+    }
+
+    // ===== GT operations =====
+
     /// Collect a GT multiplication witness.
     pub(crate) fn collect_gt_mul(
         &mut self,
@@ -205,6 +260,21 @@ where
         self.collection.gt_mul.insert(id, witness.clone());
         witness
     }
+
+    /// Collect a GT exponentiation witness.
+    pub(crate) fn collect_gt_exp(
+        &mut self,
+        id: OpId,
+        base: &E::GT,
+        scalar: &<E::G1 as Group>::Scalar,
+        result: &E::GT,
+    ) -> W::GtExpWitness {
+        let witness = Gen::generate_gt_exp(base, scalar, result);
+        self.collection.gt_exp.insert(id, witness.clone());
+        witness
+    }
+
+    // ===== Pairing operations =====
 
     /// Collect a single pairing witness.
     pub(crate) fn collect_pairing(
@@ -229,32 +299,6 @@ where
     ) -> W::MultiPairingWitness {
         let witness = Gen::generate_multi_pairing(g1s, g2s, result);
         self.collection.multi_pairing.insert(id, witness.clone());
-        witness
-    }
-
-    /// Collect a G1 MSM witness.
-    pub(crate) fn collect_msm_g1(
-        &mut self,
-        id: OpId,
-        bases: &[E::G1],
-        scalars: &[<E::G1 as Group>::Scalar],
-        result: &E::G1,
-    ) -> W::MsmG1Witness {
-        let witness = Gen::generate_msm_g1(bases, scalars, result);
-        self.collection.msm_g1.insert(id, witness.clone());
-        witness
-    }
-
-    /// Collect a G2 MSM witness.
-    pub(crate) fn collect_msm_g2(
-        &mut self,
-        id: OpId,
-        bases: &[E::G2],
-        scalars: &[<E::G1 as Group>::Scalar],
-        result: &E::G2,
-    ) -> W::MsmG2Witness {
-        let witness = Gen::generate_msm_g2(bases, scalars, result);
-        self.collection.msm_g2.insert(id, witness.clone());
         witness
     }
 }
