@@ -13,6 +13,7 @@ use super::ast::{AstBuilder, AstGraph};
 use super::witness::{OpId, OpType, WitnessBackend};
 use crate::primitives::arithmetic::{Group, PairingCurve};
 
+use super::hint_map::HintResult;
 use super::{HintMap, OpIdBuilder, WitnessCollection, WitnessCollector, WitnessGenerator};
 
 /// Execution mode for traced verification operations.
@@ -26,6 +27,12 @@ pub enum ExecutionMode {
     /// Try hints first, fall back to compute with warning.
     /// Used during recursive verification when hints should be available.
     HintBased,
+
+    /// Record AST + hints only, skip detailed witness expansion.
+    /// Used for two-phase parallel witness generation where:
+    /// - Phase 1: Record lightweight op log (AST) + results (hints)
+    /// - Phase 2: Expand witnesses in parallel (done by upstream crate)
+    Deferred,
 }
 
 /// Handle to a trace context
@@ -55,7 +62,10 @@ where
     mode: ExecutionMode,
     id_builder: RefCell<OpIdBuilder>,
     collector: RefCell<Option<WitnessCollector<W, E, Gen>>>,
+    /// Hints for hint-based mode (read-only).
     hints: Option<HintMap<E>>,
+    /// Hints being recorded in deferred mode (write).
+    deferred_hints: RefCell<Option<HintMap<E>>>,
     missing_hints: RefCell<Vec<OpId>>,
     /// Optional AST builder for recording operation wiring.
     ast: RefCell<Option<AstBuilder<E>>>,
@@ -78,6 +88,7 @@ where
             id_builder: RefCell::new(OpIdBuilder::new()),
             collector: RefCell::new(Some(WitnessCollector::new())),
             hints: None,
+            deferred_hints: RefCell::new(None),
             missing_hints: RefCell::new(Vec::new()),
             ast: RefCell::new(None),
             _phantom: PhantomData,
@@ -94,8 +105,44 @@ where
             id_builder: RefCell::new(OpIdBuilder::new()),
             collector: RefCell::new(None),
             hints: Some(hints),
+            deferred_hints: RefCell::new(None),
             missing_hints: RefCell::new(Vec::new()),
             ast: RefCell::new(None),
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Create a context for deferred witness expansion.
+    ///
+    /// In deferred mode:
+    /// - Operations are computed and results are recorded to a `HintMap`
+    /// - AST is recorded for operation wiring
+    /// - Detailed witnesses are NOT expanded (no `WitnessCollector`)
+    ///
+    /// After verification, call `take_deferred_hints()` and `take_ast()` to get
+    /// the recorded data for parallel witness expansion by upstream crates.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Phase 1: Record ops in deferred mode
+    /// let ctx = Rc::new(TraceContext::for_deferred());
+    /// verify_recursive(..., ctx.clone())?;
+    /// let ast = ctx.take_ast().unwrap();
+    /// let hints = ctx.take_deferred_hints().unwrap();
+    ///
+    /// // Phase 2: Expand witnesses in parallel (upstream crate)
+    /// let witnesses = parallel_expand_witnesses(&ast, &hints);
+    /// ```
+    pub fn for_deferred() -> Self {
+        Self {
+            mode: ExecutionMode::Deferred,
+            id_builder: RefCell::new(OpIdBuilder::new()),
+            collector: RefCell::new(None), // No witness expansion
+            hints: None,
+            deferred_hints: RefCell::new(Some(HintMap::new(0))), // Will set rounds later
+            missing_hints: RefCell::new(Vec::new()),
+            ast: RefCell::new(Some(AstBuilder::new())), // Always enable AST
             _phantom: PhantomData,
         }
     }
@@ -105,6 +152,13 @@ where
     /// This combines `for_witness_gen()` with `with_ast()`.
     pub fn for_witness_gen_with_ast() -> Self {
         Self::for_witness_gen().with_ast()
+    }
+
+    /// Create a context for deferred mode (alias for `for_deferred`).
+    ///
+    /// Provided for API symmetry with `for_witness_gen_with_ast()`.
+    pub fn for_deferred_with_ast() -> Self {
+        Self::for_deferred()
     }
 
     /// Enable AST tracing for this context.
@@ -160,6 +214,10 @@ where
         if let Some(ref mut collector) = *self.collector.borrow_mut() {
             collector.set_num_rounds(num_rounds);
         }
+        // Also set rounds on deferred hints
+        if let Some(ref mut hints) = *self.deferred_hints.borrow_mut() {
+            hints.num_rounds = num_rounds;
+        }
     }
 
     /// Generate the next operation ID for the given type.
@@ -206,6 +264,29 @@ where
     /// Useful when you only care about the AST for circuit generation.
     pub fn take_ast(&self) -> Option<AstGraph<E>> {
         self.ast.borrow_mut().take().map(|b| b.finalize())
+    }
+
+    /// Take the deferred hints recorded during deferred mode execution.
+    ///
+    /// Returns `None` if not in deferred mode or if already taken.
+    pub fn take_deferred_hints(&self) -> Option<HintMap<E>> {
+        self.deferred_hints.borrow_mut().take()
+    }
+
+    /// Check if running in deferred mode.
+    #[inline]
+    pub fn is_deferred(&self) -> bool {
+        self.mode == ExecutionMode::Deferred
+    }
+
+    /// Record a hint result in deferred mode.
+    ///
+    /// This is called internally by trace wrappers to record operation results
+    /// without expanding full witnesses.
+    pub(crate) fn record_deferred_hint(&self, id: OpId, result: HintResult<E>) {
+        if let Some(ref mut hints) = *self.deferred_hints.borrow_mut() {
+            hints.insert(id, result);
+        }
     }
 
     /// Get a G1 hint for the given operation.

@@ -14,6 +14,7 @@ use std::ops::{Add, Neg, Sub};
 use std::rc::Rc;
 
 use super::ast::{AstOp, ScalarValue, ValueId, ValueType};
+use super::hint_map::HintResult;
 use super::witness::{OpType, WitnessBackend};
 use crate::primitives::arithmetic::{Group, PairingCurve};
 
@@ -169,6 +170,12 @@ where
                     self.inner.scale(scalar)
                 }
             }
+            ExecutionMode::Deferred => {
+                // Compute result and record to deferred hints (no witness expansion)
+                let result = self.inner.scale(scalar);
+                self.ctx.record_deferred_hint(id, HintResult::G1(result));
+                result
+            }
         };
 
         // AST tracking: record the scalar mul operation
@@ -236,6 +243,11 @@ where
                     self.inner + rhs.inner
                 }
             }
+            ExecutionMode::Deferred => {
+                let result = self.inner + rhs.inner;
+                self.ctx.record_deferred_hint(id, HintResult::G1(result));
+                result
+            }
         };
 
         // AST tracking: record G1Add with OpId for witness linkage
@@ -291,6 +303,11 @@ where
                     self.ctx.record_missing_hint(id);
                     self.inner + rhs.inner
                 }
+            }
+            ExecutionMode::Deferred => {
+                let result = self.inner + rhs.inner;
+                self.ctx.record_deferred_hint(id, HintResult::G1(result));
+                result
             }
         };
 
@@ -365,6 +382,11 @@ where
                     self.ctx.record_missing_hint(add_id);
                     self.inner + neg_result
                 }
+            }
+            ExecutionMode::Deferred => {
+                let result = self.inner + neg_result;
+                self.ctx.record_deferred_hint(add_id, HintResult::G1(result));
+                result
             }
         };
 
@@ -568,6 +590,11 @@ where
                     self.inner.scale(scalar)
                 }
             }
+            ExecutionMode::Deferred => {
+                let result = self.inner.scale(scalar);
+                self.ctx.record_deferred_hint(id, HintResult::G2(result));
+                result
+            }
         };
 
         // AST tracking: record the scalar mul operation
@@ -635,6 +662,11 @@ where
                     self.inner + rhs.inner
                 }
             }
+            ExecutionMode::Deferred => {
+                let result = self.inner + rhs.inner;
+                self.ctx.record_deferred_hint(id, HintResult::G2(result));
+                result
+            }
         };
 
         // AST tracking: record G2Add with OpId for witness linkage
@@ -690,6 +722,11 @@ where
                     self.ctx.record_missing_hint(id);
                     self.inner + rhs.inner
                 }
+            }
+            ExecutionMode::Deferred => {
+                let result = self.inner + rhs.inner;
+                self.ctx.record_deferred_hint(id, HintResult::G2(result));
+                result
             }
         };
 
@@ -764,6 +801,11 @@ where
                     self.ctx.record_missing_hint(add_id);
                     self.inner + neg_result
                 }
+            }
+            ExecutionMode::Deferred => {
+                let result = self.inner + neg_result;
+                self.ctx.record_deferred_hint(add_id, HintResult::G2(result));
+                result
             }
         };
 
@@ -969,6 +1011,11 @@ where
                     self.inner.scale(scalar)
                 }
             }
+            ExecutionMode::Deferred => {
+                let result = self.inner.scale(scalar);
+                self.ctx.record_deferred_hint(id, HintResult::GT(result));
+                result
+            }
         };
 
         // AST tracking: record the exponentiation operation
@@ -1020,6 +1067,11 @@ where
                     self.ctx.record_missing_hint(id);
                     self.inner + rhs.inner
                 }
+            }
+            ExecutionMode::Deferred => {
+                let result = self.inner + rhs.inner;
+                self.ctx.record_deferred_hint(id, HintResult::GT(result));
+                result
             }
         };
 
@@ -1159,6 +1211,11 @@ where
                     E::pair(&g1.inner, &g2.inner)
                 }
             }
+            ExecutionMode::Deferred => {
+                let result = E::pair(&g1.inner, &g2.inner);
+                self.ctx.record_deferred_hint(id, HintResult::GT(result));
+                result
+            }
         };
 
         // AST tracking: record the pairing operation
@@ -1212,6 +1269,11 @@ where
                     E::pair(g1, g2)
                 }
             }
+            ExecutionMode::Deferred => {
+                let result = E::pair(g1, g2);
+                self.ctx.record_deferred_hint(id, HintResult::GT(result));
+                result
+            }
         };
 
         // Raw pairings don't have ValueIds for inputs, so no AST tracking
@@ -1251,6 +1313,11 @@ where
                     self.ctx.record_missing_hint(id);
                     E::multi_pair(&g1_inners, &g2_inners)
                 }
+            }
+            ExecutionMode::Deferred => {
+                let result = E::multi_pair(&g1_inners, &g2_inners);
+                self.ctx.record_deferred_hint(id, HintResult::GT(result));
+                result
             }
         };
 
@@ -1311,6 +1378,11 @@ where
                     self.ctx.record_missing_hint(id);
                     E::multi_pair(g1s, g2s)
                 }
+            }
+            ExecutionMode::Deferred => {
+                let result = E::multi_pair(g1s, g2s);
+                self.ctx.record_deferred_hint(id, HintResult::GT(result));
+                result
             }
         };
 
@@ -1391,6 +1463,11 @@ where
                     msm_fn(&base_inners, scalars)
                 }
             }
+            ExecutionMode::Deferred => {
+                let result = msm_fn(&base_inners, scalars);
+                self.ctx.record_deferred_hint(id, HintResult::G1(result));
+                result
+            }
         };
 
         // AST tracking: record the MSM operation
@@ -1466,6 +1543,11 @@ where
                     msm_fn(bases, scalars)
                 }
             }
+            ExecutionMode::Deferred => {
+                let result = msm_fn(bases, scalars);
+                self.ctx.record_deferred_hint(id, HintResult::G1(result));
+                result
+            }
         };
 
         // Raw MSM doesn't have ValueIds for inputs, so no AST tracking
@@ -1522,6 +1604,11 @@ where
                     self.ctx.record_missing_hint(id);
                     msm_fn(&base_inners, scalars)
                 }
+            }
+            ExecutionMode::Deferred => {
+                let result = msm_fn(&base_inners, scalars);
+                self.ctx.record_deferred_hint(id, HintResult::G2(result));
+                result
             }
         };
 
@@ -1598,6 +1685,11 @@ where
                     self.ctx.record_missing_hint(id);
                     msm_fn(bases, scalars)
                 }
+            }
+            ExecutionMode::Deferred => {
+                let result = msm_fn(bases, scalars);
+                self.ctx.record_deferred_hint(id, HintResult::G2(result));
+                result
             }
         };
 

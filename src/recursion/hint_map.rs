@@ -211,6 +211,12 @@ impl<E: PairingCurve> HintMap<E> {
         self.results.insert(id, HintResult::GT(value));
     }
 
+    /// Insert a result directly.
+    #[inline]
+    pub fn insert(&mut self, id: OpId, result: HintResult<E>) {
+        self.results.insert(id, result);
+    }
+
     /// Total number of hints stored.
     #[inline]
     pub fn len(&self) -> usize {

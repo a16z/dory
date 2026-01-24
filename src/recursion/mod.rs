@@ -43,21 +43,24 @@
 //! ```
 
 pub mod ast;
+pub mod challenges;
 mod collection;
 mod collector;
 mod context;
 mod hint_map;
+pub mod input_provider;
 pub mod parallel;
 mod trace;
 mod witness;
 
+pub use challenges::{precompute_challenges, ChallengeSet, RoundChallenges};
 pub use collection::WitnessCollection;
 pub use collector::WitnessGenerator;
-pub use context::{CtxHandle, TraceContext};
-pub use hint_map::HintMap;
+pub use context::{CtxHandle, ExecutionMode, TraceContext};
+pub use hint_map::{HintMap, HintResult};
+pub use input_provider::{DoryInputProvider, DoryInputProviderWithCommitment};
 pub use parallel::{EvalResult, InputProvider, OperationEvaluator, TaskExecutor};
 pub use witness::{OpId, OpType, WitnessBackend, WitnessResult};
 
 pub(crate) use collector::{OpIdBuilder, WitnessCollector};
-pub(crate) use context::ExecutionMode;
 pub(crate) use trace::{TraceG1, TraceG2, TraceGT, TracePairing};

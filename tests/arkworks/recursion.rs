@@ -6,7 +6,7 @@ use super::*;
 use dory_pcs::backends::arkworks::{SimpleWitnessBackend, SimpleWitnessGenerator};
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::recursion::ast::{AstOp, ValueType};
-use dory_pcs::recursion::TraceContext;
+use dory_pcs::recursion::{precompute_challenges, ChallengeSet, TraceContext};
 use dory_pcs::{prove, setup, verify_recursive};
 
 type TestCtx = TraceContext<SimpleWitnessBackend, BN254, SimpleWitnessGenerator>;
@@ -1001,4 +1001,278 @@ fn test_ast_level_computation() {
     let max_parallelism = levels.iter().map(|l| l.len()).max().unwrap_or(0);
     println!("Maximum parallelism (nodes in widest level): {}", max_parallelism);
     assert!(max_parallelism > 1, "Should have at least some parallel opportunities");
+}
+
+/// Test that challenge precomputation produces identical results to inline derivation.
+#[test]
+fn test_challenge_precomputation() {
+    use dory_pcs::primitives::transcript::Transcript;
+
+    let mut rng = rand::thread_rng();
+    let max_log_n = 8;
+    let nu = 3;
+    let sigma = 3;
+    let poly_size = 1 << (nu + sigma);
+    let point_size = nu + sigma;
+
+    println!("\n========== CHALLENGE PRECOMPUTATION TEST ==========");
+
+    let (prover_setup, _verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+
+    let poly = random_polynomial(poly_size);
+    let point = random_point(point_size);
+
+    let (_tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
+    // Generate proof
+    let mut prover_transcript = fresh_transcript();
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        &poly,
+        &point,
+        tier_1,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
+
+    // Pre-compute challenges
+    let mut transcript1 = fresh_transcript();
+    let challenges: ChallengeSet<_> =
+        precompute_challenges::<_, BN254, _>(&proof, &mut transcript1).unwrap();
+
+    // Verify structure
+    assert_eq!(challenges.num_rounds(), sigma);
+    println!("Number of rounds: {}", challenges.num_rounds());
+
+    // Manually derive challenges inline and compare
+    let mut transcript2 = fresh_transcript();
+
+    // VMV
+    transcript2.append_serde(b"vmv_c", &proof.vmv_message.c);
+    transcript2.append_serde(b"vmv_d2", &proof.vmv_message.d2);
+    transcript2.append_serde(b"vmv_e1", &proof.vmv_message.e1);
+
+    for (round, round_challenges) in challenges.rounds.iter().enumerate() {
+        let first_msg = &proof.first_messages[round];
+        let second_msg = &proof.second_messages[round];
+
+        transcript2.append_serde(b"d1_left", &first_msg.d1_left);
+        transcript2.append_serde(b"d1_right", &first_msg.d1_right);
+        transcript2.append_serde(b"d2_left", &first_msg.d2_left);
+        transcript2.append_serde(b"d2_right", &first_msg.d2_right);
+        transcript2.append_serde(b"e1_beta", &first_msg.e1_beta);
+        transcript2.append_serde(b"e2_beta", &first_msg.e2_beta);
+        let beta_inline = transcript2.challenge_scalar(b"beta");
+
+        assert_eq!(
+            round_challenges.beta, beta_inline,
+            "beta mismatch at round {}",
+            round
+        );
+
+        transcript2.append_serde(b"c_plus", &second_msg.c_plus);
+        transcript2.append_serde(b"c_minus", &second_msg.c_minus);
+        transcript2.append_serde(b"e1_plus", &second_msg.e1_plus);
+        transcript2.append_serde(b"e1_minus", &second_msg.e1_minus);
+        transcript2.append_serde(b"e2_plus", &second_msg.e2_plus);
+        transcript2.append_serde(b"e2_minus", &second_msg.e2_minus);
+        let alpha_inline = transcript2.challenge_scalar(b"alpha");
+
+        assert_eq!(
+            round_challenges.alpha, alpha_inline,
+            "alpha mismatch at round {}",
+            round
+        );
+
+        println!(
+            "Round {}: beta ✓, alpha ✓",
+            round
+        );
+    }
+
+    let gamma_inline = transcript2.challenge_scalar(b"gamma");
+    assert_eq!(challenges.gamma, gamma_inline, "gamma mismatch");
+    println!("gamma ✓");
+
+    transcript2.append_serde(b"final_e1", &proof.final_message.e1);
+    transcript2.append_serde(b"final_e2", &proof.final_message.e2);
+    let d_inline = transcript2.challenge_scalar(b"d");
+    assert_eq!(challenges.d, d_inline, "d mismatch");
+    println!("d ✓");
+
+    // Test derived values
+    let (gamma_inv, d_inv) = challenges.final_derived();
+    assert_eq!(
+        challenges.gamma * gamma_inv,
+        ArkFr::from_u64(1),
+        "gamma_inv should be inverse of gamma"
+    );
+    assert_eq!(
+        challenges.d * d_inv,
+        ArkFr::from_u64(1),
+        "d_inv should be inverse of d"
+    );
+    println!("Derived values (gamma_inv, d_inv) ✓");
+
+    // Test round derived values
+    for (round, round_challenges) in challenges.rounds.iter().enumerate() {
+        let (alpha_inv, beta_inv, alpha_beta, alpha_inv_beta_inv) = round_challenges.derived();
+        assert_eq!(
+            round_challenges.alpha * alpha_inv,
+            ArkFr::from_u64(1),
+            "alpha_inv should be inverse at round {}",
+            round
+        );
+        assert_eq!(
+            round_challenges.beta * beta_inv,
+            ArkFr::from_u64(1),
+            "beta_inv should be inverse at round {}",
+            round
+        );
+        assert_eq!(
+            alpha_beta,
+            round_challenges.alpha * round_challenges.beta,
+            "alpha_beta should be product at round {}",
+            round
+        );
+        assert_eq!(
+            alpha_inv_beta_inv,
+            alpha_inv * beta_inv,
+            "alpha_inv_beta_inv should be product at round {}",
+            round
+        );
+    }
+    println!("Round derived values (alpha_inv, beta_inv, products) ✓");
+
+    println!("\nChallenge precomputation matches inline derivation ✓");
+}
+
+/// Test deferred mode: records AST + hints without witness expansion.
+#[test]
+fn test_deferred_mode() {
+    let mut rng = rand::thread_rng();
+    let max_log_n = 8;
+    let nu = 3;
+    let sigma = 3;
+    let poly_size = 1 << (nu + sigma);
+    let point_size = nu + sigma;
+
+    println!("\n========== DEFERRED MODE TEST ==========");
+
+    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+
+    let poly = random_polynomial(poly_size);
+    let point = random_point(point_size);
+
+    let (_tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
+    let mut prover_transcript = fresh_transcript();
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        &poly,
+        &point,
+        tier_1,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
+    let evaluation = poly.evaluate(&point);
+    let commitment = _tier_2;
+
+    // Run verification in deferred mode
+    let ctx = Rc::new(TestCtx::for_deferred());
+    let mut transcript = fresh_transcript();
+
+    verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+        commitment,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup.clone(),
+        &mut transcript,
+        ctx.clone(),
+    )
+    .expect("Verification should succeed in deferred mode");
+
+    // Get AST and hints
+    let ctx_owned = Rc::try_unwrap(ctx)
+        .ok()
+        .expect("Should have sole ownership");
+    let ast = ctx_owned.take_ast().expect("Should have AST in deferred mode");
+    let hints = ctx_owned.take_deferred_hints().expect("Should have hints in deferred mode");
+
+    // Verify we got meaningful data
+    assert!(!ast.is_empty(), "AST should not be empty");
+    assert!(hints.len() > 0, "Should have recorded hints");
+
+    println!("AST nodes: {}", ast.len());
+    println!("Hints recorded: {}", hints.len());
+
+    // Verify AST structure
+    ast.validate().expect("AST should be valid");
+
+    // Verify hints cover the operations
+    let mut g1_ops = 0;
+    let mut g2_ops = 0;
+    let mut gt_ops = 0;
+    let mut pairing_ops = 0;
+
+    for node in &ast.nodes {
+        match &node.op {
+            AstOp::G1ScalarMul { op_id: Some(id), .. } => {
+                assert!(hints.get_g1(*id).is_some(), "G1ScalarMul hint should exist");
+                g1_ops += 1;
+            }
+            AstOp::G1Add { op_id: Some(id), .. } => {
+                assert!(hints.get_g1(*id).is_some(), "G1Add hint should exist");
+                g1_ops += 1;
+            }
+            AstOp::G2ScalarMul { op_id: Some(id), .. } => {
+                assert!(hints.get_g2(*id).is_some(), "G2ScalarMul hint should exist");
+                g2_ops += 1;
+            }
+            AstOp::G2Add { op_id: Some(id), .. } => {
+                assert!(hints.get_g2(*id).is_some(), "G2Add hint should exist");
+                g2_ops += 1;
+            }
+            AstOp::GTExp { op_id: Some(id), .. } => {
+                assert!(hints.get_gt(*id).is_some(), "GTExp hint should exist");
+                gt_ops += 1;
+            }
+            AstOp::GTMul { op_id: Some(id), .. } => {
+                assert!(hints.get_gt(*id).is_some(), "GTMul hint should exist");
+                gt_ops += 1;
+            }
+            AstOp::Pairing { op_id: Some(id), .. } => {
+                assert!(hints.get_gt(*id).is_some(), "Pairing hint should exist");
+                pairing_ops += 1;
+            }
+            AstOp::MultiPairing { op_id: Some(id), .. } => {
+                assert!(hints.get_gt(*id).is_some(), "MultiPairing hint should exist");
+                pairing_ops += 1;
+            }
+            _ => {}
+        }
+    }
+
+    println!("Operations with hints:");
+    println!("  G1 ops: {}", g1_ops);
+    println!("  G2 ops: {}", g2_ops);
+    println!("  GT ops: {}", gt_ops);
+    println!("  Pairing ops: {}", pairing_ops);
+
+    assert!(g1_ops > 0, "Should have G1 operations");
+    assert!(g2_ops > 0, "Should have G2 operations");
+    assert!(gt_ops > 0, "Should have GT operations");
+    assert!(pairing_ops > 0, "Should have pairing operations");
+
+    println!("\nDeferred mode verification successful ✓");
+    println!("Phase 2 (parallel witness expansion) would be handled by upstream crate");
 }
