@@ -615,6 +615,11 @@ where
     ctx.enter_final();
 
     let gamma = transcript.challenge_scalar(b"gamma");
+
+    // Append final message to transcript before sampling d (matches create/verify_evaluation_proof)
+    transcript.append_serde(b"final_e1", &proof.final_message.e1);
+    transcript.append_serde(b"final_e2", &proof.final_message.e2);
+
     let d_challenge = transcript.challenge_scalar(b"d");
 
     let gamma_inv = gamma.inv().expect("gamma must be invertible");

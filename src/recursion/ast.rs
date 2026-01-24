@@ -1120,7 +1120,7 @@ mod tests {
             },
         );
         // Try to add G1 + G1 but claim it's a G2Add (wrong types)
-        let _bad = builder.push(ValueType::G2, AstOp::G2Add { a: g1, b: g1 });
+        let _bad = builder.push(ValueType::G2, AstOp::G2Add { op_id: None, a: g1, b: g1 });
 
         let graph = builder.finalize();
         let result = graph.validate();
@@ -1138,6 +1138,7 @@ mod tests {
         let _bad = builder.push(
             ValueType::G1,
             AstOp::G1Add {
+                op_id: None,
                 a: ValueId(99),
                 b: ValueId(100),
             },
@@ -1290,7 +1291,7 @@ mod tests {
                 scalar: ScalarValue::named(d_scalar, "d"),
             },
         );
-        let e1_mod = builder.push(ValueType::G1, AstOp::G1Add { a: e1, b: g1_scaled });
+        let e1_mod = builder.push(ValueType::G1, AstOp::G1Add { op_id: None, a: e1, b: g1_scaled });
 
         let pair1 = builder.push(
             ValueType::GT,
