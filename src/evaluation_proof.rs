@@ -471,18 +471,15 @@ where
     transcript.append_serde(b"vmv_d2", &vmv_message.d2);
     transcript.append_serde(b"vmv_e1", &vmv_message.e1);
 
+    // NOTE: The VMV check `vmv_message.d2 == e(vmv_message.e1, setup.h2)` is deferred
+    // to the final multi-pairing where it's batched with other pairings using random
+    // linear combination with challenge `d²`. See verify_final documentation.
+
     // Create trace operators
     let pairing = TracePairing::new(Rc::clone(&ctx));
 
-    // VMV check pairing: d2 == e(e1, h2)
-    // Intern setup and proof elements for AST tracking
-    let e1_trace = TraceG1::from_proof(vmv_message.e1, Rc::clone(&ctx), "vmv.e1");
+    // Setup elements for traced operations
     let h2_trace = TraceG2::from_setup(setup.h2, Rc::clone(&ctx), "h2", None);
-    let pairing_check = pairing.pair(&e1_trace, &h2_trace);
-
-    if vmv_message.d2 != *pairing_check.inner() {
-        return Err(DoryError::InvalidProof);
-    }
 
     // e2 = h2 * evaluation (traced G2 scalar mul)
     let e2 = h2_trace.scale(&evaluation);
@@ -503,6 +500,10 @@ where
     let mut s1_acc = F::one();
     let mut s2_acc = F::one();
     let mut remaining_rounds = num_rounds;
+
+    // Track initial VMV values for deferred check (batched in final multi-pairing)
+    let e1_init = TraceG1::from_proof(vmv_message.e1, Rc::clone(&ctx), "vmv.e1_init");
+    let d2_init = TraceGT::from_proof(vmv_message.d2, Rc::clone(&ctx), "vmv.d2_init");
 
     ctx.set_num_rounds(num_rounds);
 
@@ -624,53 +625,52 @@ where
 
     let gamma_inv = gamma.inv().expect("gamma must be invertible");
     let d_inv = d_challenge.inv().expect("d must be invertible");
+    let d_sq = d_challenge * d_challenge;
+    let neg_gamma = -gamma;
+    let neg_gamma_inv = -gamma_inv;
 
-    // Final verification with tracing
-    let s_product = s1_acc * s2_acc;
-    let ht_trace = TraceGT::from_setup(setup.ht, Rc::clone(&ctx), "ht", None);
-    let ht_scaled = ht_trace.scale(&s_product);
-    c = c + ht_scaled;
-
-    // Traced pairings
-    let h1_trace = TraceG1::from_setup(setup.h1, Rc::clone(&ctx), "h1", None);
-    let pairing_h1_e2 = pairing.pair(&h1_trace, &e2_state);
-    let pairing_e1_h2 = pairing.pair(&e1, &h2_trace);
-
-    c = c + pairing_h1_e2.scale(&gamma);
-    c = c + pairing_e1_h2.scale(&gamma_inv);
-
-    // D1 update with traced operations
-    let scalar_for_g2_in_d1 = s1_acc * gamma;
-    let g2_0_trace = TraceG2::from_setup(setup.g2_0, Rc::clone(&ctx), "g2_0", None);
-    let g2_0_scaled = g2_0_trace.scale(&scalar_for_g2_in_d1);
-
-    let pairing_h1_g2 = pairing.pair(&h1_trace, &g2_0_scaled);
-    d1 = d1 + pairing_h1_g2;
-
-    // D2 update with traced operations
-    let scalar_for_g1_in_d2 = s2_acc * gamma_inv;
+    // Setup elements needed for final check
     let g1_0_trace = TraceG1::from_setup(setup.g1_0, Rc::clone(&ctx), "g1_0", None);
-    let g1_0_scaled = g1_0_trace.scale(&scalar_for_g1_in_d2);
-
-    let pairing_g1_h2 = pairing.pair(&g1_0_scaled, &h2_trace);
-    d2 = d2 + pairing_g1_h2;
-
-    // Final pairing check
-    let e1_final = TraceG1::from_proof(proof.final_message.e1, Rc::clone(&ctx), "final.e1");
-    let g1_0_d_scaled = g1_0_trace.scale(&d_challenge);
-    let e1_modified = e1_final + g1_0_d_scaled;
-
-    let e2_final = TraceG2::from_proof(proof.final_message.e2, Rc::clone(&ctx), "final.e2");
-    let g2_0_d_inv_scaled = g2_0_trace.scale(&d_inv);
-    let e2_modified = e2_final + g2_0_d_inv_scaled;
-
-    let lhs = pairing.pair(&e1_modified, &e2_modified);
-
-    let mut rhs = c;
+    let g2_0_trace = TraceG2::from_setup(setup.g2_0, Rc::clone(&ctx), "g2_0", None);
+    let h1_trace = TraceG1::from_setup(setup.h1, Rc::clone(&ctx), "h1", None);
+    let ht_trace = TraceGT::from_setup(setup.ht, Rc::clone(&ctx), "ht", None);
     let chi_0_trace = TraceGT::from_setup(setup.chi[0], Rc::clone(&ctx), "chi", Some(0));
+
+    // Compute RHS (non-pairing GT terms only):
+    // T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁ + d²·D₂_init
+    // The d²·D₂_init term is the deferred VMV check contribution.
+    // We use d² instead of d to ensure independence from the d·D₂ term.
+    let s_product = s1_acc * s2_acc;
+    let mut rhs = c + ht_trace.scale(&s_product);
     rhs = rhs + chi_0_trace;
     rhs = rhs + d2.scale(&d_challenge);
     rhs = rhs + d1.scale(&d_inv);
+    rhs = rhs + d2_init.scale(&d_sq);
+
+    // Build the 3 pairs for multi-pairing (matching verify_final exactly)
+
+    // Pair 1: (E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
+    let e1_final = TraceG1::from_proof(proof.final_message.e1, Rc::clone(&ctx), "final.e1");
+    let e2_final = TraceG2::from_proof(proof.final_message.e2, Rc::clone(&ctx), "final.e2");
+    let p1_g1 = e1_final + g1_0_trace.scale(&d_challenge);
+    let p1_g2 = e2_final + g2_0_trace.scale(&d_inv);
+
+    // Pair 2: (H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))
+    let d_inv_s1 = d_inv * s1_acc;
+    let g2_term = e2_state + g2_0_trace.scale(&d_inv_s1);
+    let p2_g1 = h1_trace;
+    let p2_g2 = g2_term.scale(&neg_gamma);
+
+    // Pair 3: ((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀) + d²·E₁_init, H₂)
+    // The d²·E₁_init term is the deferred VMV check: d²·e(E₁_init, H₂)
+    // We use d² to ensure independence from other d-scaled terms.
+    let d_s2 = d_challenge * s2_acc;
+    let g1_term = e1 + g1_0_trace.scale(&d_s2);
+    let p3_g1 = g1_term.scale(&neg_gamma_inv) + e1_init.scale(&d_sq);
+    let p3_g2 = h2_trace;
+
+    // Single multi-pairing: 3 miller loops + 1 final exponentiation
+    let lhs = pairing.multi_pair(&[p1_g1, p2_g1, p3_g1], &[p1_g2, p2_g2, p3_g2]);
 
     // Record the final equality constraint in AST (if AST tracing is enabled)
     if let Some(mut ast) = ctx.ast_mut() {

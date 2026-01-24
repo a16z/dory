@@ -88,6 +88,9 @@ where
                             "vmv.c" => Some(EvalResult::GT(self.proof.vmv_message.c)),
                             "vmv.d2" => Some(EvalResult::GT(self.proof.vmv_message.d2)),
                             "vmv.e1" => Some(EvalResult::G1(self.proof.vmv_message.e1)),
+                            // VMV init elements (for deferred VMV check in final multi-pairing)
+                            "vmv.e1_init" => Some(EvalResult::G1(self.proof.vmv_message.e1)),
+                            "vmv.d2_init" => Some(EvalResult::GT(self.proof.vmv_message.d2)),
                             "commitment" => {
                                 // The commitment is passed to verify_recursive, not stored in proof.
                                 // Return None - caller should provide this separately.

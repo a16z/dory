@@ -172,7 +172,7 @@ fn test_hint_verification_with_missing_hints() {
         .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let (tier_2_2, tier_1_2) = poly2
+    let (_tier_2_2, tier_1_2) = poly2
         .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
@@ -194,7 +194,7 @@ fn test_hint_verification_with_missing_hints() {
 
     // Create proof for poly2
     let mut prover_transcript2 = fresh_transcript();
-    let proof2 = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let _proof2 = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
         &poly2,
         &point,
         tier_1_2,
@@ -204,7 +204,7 @@ fn test_hint_verification_with_missing_hints() {
         &mut prover_transcript2,
     )
     .unwrap();
-    let evaluation2 = poly2.evaluate(&point);
+    let _evaluation2 = poly2.evaluate(&point);
 
     // Generate hints for poly1's verification
     let ctx = Rc::new(TestCtx::for_witness_gen());
@@ -227,24 +227,36 @@ fn test_hint_verification_with_missing_hints() {
         .finalize()
         .expect("Should have witnesses");
 
-    let hints = collection.to_hints::<BN254>();
+    let mut hints = collection.to_hints::<BN254>();
 
-    // Try to use poly1's hints for poly2's verification
+    // Corrupt a hint to test that corrupted hints cause verification to fail.
+    // We corrupt the final multi-pairing hint which will make lhs != rhs.
+    // The multi-pairing happens in the "final" phase (round = u16::MAX).
+    use dory_pcs::primitives::arithmetic::Group;
+    use dory_pcs::recursion::{HintResult, OpId, OpType};
+    let final_round = u16::MAX; // final phase uses u16::MAX as round
+    let multi_pairing_id = OpId::new(final_round, OpType::MultiPairing, 0);
+
+    // Insert a corrupted hint (identity element instead of actual value)
+    let corrupted_gt = <BN254 as dory_pcs::primitives::arithmetic::PairingCurve>::GT::identity();
+    hints.insert(multi_pairing_id, HintResult::GT(corrupted_gt));
+
+    // Try to verify poly1 (same proof) with corrupted hints
     let ctx = Rc::new(TestCtx::for_hints(hints));
     let mut hint_transcript = fresh_transcript();
 
     let result = verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
-        tier_2_2,
-        evaluation2,
+        tier_2_1,
+        evaluation1,
         &point,
-        &proof2,
+        &proof1,
         verifier_setup,
         &mut hint_transcript,
         ctx.clone(),
     );
 
-    // The verification should fail because the hints don't match the proof
-    assert!(result.is_err(), "Verification with wrong hints should fail");
+    // The verification should fail because the multi-pairing hint is corrupted
+    assert!(result.is_err(), "Verification with corrupted hints should fail");
 }
 
 #[test]
