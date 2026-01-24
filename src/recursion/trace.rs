@@ -21,8 +21,7 @@ use crate::primitives::arithmetic::{Group, PairingCurve};
 use super::{CtxHandle, ExecutionMode, WitnessGenerator};
 
 /// G1 element with automatic operation tracing.
-#[derive(Clone)]
-pub(crate) struct TraceG1<W, E, Gen>
+pub struct TraceG1<W, E, Gen>
 where
     W: WitnessBackend,
     E: PairingCurve,
@@ -33,6 +32,23 @@ where
     ctx: CtxHandle<W, E, Gen>,
     /// ValueId for AST wiring (None if AST tracing is disabled).
     value_id: Option<ValueId>,
+}
+
+// Manual Clone impl to avoid requiring Clone on W and Gen
+impl<W, E, Gen> Clone for TraceG1<W, E, Gen>
+where
+    W: WitnessBackend,
+    E: PairingCurve,
+    E::G1: Group,
+    Gen: WitnessGenerator<W, E>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner,
+            ctx: Rc::clone(&self.ctx),
+            value_id: self.value_id,
+        }
+    }
 }
 
 impl<W, E, Gen> TraceG1<W, E, Gen>
@@ -435,8 +451,7 @@ where
 }
 
 /// G2 element with automatic operation tracing.
-#[derive(Clone)]
-pub(crate) struct TraceG2<W, E, Gen>
+pub struct TraceG2<W, E, Gen>
 where
     W: WitnessBackend,
     E: PairingCurve,
@@ -447,6 +462,23 @@ where
     ctx: CtxHandle<W, E, Gen>,
     /// ValueId for AST wiring (None if AST tracing is disabled).
     value_id: Option<ValueId>,
+}
+
+// Manual Clone impl to avoid requiring Clone on W and Gen
+impl<W, E, Gen> Clone for TraceG2<W, E, Gen>
+where
+    W: WitnessBackend,
+    E: PairingCurve,
+    E::G1: Group,
+    Gen: WitnessGenerator<W, E>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner,
+            ctx: Rc::clone(&self.ctx),
+            value_id: self.value_id,
+        }
+    }
 }
 
 impl<W, E, Gen> TraceG2<W, E, Gen>
@@ -857,8 +889,7 @@ where
 ///
 /// Note: GT is a multiplicative group, so "addition" in the Group trait
 /// corresponds to field multiplication in Fq12
-#[derive(Clone)]
-pub(crate) struct TraceGT<W, E, Gen>
+pub struct TraceGT<W, E, Gen>
 where
     W: WitnessBackend,
     E: PairingCurve,
@@ -869,6 +900,23 @@ where
     ctx: CtxHandle<W, E, Gen>,
     /// ValueId for AST wiring (None if AST tracing is disabled).
     value_id: Option<ValueId>,
+}
+
+// Manual Clone impl to avoid requiring Clone on W and Gen
+impl<W, E, Gen> Clone for TraceGT<W, E, Gen>
+where
+    W: WitnessBackend,
+    E: PairingCurve,
+    E::G1: Group,
+    Gen: WitnessGenerator<W, E>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner,
+            ctx: Rc::clone(&self.ctx),
+            value_id: self.value_id,
+        }
+    }
 }
 
 impl<W, E, Gen> TraceGT<W, E, Gen>

@@ -43,6 +43,7 @@
 //! ```
 
 pub mod ast;
+mod backend;
 pub mod challenges;
 mod collection;
 mod collector;
@@ -53,6 +54,7 @@ pub mod parallel;
 mod trace;
 mod witness;
 
+pub use backend::TracingBackend;
 pub use challenges::{precompute_challenges, ChallengeSet, RoundChallenges};
 pub use collection::WitnessCollection;
 pub use collector::WitnessGenerator;
@@ -63,4 +65,4 @@ pub use parallel::{EvalResult, InputProvider, OperationEvaluator, TaskExecutor};
 pub use witness::{OpId, OpType, WitnessBackend, WitnessResult};
 
 pub(crate) use collector::{OpIdBuilder, WitnessCollector};
-pub(crate) use trace::{TraceG1, TraceG2, TraceGT, TracePairing};
+pub use trace::{TraceG1, TraceG2, TraceGT};

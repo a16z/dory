@@ -1288,3 +1288,106 @@ fn test_deferred_mode() {
     println!("\nDeferred mode verification successful ✓");
     println!("Phase 2 (parallel witness expansion) would be handled by upstream crate");
 }
+
+/// Test that NativeBackend and TracingBackend produce identical results.
+///
+/// This test verifies that the unified `verify_with_backend` function works
+/// correctly with both backends, confirming the refactoring preserved correctness.
+#[test]
+fn test_backend_equivalence() {
+    use dory_pcs::verify;
+
+    let mut rng = rand::thread_rng();
+    let max_log_n = 10;
+
+    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+
+    // Test multiple polynomial sizes
+    for (nu, sigma, poly_size) in [(2, 2, 16), (3, 4, 128), (4, 4, 256)] {
+        let poly = random_polynomial(poly_size);
+
+        let (tier_2, tier_1) = poly
+            .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+            .unwrap();
+
+        let point = random_point(nu + sigma);
+
+        let mut prover_transcript = fresh_transcript();
+        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+            &poly,
+            &point,
+            tier_1,
+            nu,
+            sigma,
+            &prover_setup,
+            &mut prover_transcript,
+        )
+        .unwrap();
+        let evaluation = poly.evaluate(&point);
+
+        // Verify with NativeBackend (via verify_evaluation_proof)
+        let mut native_transcript = fresh_transcript();
+        let native_result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+            tier_2,
+            evaluation,
+            &point,
+            &proof,
+            verifier_setup.clone(),
+            &mut native_transcript,
+        );
+
+        // Verify with TracingBackend (via verify_recursive)
+        let ctx = Rc::new(TestCtx::for_witness_gen());
+        let mut tracing_transcript = fresh_transcript();
+        let tracing_result =
+            verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+                tier_2,
+                evaluation,
+                &point,
+                &proof,
+                verifier_setup.clone(),
+                &mut tracing_transcript,
+                Rc::clone(&ctx),
+            );
+
+        // Both should succeed
+        assert!(
+            native_result.is_ok(),
+            "NativeBackend failed for nu={}, sigma={}",
+            nu,
+            sigma
+        );
+        assert!(
+            tracing_result.is_ok(),
+            "TracingBackend failed for nu={}, sigma={}",
+            nu,
+            sigma
+        );
+
+        // Verify witnesses were collected (confirms TracingBackend is working)
+        let witnesses = Rc::try_unwrap(ctx)
+            .ok()
+            .unwrap()
+            .finalize()
+            .expect("Should have witnesses");
+        assert!(
+            !witnesses.is_empty(),
+            "Should have witnesses for nu={}, sigma={}",
+            nu,
+            sigma
+        );
+        assert!(
+            witnesses.total_witnesses() > 0,
+            "Should have collected witnesses for nu={}, sigma={}",
+            nu,
+            sigma
+        );
+
+        println!(
+            "Backend equivalence verified for nu={}, sigma={} ✓",
+            nu, sigma
+        );
+    }
+
+    println!("\nAll backend equivalence tests passed ✓");
+}
