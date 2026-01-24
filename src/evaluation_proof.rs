@@ -672,6 +672,13 @@ where
     rhs = rhs + d2.scale(&d_challenge);
     rhs = rhs + d1.scale(&d_inv);
 
+    // Record the final equality constraint in AST (if AST tracing is enabled)
+    if let Some(mut ast) = ctx.ast_mut() {
+        if let (Some(lhs_id), Some(rhs_id)) = (lhs.value_id(), rhs.value_id()) {
+            ast.push_eq(lhs_id, rhs_id, "final pairing equality");
+        }
+    }
+
     if *lhs.inner() == *rhs.inner() {
         Ok(())
     } else {

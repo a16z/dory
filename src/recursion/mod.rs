@@ -47,6 +47,7 @@ mod collection;
 mod collector;
 mod context;
 mod hint_map;
+pub mod parallel;
 mod trace;
 mod witness;
 
@@ -54,6 +55,7 @@ pub use collection::WitnessCollection;
 pub use collector::WitnessGenerator;
 pub use context::{CtxHandle, TraceContext};
 pub use hint_map::HintMap;
+pub use parallel::{EvalResult, InputProvider, OperationEvaluator, TaskExecutor};
 pub use witness::{OpId, OpType, WitnessBackend, WitnessResult};
 
 pub(crate) use collector::{OpIdBuilder, WitnessCollector};

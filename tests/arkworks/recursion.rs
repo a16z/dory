@@ -5,7 +5,7 @@ use std::rc::Rc;
 use super::*;
 use dory_pcs::backends::arkworks::{SimpleWitnessBackend, SimpleWitnessGenerator};
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::recursion::ast::ValueType;
+use dory_pcs::recursion::ast::{AstOp, ValueType};
 use dory_pcs::recursion::TraceContext;
 use dory_pcs::{prove, setup, verify_recursive};
 
@@ -489,6 +489,31 @@ fn test_ast_generation() {
     // We expect nodes of each type given the verification process
     assert!(gt_count > 0, "Should have GT nodes for GT exponentiation and multiplication");
     assert!(input_count > 0, "Should have input nodes for setup and proof elements");
+
+    // Verify the final equality constraint was recorded
+    assert_eq!(
+        ast_graph.constraints.len(),
+        1,
+        "Should have exactly one constraint (final pairing equality)"
+    );
+
+    // Test wiring extraction with precise input slots
+    let wires = ast_graph.wires();
+    assert!(
+        !wires.is_empty(),
+        "Should have wires connecting operations"
+    );
+    println!("Wire count: {}", wires.len());
+
+    // Show some wires with precise operation kinds and input slots
+    println!("\n--- Sample Wires (first 10) ---");
+    for wire in wires.iter().take(10) {
+        println!("  {}", wire);
+    }
+    println!("--- Last 10 Wires ---");
+    for wire in wires.iter().rev().take(10).collect::<Vec<_>>().into_iter().rev() {
+        println!("  {}", wire);
+    }
 }
 
 #[test]
@@ -818,4 +843,162 @@ fn test_ast_opid_witness_join() {
         "Should have verified at least one OpId"
     );
     println!("All OpIds have witness entries ✓");
+}
+
+/// Test level computation for parallel AST traversal.
+#[test]
+fn test_ast_level_computation() {
+    use dory_pcs::recursion::ast::ValueType;
+
+    let mut rng = rand::thread_rng();
+    
+    // Standard test: 4 rounds (sigma=4, nu=4)
+    // Matrix is 16 x 16, poly size = 256
+    let max_log_n = 10;
+    let nu = 4;
+    let sigma = 4;
+    let poly_size = 1 << (nu + sigma); // 2^8 = 256
+    let point_size = nu + sigma;       // 8
+
+    println!("\n========== LEVEL PARALLELISM TEST (σ={} rounds) ==========", sigma);
+
+    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+
+    let poly = random_polynomial(poly_size);
+
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
+    let point = random_point(point_size);
+
+    let mut prover_transcript = fresh_transcript();
+    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        &poly,
+        &point,
+        tier_1,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
+    let evaluation = poly.evaluate(&point);
+
+    // Run verification with AST
+    let ctx = Rc::new(TestCtx::for_witness_gen_with_ast());
+    let mut witness_transcript = fresh_transcript();
+
+    verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+        tier_2,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut witness_transcript,
+        ctx.clone(),
+    )
+    .expect("Verification should succeed");
+
+    let ctx_owned = Rc::try_unwrap(ctx)
+        .ok()
+        .expect("Should have sole ownership");
+    let ast = ctx_owned.take_ast().expect("Should have AST");
+
+    // Test level computation
+    let node_levels = ast.compute_levels();
+    assert_eq!(node_levels.len(), ast.len(), "Should have level for each node");
+
+    // All input nodes should be at level 0
+    for (idx, node) in ast.nodes.iter().enumerate() {
+        if matches!(node.op, AstOp::Input { .. }) {
+            assert_eq!(node_levels[idx], 0, "Input nodes should be at level 0");
+        } else {
+            assert!(node_levels[idx] > 0, "Non-input nodes should be at level > 0");
+        }
+    }
+
+    // Debug: show operations at Level 1 to understand the parallelism
+    println!("\n--- Level 1 Operations (detail) ---");
+    for (idx, node) in ast.nodes.iter().enumerate() {
+        if node_levels[idx] == 1 {
+            let op_str = match &node.op {
+                AstOp::Input { .. } => "Input".to_string(),
+                AstOp::G1Add { a, b, .. } => format!("G1Add(v{}, v{})", a.0, b.0),
+                AstOp::G1ScalarMul { point, scalar, .. } => {
+                    format!("G1ScalarMul(v{}, {})", point.0, scalar.name.unwrap_or("?"))
+                }
+                AstOp::G2Add { a, b, .. } => format!("G2Add(v{}, v{})", a.0, b.0),
+                AstOp::G2ScalarMul { point, scalar, .. } => {
+                    format!("G2ScalarMul(v{}, {})", point.0, scalar.name.unwrap_or("?"))
+                }
+                AstOp::GTMul { lhs, rhs, .. } => format!("GTMul(v{}, v{})", lhs.0, rhs.0),
+                AstOp::GTExp { base, scalar, .. } => {
+                    format!("GTExp(v{}, {})", base.0, scalar.name.unwrap_or("?"))
+                }
+                AstOp::Pairing { g1, g2, .. } => format!("Pairing(v{}, v{})", g1.0, g2.0),
+                AstOp::MultiPairing { g1s, g2s, .. } => {
+                    format!("MultiPairing({} pairs)", g1s.len().min(g2s.len()))
+                }
+                AstOp::MsmG1 { points, .. } => format!("MsmG1({} points)", points.len()),
+                AstOp::MsmG2 { points, .. } => format!("MsmG2({} points)", points.len()),
+            };
+            println!("  v{}: {}", idx, op_str);
+        }
+    }
+
+    // Test levels() grouping
+    let levels = ast.levels();
+    println!("\n========== LEVEL COMPUTATION TEST ==========");
+    println!("Total nodes: {}", ast.len());
+    println!("Number of levels: {}", levels.len());
+    println!();
+
+    let mut total_from_levels = 0;
+    for (level_idx, nodes) in levels.iter().enumerate() {
+        total_from_levels += nodes.len();
+        println!("Level {}: {} nodes", level_idx, nodes.len());
+    }
+    assert_eq!(total_from_levels, ast.len(), "All nodes should be in exactly one level");
+
+    // Test levels_by_type()
+    let levels_by_type = ast.levels_by_type();
+    println!("\n--- Levels by Type ---");
+    for (level_idx, type_map) in levels_by_type.iter().enumerate() {
+        let g1_count = type_map.get(&ValueType::G1).map_or(0, |v| v.len());
+        let g2_count = type_map.get(&ValueType::G2).map_or(0, |v| v.len());
+        let gt_count = type_map.get(&ValueType::GT).map_or(0, |v| v.len());
+        if g1_count + g2_count + gt_count > 0 {
+            println!("  Level {}: G1={}, G2={}, GT={}", level_idx, g1_count, g2_count, gt_count);
+        }
+    }
+
+    // Test level_stats()
+    let stats = ast.level_stats();
+    println!("\n--- Level Stats ---");
+    for (level_idx, (total, g1, g2, gt)) in stats.iter().enumerate() {
+        if *total > 0 {
+            println!("  Level {}: total={}, g1={}, g2={}, gt={}", level_idx, total, g1, g2, gt);
+        }
+    }
+
+    // Verify topological ordering: each node's level should be > max level of its inputs
+    for (idx, node) in ast.nodes.iter().enumerate() {
+        let node_level = node_levels[idx];
+        for input_id in node.op.input_ids() {
+            let input_level = node_levels[input_id.0 as usize];
+            assert!(
+                node_level > input_level,
+                "Node at level {} has input at level {} (should be strictly less)",
+                node_level,
+                input_level
+            );
+        }
+    }
+    println!("\nTopological ordering verified ✓");
+
+    // Check that we have good parallelism opportunities
+    let max_parallelism = levels.iter().map(|l| l.len()).max().unwrap_or(0);
+    println!("Maximum parallelism (nodes in widest level): {}", max_parallelism);
+    assert!(max_parallelism > 1, "Should have at least some parallel opportunities");
 }
