@@ -380,13 +380,18 @@ where
     verify_with_backend(commitment, evaluation, point, proof, setup, transcript, &mut backend)
 }
 
-/// Internal unified verification function generic over backend.
+/// Unified verification function generic over backend.
 ///
 /// This contains all verification logic once, avoiding code duplication between
 /// native and tracing verification paths. Both `verify_evaluation_proof` and
 /// `verify_recursive` delegate to this function with their respective backends.
+///
+/// External crates (e.g., Jolt) can use this with custom backends for:
+/// - AST-only construction (no group ops, just build the verification DAG)
+/// - Challenge replay (use precomputed challenges, skip transcript hashing)
+/// - Custom witness strategies
 #[inline]
-fn verify_with_backend<F, E, T, B>(
+pub fn verify_with_backend<F, E, T, B>(
     commitment: E::GT,
     evaluation: F,
     point: &[F],
