@@ -352,12 +352,12 @@ where
 ///
 /// - **Witness Generation Mode**: Create context with
 ///   [`TraceContext::for_witness_gen()`](recursion::TraceContext::for_witness_gen).
-///   All operations are computed and their witnesses are recorded.
+///   All operations are computed and their witnesses are recorded (for prover).
 ///
-/// - **Hint-Based Mode**: Create context with
-///   [`TraceContext::for_hints(hints)`](recursion::TraceContext::for_hints).
-///   Operations use pre-computed hints when available, falling back to computation
-///   with a warning when hints are missing.
+/// - **Symbolic Mode**: Create context with
+///   [`TraceContext::for_symbolic()`](recursion::TraceContext::for_symbolic).
+///   Operations build an AST without computation. Use this for verifier recursion
+///   where you need proof obligations, not actual witness values.
 ///
 /// # Arguments
 ///
@@ -368,7 +368,7 @@ where
 /// - `setup`: Verifier setup parameters
 /// - `transcript`: Fiat-Shamir transcript
 /// - `ctx`: Trace context handle (use `Rc::new(TraceContext::for_witness_gen())` or
-///   `Rc::new(TraceContext::for_hints(hints))`)
+///   `Rc::new(TraceContext::for_symbolic())`)
 ///
 /// # Returns
 ///
@@ -377,7 +377,7 @@ where
 /// After verification:
 /// - In witness generation mode: Call `Rc::try_unwrap(ctx).ok().unwrap().finalize()`
 ///   to get the collected witnesses.
-/// - In hint-based mode: Check `ctx.had_missing_hints()` to see if any hints were missing.
+/// - In symbolic mode: Call `ctx.take_ast()` to get the proof obligations AST.
 ///
 /// # Example
 ///
@@ -385,21 +385,19 @@ where
 /// use std::rc::Rc;
 /// use dory_pcs::recursion::TraceContext;
 ///
-/// // Witness generation
+/// // Witness generation (for prover)
 /// let ctx = Rc::new(TraceContext::for_witness_gen());
 /// verify_recursive::<_, E, M1, M2, _, W, Gen>(
 ///     commitment, evaluation, &point, &proof, setup.clone(), &mut transcript, ctx.clone()
 /// )?;
 /// let witnesses = Rc::try_unwrap(ctx).ok().unwrap().finalize();
 ///
-/// // Convert to lightweight hints
-/// let hints = witnesses.unwrap().to_hints::<E>();
-///
-/// // Hint-based verification
-/// let ctx = Rc::new(TraceContext::for_hints(hints));
+/// // Symbolic mode (for verifier recursion)
+/// let ctx = Rc::new(TraceContext::for_symbolic());
 /// verify_recursive::<_, E, M1, M2, _, W, Gen>(
-///     commitment, evaluation, &point, &proof, setup, &mut transcript, ctx
+///     commitment, evaluation, &point, &proof, setup, &mut transcript, ctx.clone()
 /// )?;
+/// let ast = ctx.take_ast().unwrap(); // Contains proof obligations
 /// ```
 ///
 /// # Errors

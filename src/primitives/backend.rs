@@ -57,16 +57,25 @@ pub trait VerifierBackend {
     ) -> Self::GT;
 
     /// Wrap a G1 element from proof
-    fn wrap_g1_proof(&mut self, value: <Self::Curve as PairingCurve>::G1, name: &'static str)
-        -> Self::G1;
+    fn wrap_g1_proof(
+        &mut self,
+        value: <Self::Curve as PairingCurve>::G1,
+        name: &'static str,
+    ) -> Self::G1;
 
     /// Wrap a G2 element from proof
-    fn wrap_g2_proof(&mut self, value: <Self::Curve as PairingCurve>::G2, name: &'static str)
-        -> Self::G2;
+    fn wrap_g2_proof(
+        &mut self,
+        value: <Self::Curve as PairingCurve>::G2,
+        name: &'static str,
+    ) -> Self::G2;
 
     /// Wrap a GT element from proof
-    fn wrap_gt_proof(&mut self, value: <Self::Curve as PairingCurve>::GT, name: &'static str)
-        -> Self::GT;
+    fn wrap_gt_proof(
+        &mut self,
+        value: <Self::Curve as PairingCurve>::GT,
+        name: &'static str,
+    ) -> Self::GT;
 
     /// Wrap a G1 element from a proof round message
     fn wrap_g1_proof_round(
@@ -130,6 +139,10 @@ pub trait VerifierBackend {
     ///
     /// For native backend, this just compares values.
     /// For tracing backend, this also records the constraint.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DoryError::InvalidProof` if `lhs != rhs`.
     fn gt_eq(&mut self, lhs: &Self::GT, rhs: &Self::GT) -> Result<(), DoryError>;
 
     // ========== Lifecycle Hooks ==========

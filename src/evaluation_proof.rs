@@ -296,7 +296,15 @@ where
     T: Transcript<Curve = E>,
 {
     let mut backend = NativeBackend::<E>::new();
-    verify_with_backend(commitment, evaluation, point, proof, setup, transcript, &mut backend)
+    verify_with_backend(
+        commitment,
+        evaluation,
+        point,
+        proof,
+        setup,
+        transcript,
+        &mut backend,
+    )
 }
 
 /// Verify an evaluation proof with automatic operation tracing.
@@ -317,14 +325,14 @@ where
 /// - `proof`: Evaluation proof to verify
 /// - `setup`: Verifier setup
 /// - `transcript`: Fiat-Shamir transcript for challenge generation
-/// - `ctx`: Trace context (from `TraceContext::for_witness_gen()` or `TraceContext::for_hints()`)
+/// - `ctx`: Trace context (from `TraceContext::for_witness_gen()` or `TraceContext::for_symbolic()`)
 ///
 /// # Returns
 /// `Ok(())` if proof is valid, `Err(DoryError)` otherwise.
 ///
-/// After verification, call `ctx.finalize()` to get the collected witnesses
-/// (in witness generation mode) or check `ctx.had_missing_hints()` to see
-/// if any hints were missing (in hint-based mode).
+/// After verification:
+/// - In witness generation mode, call `ctx.finalize()` to get collected witnesses
+/// - In symbolic mode, call `ctx.take_ast()` to get the proof obligations AST
 ///
 /// # Errors
 /// Returns `DoryError::InvalidProof` if verification fails, or
@@ -340,17 +348,15 @@ where
 /// use std::rc::Rc;
 /// use dory_pcs::recursion::TraceContext;
 ///
-/// // Witness generation mode
+/// // Witness generation mode (for prover)
 /// let ctx = Rc::new(TraceContext::for_witness_gen());
 /// verify_recursive(commitment, evaluation, &point, &proof, setup.clone(), &mut transcript, ctx.clone())?;
 /// let witnesses = Rc::try_unwrap(ctx).ok().unwrap().finalize();
 ///
-/// // Hint-based mode
-/// let hints = witnesses.to_hints::<E>();
-/// let ctx = Rc::new(TraceContext::for_hints(hints));
-/// verify_recursive(commitment, evaluation, &point, &proof, setup, &mut transcript, ctx)?;
-///
-/// TODO(markosg04) this unrolls all the reduce_and_fold fns. We could make it more ergonomic by not unrolling.
+/// // Symbolic mode (for verifier recursion)
+/// let ctx = Rc::new(TraceContext::for_symbolic());
+/// verify_recursive(commitment, evaluation, &point, &proof, setup, &mut transcript, ctx.clone())?;
+/// let ast = ctx.take_ast().unwrap(); // AST contains proof obligations
 /// ```
 #[cfg(feature = "recursion")]
 #[tracing::instrument(skip_all, name = "verify_recursive")]
@@ -377,7 +383,15 @@ where
     Gen: WitnessGenerator<W, E>,
 {
     let mut backend = TracingBackend::new(ctx);
-    verify_with_backend(commitment, evaluation, point, proof, setup, transcript, &mut backend)
+    verify_with_backend(
+        commitment,
+        evaluation,
+        point,
+        proof,
+        setup,
+        transcript,
+        &mut backend,
+    )
 }
 
 /// Unified verification function generic over backend.
@@ -390,6 +404,16 @@ where
 /// - AST-only construction (no group ops, just build the verification DAG)
 /// - Challenge replay (use precomputed challenges, skip transcript hashing)
 /// - Custom witness strategies
+///
+/// # Errors
+///
+/// Returns `DoryError::InvalidPointDimension` if `point.len() != nu + sigma`.
+/// Returns `DoryError::InvalidProof` if the final GT equality check fails.
+///
+/// # Panics
+///
+/// Panics if any of the transcript challenge scalars (`alpha`, `beta`, `gamma`, `d`)
+/// are zero and thus not invertible. This is cryptographically negligible.
 #[inline]
 pub fn verify_with_backend<F, E, T, B>(
     commitment: E::GT,
@@ -503,10 +527,18 @@ where
         d1 = backend.gt_scale(&d1_left, &alpha);
         let d1_right = backend.wrap_gt_proof_round(first_msg.d1_right, round, true, "d1_right");
         d1 = backend.gt_mul(&d1, &d1_right);
-        let delta_1l = backend.wrap_gt_setup(setup.delta_1l[remaining_rounds], "delta_1l", Some(remaining_rounds));
+        let delta_1l = backend.wrap_gt_setup(
+            setup.delta_1l[remaining_rounds],
+            "delta_1l",
+            Some(remaining_rounds),
+        );
         let delta_1l_scaled = backend.gt_scale(&delta_1l, &alpha_beta);
         d1 = backend.gt_mul(&d1, &delta_1l_scaled);
-        let delta_1r = backend.wrap_gt_setup(setup.delta_1r[remaining_rounds], "delta_1r", Some(remaining_rounds));
+        let delta_1r = backend.wrap_gt_setup(
+            setup.delta_1r[remaining_rounds],
+            "delta_1r",
+            Some(remaining_rounds),
+        );
         let delta_1r_scaled = backend.gt_scale(&delta_1r, &beta);
         d1 = backend.gt_mul(&d1, &delta_1r_scaled);
 
@@ -516,10 +548,18 @@ where
         d2 = backend.gt_scale(&d2_left, &alpha_inv);
         let d2_right = backend.wrap_gt_proof_round(first_msg.d2_right, round, true, "d2_right");
         d2 = backend.gt_mul(&d2, &d2_right);
-        let delta_2l = backend.wrap_gt_setup(setup.delta_2l[remaining_rounds], "delta_2l", Some(remaining_rounds));
+        let delta_2l = backend.wrap_gt_setup(
+            setup.delta_2l[remaining_rounds],
+            "delta_2l",
+            Some(remaining_rounds),
+        );
         let delta_2l_scaled = backend.gt_scale(&delta_2l, &alpha_inv_beta_inv);
         d2 = backend.gt_mul(&d2, &delta_2l_scaled);
-        let delta_2r = backend.wrap_gt_setup(setup.delta_2r[remaining_rounds], "delta_2r", Some(remaining_rounds));
+        let delta_2r = backend.wrap_gt_setup(
+            setup.delta_2r[remaining_rounds],
+            "delta_2r",
+            Some(remaining_rounds),
+        );
         let delta_2r_scaled = backend.gt_scale(&delta_2r, &beta_inv);
         d2 = backend.gt_mul(&d2, &delta_2r_scaled);
 
