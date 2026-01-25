@@ -323,8 +323,13 @@ where
                 EvalResult::G1(self.ops.g1_scalar_mul(p.as_g1(), &scalar.value))
             }
 
-            AstOp::MsmG1 { points, scalars, .. } => {
-                let pts: Vec<E::G1> = points.iter().map(|id| state.get(*id).as_g1().clone()).collect();
+            AstOp::MsmG1 {
+                points, scalars, ..
+            } => {
+                let pts: Vec<E::G1> = points
+                    .iter()
+                    .map(|id| state.get(*id).as_g1().clone())
+                    .collect();
                 let scs: Vec<_> = scalars.iter().map(|s| s.value.clone()).collect();
                 EvalResult::G1(self.ops.g1_msm(&pts, &scs))
             }
@@ -340,8 +345,13 @@ where
                 EvalResult::G2(self.ops.g2_scalar_mul(p.as_g2(), &scalar.value))
             }
 
-            AstOp::MsmG2 { points, scalars, .. } => {
-                let pts: Vec<E::G2> = points.iter().map(|id| state.get(*id).as_g2().clone()).collect();
+            AstOp::MsmG2 {
+                points, scalars, ..
+            } => {
+                let pts: Vec<E::G2> = points
+                    .iter()
+                    .map(|id| state.get(*id).as_g2().clone())
+                    .collect();
                 let scs: Vec<_> = scalars.iter().map(|s| s.value.clone()).collect();
                 EvalResult::G2(self.ops.g2_msm(&pts, &scs))
             }
@@ -364,8 +374,14 @@ where
             }
 
             AstOp::MultiPairing { g1s, g2s, .. } => {
-                let g1_vals: Vec<E::G1> = g1s.iter().map(|id| state.get(*id).as_g1().clone()).collect();
-                let g2_vals: Vec<E::G2> = g2s.iter().map(|id| state.get(*id).as_g2().clone()).collect();
+                let g1_vals: Vec<E::G1> = g1s
+                    .iter()
+                    .map(|id| state.get(*id).as_g1().clone())
+                    .collect();
+                let g2_vals: Vec<E::G2> = g2s
+                    .iter()
+                    .map(|id| state.get(*id).as_g2().clone())
+                    .collect();
                 EvalResult::GT(self.ops.multi_pairing(&g1_vals, &g2_vals))
             }
         }
@@ -445,7 +461,9 @@ where
                 EvalResult::G1(self.ops.g1_scalar_mul(get(*point).as_g1(), &scalar.value))
             }
 
-            AstOp::MsmG1 { points, scalars, .. } => {
+            AstOp::MsmG1 {
+                points, scalars, ..
+            } => {
                 let pts: Vec<E::G1> = points.iter().map(|id| get(*id).as_g1().clone()).collect();
                 let scs: Vec<_> = scalars.iter().map(|s| s.value.clone()).collect();
                 EvalResult::G1(self.ops.g1_msm(&pts, &scs))
@@ -459,7 +477,9 @@ where
                 EvalResult::G2(self.ops.g2_scalar_mul(get(*point).as_g2(), &scalar.value))
             }
 
-            AstOp::MsmG2 { points, scalars, .. } => {
+            AstOp::MsmG2 {
+                points, scalars, ..
+            } => {
                 let pts: Vec<E::G2> = points.iter().map(|id| get(*id).as_g2().clone()).collect();
                 let scs: Vec<_> = scalars.iter().map(|s| s.value.clone()).collect();
                 EvalResult::G2(self.ops.g2_msm(&pts, &scs))

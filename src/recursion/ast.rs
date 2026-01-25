@@ -365,13 +365,11 @@ where
                 }
                 slots
             }
-            AstOp::MsmG1 { points, .. } | AstOp::MsmG2 { points, .. } => {
-                points
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &id)| (id, InputSlot::PointAt(i)))
-                    .collect()
-            }
+            AstOp::MsmG1 { points, .. } | AstOp::MsmG2 { points, .. } => points
+                .iter()
+                .enumerate()
+                .map(|(i, &id)| (id, InputSlot::PointAt(i)))
+                .collect(),
         }
     }
 
@@ -437,7 +435,11 @@ where
                 .field("a", a)
                 .field("b", b)
                 .finish(),
-            AstOp::G1ScalarMul { op_id, point, scalar } => f
+            AstOp::G1ScalarMul {
+                op_id,
+                point,
+                scalar,
+            } => f
                 .debug_struct("G1ScalarMul")
                 .field("op_id", op_id)
                 .field("point", point)
@@ -449,7 +451,11 @@ where
                 .field("a", a)
                 .field("b", b)
                 .finish(),
-            AstOp::G2ScalarMul { op_id, point, scalar } => f
+            AstOp::G2ScalarMul {
+                op_id,
+                point,
+                scalar,
+            } => f
                 .debug_struct("G2ScalarMul")
                 .field("op_id", op_id)
                 .field("point", point)
@@ -461,7 +467,11 @@ where
                 .field("lhs", lhs)
                 .field("rhs", rhs)
                 .finish(),
-            AstOp::GTExp { op_id, base, scalar } => f
+            AstOp::GTExp {
+                op_id,
+                base,
+                scalar,
+            } => f
                 .debug_struct("GTExp")
                 .field("op_id", op_id)
                 .field("base", base)
@@ -479,13 +489,21 @@ where
                 .field("g1s", g1s)
                 .field("g2s", g2s)
                 .finish(),
-            AstOp::MsmG1 { op_id, points, scalars } => f
+            AstOp::MsmG1 {
+                op_id,
+                points,
+                scalars,
+            } => f
                 .debug_struct("MsmG1")
                 .field("op_id", op_id)
                 .field("points", points)
                 .field("num_scalars", &scalars.len())
                 .finish(),
-            AstOp::MsmG2 { op_id, points, scalars } => f
+            AstOp::MsmG2 {
+                op_id,
+                points,
+                scalars,
+            } => f
                 .debug_struct("MsmG2")
                 .field("op_id", op_id)
                 .field("points", points)
@@ -591,7 +609,11 @@ impl fmt::Display for AstValidationError {
                 node,
                 undefined_input,
             } => {
-                write!(f, "node {} references undefined input {}", node, undefined_input)
+                write!(
+                    f,
+                    "node {} references undefined input {}",
+                    node, undefined_input
+                )
             }
             AstValidationError::MismatchedOutputId { expected, actual } => {
                 write!(
@@ -750,23 +772,24 @@ where
         defined: &HashMap<ValueId, (usize, ValueType)>,
     ) -> Result<(), AstValidationError> {
         // Helper to check that an input is defined and has the expected type
-        let check_input = |input: ValueId, expected_ty: ValueType| -> Result<(), AstValidationError> {
-            match defined.get(&input) {
-                None => Err(AstValidationError::UndefinedInput {
-                    node: node_id,
-                    undefined_input: input,
-                }),
-                Some((_, actual_ty)) if *actual_ty != expected_ty => {
-                    Err(AstValidationError::TypeMismatch {
+        let check_input =
+            |input: ValueId, expected_ty: ValueType| -> Result<(), AstValidationError> {
+                match defined.get(&input) {
+                    None => Err(AstValidationError::UndefinedInput {
                         node: node_id,
-                        input,
-                        expected: expected_ty,
-                        actual: *actual_ty,
-                    })
+                        undefined_input: input,
+                    }),
+                    Some((_, actual_ty)) if *actual_ty != expected_ty => {
+                        Err(AstValidationError::TypeMismatch {
+                            node: node_id,
+                            input,
+                            expected: expected_ty,
+                            actual: *actual_ty,
+                        })
+                    }
+                    Some(_) => Ok(()),
                 }
-                Some(_) => Ok(()),
-            }
-        };
+            };
 
         match op {
             AstOp::Input { .. } => {
@@ -808,7 +831,9 @@ where
                 }
                 Ok(())
             }
-            AstOp::MsmG1 { points, scalars, .. } => {
+            AstOp::MsmG1 {
+                points, scalars, ..
+            } => {
                 if points.len() != scalars.len() {
                     return Err(AstValidationError::MsmLengthMismatch {
                         node: node_id,
@@ -821,7 +846,9 @@ where
                 }
                 Ok(())
             }
-            AstOp::MsmG2 { points, scalars, .. } => {
+            AstOp::MsmG2 {
+                points, scalars, ..
+            } => {
                 if points.len() != scalars.len() {
                     return Err(AstValidationError::MsmLengthMismatch {
                         node: node_id,
@@ -1004,8 +1031,7 @@ where
         let node_levels = self.compute_levels();
         let max_level = node_levels.iter().copied().max().unwrap_or(0);
 
-        let mut levels: Vec<HashMap<ValueType, Vec<ValueId>>> =
-            vec![HashMap::new(); max_level + 1];
+        let mut levels: Vec<HashMap<ValueType, Vec<ValueId>>> = vec![HashMap::new(); max_level + 1];
 
         for (idx, node) in self.nodes.iter().enumerate() {
             let level = node_levels[idx];
@@ -1075,7 +1101,7 @@ where
         for node in &self.nodes {
             let consumer_id = node.out;
             let (consumer_kind, consumer_idx) = op_indices.get(&consumer_id).unwrap().clone();
-            
+
             for (producer_id, slot) in node.op.input_slots() {
                 if let Some((producer_kind, producer_idx)) = op_indices.get(&producer_id) {
                     wires.push(Wire {
@@ -1308,7 +1334,9 @@ where
         self.graph.nodes.push(AstNode {
             out,
             out_ty,
-            op: AstOp::Input { source: source.clone() },
+            op: AstOp::Input {
+                source: source.clone(),
+            },
         });
         self.interned.insert(source, out);
         out
@@ -1317,7 +1345,12 @@ where
     // ===== Convenience intern methods for G1 =====
 
     /// Intern a G1 setup element.
-    pub fn intern_g1_setup(&mut self, _value: E::G1, name: &'static str, index: Option<usize>) -> ValueId {
+    pub fn intern_g1_setup(
+        &mut self,
+        _value: E::G1,
+        name: &'static str,
+        index: Option<usize>,
+    ) -> ValueId {
         self.intern_input(ValueType::G1, InputSource::Setup { name, index })
     }
 
@@ -1327,14 +1360,25 @@ where
     }
 
     /// Intern a G1 per-round proof message element.
-    pub fn intern_g1_proof_round(&mut self, _value: E::G1, round: usize, msg: RoundMsg, name: &'static str) -> ValueId {
+    pub fn intern_g1_proof_round(
+        &mut self,
+        _value: E::G1,
+        round: usize,
+        msg: RoundMsg,
+        name: &'static str,
+    ) -> ValueId {
         self.intern_input(ValueType::G1, InputSource::ProofRound { round, msg, name })
     }
 
     // ===== Convenience intern methods for G2 =====
 
     /// Intern a G2 setup element.
-    pub fn intern_g2_setup(&mut self, _value: E::G2, name: &'static str, index: Option<usize>) -> ValueId {
+    pub fn intern_g2_setup(
+        &mut self,
+        _value: E::G2,
+        name: &'static str,
+        index: Option<usize>,
+    ) -> ValueId {
         self.intern_input(ValueType::G2, InputSource::Setup { name, index })
     }
 
@@ -1344,14 +1388,25 @@ where
     }
 
     /// Intern a G2 per-round proof message element.
-    pub fn intern_g2_proof_round(&mut self, _value: E::G2, round: usize, msg: RoundMsg, name: &'static str) -> ValueId {
+    pub fn intern_g2_proof_round(
+        &mut self,
+        _value: E::G2,
+        round: usize,
+        msg: RoundMsg,
+        name: &'static str,
+    ) -> ValueId {
         self.intern_input(ValueType::G2, InputSource::ProofRound { round, msg, name })
     }
 
     // ===== Convenience intern methods for GT =====
 
     /// Intern a GT setup element.
-    pub fn intern_gt_setup(&mut self, _value: E::GT, name: &'static str, index: Option<usize>) -> ValueId {
+    pub fn intern_gt_setup(
+        &mut self,
+        _value: E::GT,
+        name: &'static str,
+        index: Option<usize>,
+    ) -> ValueId {
         self.intern_input(ValueType::GT, InputSource::Setup { name, index })
     }
 
@@ -1361,7 +1416,13 @@ where
     }
 
     /// Intern a GT per-round proof message element.
-    pub fn intern_gt_proof_round(&mut self, _value: E::GT, round: usize, msg: RoundMsg, name: &'static str) -> ValueId {
+    pub fn intern_gt_proof_round(
+        &mut self,
+        _value: E::GT,
+        round: usize,
+        msg: RoundMsg,
+        name: &'static str,
+    ) -> ValueId {
         self.intern_input(ValueType::GT, InputSource::ProofRound { round, msg, name })
     }
 
@@ -1571,7 +1632,14 @@ mod tests {
             },
         );
         // Try to add G1 + G1 but claim it's a G2Add (wrong types)
-        let _bad = builder.push(ValueType::G2, AstOp::G2Add { op_id: None, a: g1, b: g1 });
+        let _bad = builder.push(
+            ValueType::G2,
+            AstOp::G2Add {
+                op_id: None,
+                a: g1,
+                b: g1,
+            },
+        );
 
         let graph = builder.finalize();
         let result = graph.validate();
@@ -1742,7 +1810,14 @@ mod tests {
                 scalar: ScalarValue::named(d_scalar, "d"),
             },
         );
-        let e1_mod = builder.push(ValueType::G1, AstOp::G1Add { op_id: None, a: e1, b: g1_scaled });
+        let e1_mod = builder.push(
+            ValueType::G1,
+            AstOp::G1Add {
+                op_id: None,
+                a: e1,
+                b: g1_scaled,
+            },
+        );
 
         let pair1 = builder.push(
             ValueType::GT,

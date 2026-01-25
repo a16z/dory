@@ -2,15 +2,12 @@
 
 use std::collections::HashMap;
 
-use super::hint_map::HintMap;
-use super::witness::{OpId, WitnessBackend, WitnessResult};
-use crate::primitives::arithmetic::PairingCurve;
+use super::witness::{OpId, WitnessBackend};
 
 /// Storage for all witnesses collected during a verification run.
 ///
 /// This struct holds witnesses for each type of arithmetic operation, indexed
-/// by their [`OpId`]. It is produced internally during witness generation and can
-/// be converted to a [`HintMap`](crate::recursion::HintMap) for hint-based verification.
+/// by their [`OpId`]. Used by the prover for witness generation.
 ///
 /// # Type Parameters
 ///
@@ -38,7 +35,6 @@ pub struct WitnessCollection<W: WitnessBackend> {
     /// GT exponentiation witnesses (base^scalar)
     pub gt_exp: HashMap<OpId, W::GtExpWitness>,
 
-
     /// Single pairing witnesses
     pub pairing: HashMap<OpId, W::PairingWitness>,
     /// Multi-pairing witnesses
@@ -50,18 +46,18 @@ impl<W: WitnessBackend> WitnessCollection<W> {
     pub fn new() -> Self {
         Self {
             num_rounds: 0,
-    
+
             g1_add: HashMap::new(),
             g1_scalar_mul: HashMap::new(),
             msm_g1: HashMap::new(),
-    
+
             g2_add: HashMap::new(),
             g2_scalar_mul: HashMap::new(),
             msm_g2: HashMap::new(),
-    
+
             gt_mul: HashMap::new(),
             gt_exp: HashMap::new(),
-        
+
             pairing: HashMap::new(),
             multi_pairing: HashMap::new(),
         }
@@ -69,18 +65,14 @@ impl<W: WitnessBackend> WitnessCollection<W> {
 
     /// Total number of witnesses across all operation types.
     pub fn total_witnesses(&self) -> usize {
-
         self.g1_add.len()
             + self.g1_scalar_mul.len()
             + self.msm_g1.len()
-    
             + self.g2_add.len()
             + self.g2_scalar_mul.len()
             + self.msm_g2.len()
-    
             + self.gt_mul.len()
             + self.gt_exp.len()
-        
             + self.pairing.len()
             + self.multi_pairing.len()
     }
@@ -94,93 +86,5 @@ impl<W: WitnessBackend> WitnessCollection<W> {
 impl<W: WitnessBackend> Default for WitnessCollection<W> {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl<W: WitnessBackend> WitnessCollection<W> {
-    /// Convert full witness collection to hints (outputs only).
-    ///
-    /// # Type Parameters
-    ///
-    /// - `E`: The pairing curve whose group elements are stored in the witnesses
-    pub fn to_hints<E>(&self) -> HintMap<E>
-    where
-        E: PairingCurve,
-
-        W::G1AddWitness: WitnessResult<E::G1>,
-        W::G1ScalarMulWitness: WitnessResult<E::G1>,
-        W::MsmG1Witness: WitnessResult<E::G1>,
-
-        W::G2AddWitness: WitnessResult<E::G2>,
-        W::G2ScalarMulWitness: WitnessResult<E::G2>,
-        W::MsmG2Witness: WitnessResult<E::G2>,
-
-        W::GtMulWitness: WitnessResult<E::GT>,
-        W::GtExpWitness: WitnessResult<E::GT>,
-    
-        W::PairingWitness: WitnessResult<E::GT>,
-        W::MultiPairingWitness: WitnessResult<E::GT>,
-    {
-        let mut hints = HintMap::new(self.num_rounds);
-
-        // G1 results
-        for (id, w) in &self.g1_add {
-            if let Some(result) = w.result() {
-                hints.insert_g1(*id, *result);
-            }
-        }
-        for (id, w) in &self.g1_scalar_mul {
-            if let Some(result) = w.result() {
-                hints.insert_g1(*id, *result);
-            }
-        }
-        for (id, w) in &self.msm_g1 {
-            if let Some(result) = w.result() {
-                hints.insert_g1(*id, *result);
-            }
-        }
-
-        // G2 results
-        for (id, w) in &self.g2_add {
-            if let Some(result) = w.result() {
-                hints.insert_g2(*id, *result);
-            }
-        }
-        for (id, w) in &self.g2_scalar_mul {
-            if let Some(result) = w.result() {
-                hints.insert_g2(*id, *result);
-            }
-        }
-        for (id, w) in &self.msm_g2 {
-            if let Some(result) = w.result() {
-                hints.insert_g2(*id, *result);
-            }
-        }
-
-        // GT results
-        for (id, w) in &self.gt_mul {
-            if let Some(result) = w.result() {
-                hints.insert_gt(*id, *result);
-            }
-        }
-        for (id, w) in &self.gt_exp {
-            if let Some(result) = w.result() {
-                hints.insert_gt(*id, *result);
-            }
-        }
-
-        // Pairing results
-        for (id, w) in &self.pairing {
-            if let Some(result) = w.result() {
-                hints.insert_gt(*id, *result);
-            }
-        }
-        for (id, w) in &self.multi_pairing {
-            if let Some(result) = w.result() {
-                hints.insert_gt(*id, *result);
-            }
-        }
-
-        hints
     }
 }

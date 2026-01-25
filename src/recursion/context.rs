@@ -1,8 +1,8 @@
 //! Trace context for automatic operation tracing during verification.
 //!
 //! This module provides [`TraceContext`], a unified context that manages both
-//! witness generation and hint-based verification modes. Operations executed
-//! through trace types automatically record witnesses or use hints based on
+//! witness generation and symbolic verification modes. Operations executed
+//! through trace types automatically record witnesses or build AST based on
 //! the context's mode.
 
 use std::cell::{RefCell, RefMut};
@@ -13,26 +13,19 @@ use super::ast::{AstBuilder, AstGraph};
 use super::witness::{OpId, OpType, WitnessBackend};
 use crate::primitives::arithmetic::{Group, PairingCurve};
 
-use super::hint_map::HintResult;
-use super::{HintMap, OpIdBuilder, WitnessCollection, WitnessCollector, WitnessGenerator};
+use super::{OpIdBuilder, WitnessCollection, WitnessCollector, WitnessGenerator};
 
 /// Execution mode for traced verification operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExecutionMode {
-    /// Always compute operations and record witnesses.
-    /// Used during initial witness generation phase.
+    /// Compute operations and record witnesses.
+    /// Used during prover witness generation phase.
     #[default]
     WitnessGeneration,
 
-    /// Try hints first, fall back to compute with warning.
-    /// Used during recursive verification when hints should be available.
-    HintBased,
-
-    /// Record AST + hints only, skip detailed witness expansion.
-    /// Used for two-phase parallel witness generation where:
-    /// - Phase 1: Record lightweight op log (AST) + results (hints)
-    /// - Phase 2: Expand witnesses in parallel (done by upstream crate)
-    Deferred,
+    /// Build AST only, no computation.
+    /// Used for verifier recursion where we just need proof obligations.
+    Symbolic,
 }
 
 /// Handle to a trace context
@@ -41,11 +34,10 @@ pub type CtxHandle<W, E, Gen> = Rc<TraceContext<W, E, Gen>>;
 /// Context for executing arithmetic operations with automatic tracing.
 ///
 /// In **witness generation** mode, all traced operations are computed and
-/// their witnesses are recorded.
+/// their witnesses are recorded. Used by the prover.
 ///
-/// In **hint-based** mode, traced operations first check for pre-computed hints.
-/// If a hint is missing, the operation is computed with a warning logged via
-/// `tracing::warn!`.
+/// In **symbolic** mode, operations build an AST without computation.
+/// Used by the verifier for recursion (proof obligations).
 ///
 /// # Interior Mutability
 ///
@@ -61,13 +53,9 @@ where
 {
     mode: ExecutionMode,
     id_builder: RefCell<OpIdBuilder>,
+    /// Witness collector (only active in WitnessGeneration mode).
     collector: RefCell<Option<WitnessCollector<W, E, Gen>>>,
-    /// Hints for hint-based mode (read-only).
-    hints: Option<HintMap<E>>,
-    /// Hints being recorded in deferred mode (write).
-    deferred_hints: RefCell<Option<HintMap<E>>>,
-    missing_hints: RefCell<Vec<OpId>>,
-    /// Optional AST builder for recording operation wiring.
+    /// AST builder for recording operation wiring.
     ast: RefCell<Option<AstBuilder<E>>>,
     _phantom: PhantomData<(W, E, Gen)>,
 }
@@ -79,7 +67,7 @@ where
     E::G1: Group,
     Gen: WitnessGenerator<W, E>,
 {
-    /// Create a context for witness generation mode.
+    /// Create a context for witness generation mode (prover).
     ///
     /// All traced operations will be computed and their witnesses recorded.
     pub fn for_witness_gen() -> Self {
@@ -87,62 +75,34 @@ where
             mode: ExecutionMode::WitnessGeneration,
             id_builder: RefCell::new(OpIdBuilder::new()),
             collector: RefCell::new(Some(WitnessCollector::new())),
-            hints: None,
-            deferred_hints: RefCell::new(None),
-            missing_hints: RefCell::new(Vec::new()),
             ast: RefCell::new(None),
             _phantom: PhantomData,
         }
     }
 
-    /// Create a context for hint-based verification.
+    /// Create a context for symbolic mode (verifier recursion).
     ///
-    /// Traced operations will use pre-computed hints when available,
-    /// falling back to computation with a warning when hints are missing.
-    pub fn for_hints(hints: HintMap<E>) -> Self {
-        Self {
-            mode: ExecutionMode::HintBased,
-            id_builder: RefCell::new(OpIdBuilder::new()),
-            collector: RefCell::new(None),
-            hints: Some(hints),
-            deferred_hints: RefCell::new(None),
-            missing_hints: RefCell::new(Vec::new()),
-            ast: RefCell::new(None),
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Create a context for deferred witness expansion.
+    /// In symbolic mode:
+    /// - No group operations are computed
+    /// - AST is built with operation wiring
+    /// - No witnesses are recorded
     ///
-    /// In deferred mode:
-    /// - Operations are computed and results are recorded to a `HintMap`
-    /// - AST is recorded for operation wiring
-    /// - Detailed witnesses are NOT expanded (no `WitnessCollector`)
-    ///
-    /// After verification, call `take_deferred_hints()` and `take_ast()` to get
-    /// the recorded data for parallel witness expansion by upstream crates.
+    /// After verification, call `take_ast()` to get the proof obligations.
     ///
     /// # Example
     ///
     /// ```ignore
-    /// // Phase 1: Record ops in deferred mode
-    /// let ctx = Rc::new(TraceContext::for_deferred());
+    /// let ctx = Rc::new(TraceContext::for_symbolic());
     /// verify_recursive(..., ctx.clone())?;
     /// let ast = ctx.take_ast().unwrap();
-    /// let hints = ctx.take_deferred_hints().unwrap();
-    ///
-    /// // Phase 2: Expand witnesses in parallel (upstream crate)
-    /// let witnesses = parallel_expand_witnesses(&ast, &hints);
+    /// // ast contains proof obligations for circuit generation
     /// ```
-    pub fn for_deferred() -> Self {
+    pub fn for_symbolic() -> Self {
         Self {
-            mode: ExecutionMode::Deferred,
+            mode: ExecutionMode::Symbolic,
             id_builder: RefCell::new(OpIdBuilder::new()),
-            collector: RefCell::new(None), // No witness expansion
-            hints: None,
-            deferred_hints: RefCell::new(Some(HintMap::new(0))), // Will set rounds later
-            missing_hints: RefCell::new(Vec::new()),
-            ast: RefCell::new(Some(AstBuilder::new())), // Always enable AST
+            collector: RefCell::new(None),
+            ast: RefCell::new(Some(AstBuilder::new())),
             _phantom: PhantomData,
         }
     }
@@ -154,17 +114,12 @@ where
         Self::for_witness_gen().with_ast()
     }
 
-    /// Create a context for deferred mode (alias for `for_deferred`).
-    ///
-    /// Provided for API symmetry with `for_witness_gen_with_ast()`.
-    pub fn for_deferred_with_ast() -> Self {
-        Self::for_deferred()
-    }
-
     /// Enable AST tracing for this context.
     ///
     /// When enabled, all operations will record AST nodes for circuit wiring.
-    /// The AST is independent of execution mode (witness gen or hint-based).
+    /// Enable AST tracing for this context.
+    ///
+    /// When enabled, all operations will record AST nodes for circuit wiring.
     pub fn with_ast(self) -> Self {
         *self.ast.borrow_mut() = Some(AstBuilder::new());
         self
@@ -214,10 +169,6 @@ where
         if let Some(ref mut collector) = *self.collector.borrow_mut() {
             collector.set_num_rounds(num_rounds);
         }
-        // Also set rounds on deferred hints
-        if let Some(ref mut hints) = *self.deferred_hints.borrow_mut() {
-            hints.num_rounds = num_rounds;
-        }
     }
 
     /// Generate the next operation ID for the given type.
@@ -225,24 +176,9 @@ where
         self.id_builder.borrow_mut().next(op_type)
     }
 
-    /// Get all missing hints encountered during hint-based verification.
-    pub fn missing_hints(&self) -> Vec<OpId> {
-        self.missing_hints.borrow().clone()
-    }
-
-    /// Check if any hints were missing during verification.
-    pub fn had_missing_hints(&self) -> bool {
-        !self.missing_hints.borrow().is_empty()
-    }
-
-    /// Record that a hint was missing for the given operation.
-    pub fn record_missing_hint(&self, id: OpId) {
-        self.missing_hints.borrow_mut().push(id);
-    }
-
     /// Finalize and return the collected witnesses (if in witness generation mode).
     ///
-    /// Returns `None` if no collector was active (pure hint mode without recording).
+    /// Returns `None` if in symbolic mode (no witnesses collected).
     /// Note: This consumes the context. Use `finalize_with_ast()` if you also need the AST.
     pub fn finalize(self) -> Option<WitnessCollection<W>> {
         self.collector.into_inner().map(|c| c.finalize())
@@ -266,45 +202,10 @@ where
         self.ast.borrow_mut().take().map(|b| b.finalize())
     }
 
-    /// Take the deferred hints recorded during deferred mode execution.
-    ///
-    /// Returns `None` if not in deferred mode or if already taken.
-    pub fn take_deferred_hints(&self) -> Option<HintMap<E>> {
-        self.deferred_hints.borrow_mut().take()
-    }
-
-    /// Check if running in deferred mode.
+    /// Check if running in symbolic mode.
     #[inline]
-    pub fn is_deferred(&self) -> bool {
-        self.mode == ExecutionMode::Deferred
-    }
-
-    /// Record a hint result in deferred mode.
-    ///
-    /// This is called internally by trace wrappers to record operation results
-    /// without expanding full witnesses.
-    pub(crate) fn record_deferred_hint(&self, id: OpId, result: HintResult<E>) {
-        if let Some(ref mut hints) = *self.deferred_hints.borrow_mut() {
-            hints.insert(id, result);
-        }
-    }
-
-    /// Get a G1 hint for the given operation.
-    #[inline]
-    pub fn get_hint_g1(&self, id: OpId) -> Option<E::G1> {
-        self.hints.as_ref().and_then(|h| h.get_g1(id).copied())
-    }
-
-    /// Get a G2 hint for the given operation.
-    #[inline]
-    pub fn get_hint_g2(&self, id: OpId) -> Option<E::G2> {
-        self.hints.as_ref().and_then(|h| h.get_g2(id).copied())
-    }
-
-    /// Get a GT hint for the given operation.
-    #[inline]
-    pub fn get_hint_gt(&self, id: OpId) -> Option<E::GT> {
-        self.hints.as_ref().and_then(|h| h.get_gt(id).copied())
+    pub fn is_symbolic(&self) -> bool {
+        self.mode == ExecutionMode::Symbolic
     }
 
     // ===== G1 operations =====
