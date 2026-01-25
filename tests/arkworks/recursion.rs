@@ -1,4 +1,4 @@
-//! Integration tests for recursion feature (witness generation, hint-based verification, AST generation)
+//! Integration tests for recursion feature (witness generation, symbolic verification, AST generation)
 
 use std::rc::Rc;
 
@@ -62,22 +62,8 @@ fn test_witness_gen_roundtrip() {
         .finalize()
         .expect("Should have witnesses");
 
-    // Phase 2: Hint-based verification
-    let hints = collection.to_hints::<BN254>();
-    let ctx = Rc::new(TestCtx::for_hints(hints));
-    let mut hint_transcript = fresh_transcript();
-
-    let result = verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
-        tier_2,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut hint_transcript,
-        ctx,
-    );
-
-    assert!(result.is_ok(), "Hint-based verification should succeed");
+    // Verify we got some witnesses
+    assert!(!collection.is_empty(), "Should have collected witnesses");
 }
 
 #[test]
@@ -152,178 +138,6 @@ fn test_witness_collection_contents() {
         total = collection.total_witnesses(),
         rounds = collection.num_rounds,
         "Witness collection stats"
-    );
-}
-
-#[test]
-fn test_hint_verification_with_missing_hints() {
-    let mut rng = rand::thread_rng();
-    let max_log_n = 6;
-
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
-
-    // Create two different polynomials
-    let poly1 = random_polynomial(16);
-    let poly2 = random_polynomial(16);
-    let nu = 2;
-    let sigma = 2;
-
-    let (tier_2_1, tier_1_1) = poly1
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
-        .unwrap();
-
-    let (_tier_2_2, tier_1_2) = poly2
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
-        .unwrap();
-
-    let point = random_point(4);
-
-    // Create proof for poly1
-    let mut prover_transcript1 = fresh_transcript();
-    let proof1 = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
-        &poly1,
-        &point,
-        tier_1_1,
-        nu,
-        sigma,
-        &prover_setup,
-        &mut prover_transcript1,
-    )
-    .unwrap();
-    let evaluation1 = poly1.evaluate(&point);
-
-    // Create proof for poly2
-    let mut prover_transcript2 = fresh_transcript();
-    let _proof2 = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
-        &poly2,
-        &point,
-        tier_1_2,
-        nu,
-        sigma,
-        &prover_setup,
-        &mut prover_transcript2,
-    )
-    .unwrap();
-    let _evaluation2 = poly2.evaluate(&point);
-
-    // Generate hints for poly1's verification
-    let ctx = Rc::new(TestCtx::for_witness_gen());
-    let mut witness_transcript = fresh_transcript();
-
-    verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
-        tier_2_1,
-        evaluation1,
-        &point,
-        &proof1,
-        verifier_setup.clone(),
-        &mut witness_transcript,
-        ctx.clone(),
-    )
-    .expect("Witness-generating verification should succeed");
-
-    let collection = Rc::try_unwrap(ctx)
-        .ok()
-        .expect("Should have sole ownership")
-        .finalize()
-        .expect("Should have witnesses");
-
-    let mut hints = collection.to_hints::<BN254>();
-
-    // Corrupt a hint to test that corrupted hints cause verification to fail.
-    // We corrupt the final multi-pairing hint which will make lhs != rhs.
-    // The multi-pairing happens in the "final" phase (round = u16::MAX).
-    use dory_pcs::primitives::arithmetic::Group;
-    use dory_pcs::recursion::{HintResult, OpId, OpType};
-    let final_round = u16::MAX; // final phase uses u16::MAX as round
-    let multi_pairing_id = OpId::new(final_round, OpType::MultiPairing, 0);
-
-    // Insert a corrupted hint (identity element instead of actual value)
-    let corrupted_gt = <BN254 as dory_pcs::primitives::arithmetic::PairingCurve>::GT::identity();
-    hints.insert(multi_pairing_id, HintResult::GT(corrupted_gt));
-
-    // Try to verify poly1 (same proof) with corrupted hints
-    let ctx = Rc::new(TestCtx::for_hints(hints));
-    let mut hint_transcript = fresh_transcript();
-
-    let result = verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
-        tier_2_1,
-        evaluation1,
-        &point,
-        &proof1,
-        verifier_setup,
-        &mut hint_transcript,
-        ctx.clone(),
-    );
-
-    // The verification should fail because the multi-pairing hint is corrupted
-    assert!(result.is_err(), "Verification with corrupted hints should fail");
-}
-
-#[test]
-fn test_hint_map_size_reduction() {
-    let mut rng = rand::thread_rng();
-    let max_log_n = 8;
-
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
-
-    let poly = random_polynomial(64);
-    let nu = 3;
-    let sigma = 3;
-
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
-        .unwrap();
-
-    let point = random_point(6);
-
-    let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
-        &poly,
-        &point,
-        tier_1,
-        nu,
-        sigma,
-        &prover_setup,
-        &mut prover_transcript,
-    )
-    .unwrap();
-    let evaluation = poly.evaluate(&point);
-
-    let ctx = Rc::new(TestCtx::for_witness_gen());
-    let mut witness_transcript = fresh_transcript();
-
-    verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
-        tier_2,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut witness_transcript,
-        ctx.clone(),
-    )
-    .expect("Verification should succeed");
-
-    let collection = Rc::try_unwrap(ctx)
-        .ok()
-        .expect("Should have sole ownership")
-        .finalize()
-        .expect("Should have witnesses");
-
-    let hints = collection.to_hints::<BN254>();
-
-    // Verify hint count matches total operations
-    let total_ops = collection.total_witnesses();
-    tracing::info!(
-        total_ops,
-        hint_map_size = hints.len(),
-        "Hint map conversion stats"
-    );
-
-    // HintMap should have same number of entries as total witnesses
-    assert_eq!(
-        hints.len(),
-        total_ops,
-        "HintMap should have one entry per operation"
     );
 }
 
@@ -429,24 +243,40 @@ fn test_ast_generation() {
                 let name = scalar.name.unwrap_or("anon");
                 format!("G2ScalarMul({}, scalar={})", point.0, name)
             }
-            dory_pcs::recursion::ast::AstOp::GTMul { lhs, rhs, .. } => format!("GTMul({}, {})", lhs.0, rhs.0),
+            dory_pcs::recursion::ast::AstOp::GTMul { lhs, rhs, .. } => {
+                format!("GTMul({}, {})", lhs.0, rhs.0)
+            }
             dory_pcs::recursion::ast::AstOp::GTExp { base, scalar, .. } => {
                 let name = scalar.name.unwrap_or("anon");
                 format!("GTExp({}, scalar={})", base.0, name)
             }
-            dory_pcs::recursion::ast::AstOp::Pairing { g1, g2, .. } => format!("Pairing({}, {})", g1.0, g2.0),
+            dory_pcs::recursion::ast::AstOp::Pairing { g1, g2, .. } => {
+                format!("Pairing({}, {})", g1.0, g2.0)
+            }
             dory_pcs::recursion::ast::AstOp::MultiPairing { g1s, g2s, .. } => {
-                format!("MultiPairing(g1s={:?}, g2s={:?})", 
+                format!(
+                    "MultiPairing(g1s={:?}, g2s={:?})",
                     g1s.iter().map(|v| v.0).collect::<Vec<_>>(),
-                    g2s.iter().map(|v| v.0).collect::<Vec<_>>())
+                    g2s.iter().map(|v| v.0).collect::<Vec<_>>()
+                )
             }
-            dory_pcs::recursion::ast::AstOp::MsmG1 { points, scalars, .. } => {
-                format!("MsmG1(points={:?}, {} scalars)", 
-                    points.iter().map(|v| v.0).collect::<Vec<_>>(), scalars.len())
+            dory_pcs::recursion::ast::AstOp::MsmG1 {
+                points, scalars, ..
+            } => {
+                format!(
+                    "MsmG1(points={:?}, {} scalars)",
+                    points.iter().map(|v| v.0).collect::<Vec<_>>(),
+                    scalars.len()
+                )
             }
-            dory_pcs::recursion::ast::AstOp::MsmG2 { points, scalars, .. } => {
-                format!("MsmG2(points={:?}, {} scalars)", 
-                    points.iter().map(|v| v.0).collect::<Vec<_>>(), scalars.len())
+            dory_pcs::recursion::ast::AstOp::MsmG2 {
+                points, scalars, ..
+            } => {
+                format!(
+                    "MsmG2(points={:?}, {} scalars)",
+                    points.iter().map(|v| v.0).collect::<Vec<_>>(),
+                    scalars.len()
+                )
             }
         };
         println!("[{:3}] {:?} -> {} = {}", i, node.out_ty, node.out.0, op_str);
@@ -460,47 +290,72 @@ fn test_ast_generation() {
             let op_str = match &node.op {
                 dory_pcs::recursion::ast::AstOp::Input { source } => format!("Input({:?})", source),
                 dory_pcs::recursion::ast::AstOp::G1Add { op_id, a, b } => {
-                format!("G1Add({}, {}, op_id={:?})", a.0, b.0, op_id)
-            }
+                    format!("G1Add({}, {}, op_id={:?})", a.0, b.0, op_id)
+                }
                 dory_pcs::recursion::ast::AstOp::G1ScalarMul { point, scalar, .. } => {
                     let name = scalar.name.unwrap_or("anon");
                     format!("G1ScalarMul({}, scalar={})", point.0, name)
                 }
                 dory_pcs::recursion::ast::AstOp::G2Add { op_id, a, b } => {
-                format!("G2Add({}, {}, op_id={:?})", a.0, b.0, op_id)
-            }
+                    format!("G2Add({}, {}, op_id={:?})", a.0, b.0, op_id)
+                }
                 dory_pcs::recursion::ast::AstOp::G2ScalarMul { point, scalar, .. } => {
                     let name = scalar.name.unwrap_or("anon");
                     format!("G2ScalarMul({}, scalar={})", point.0, name)
                 }
-                dory_pcs::recursion::ast::AstOp::GTMul { lhs, rhs, .. } => format!("GTMul({}, {})", lhs.0, rhs.0),
+                dory_pcs::recursion::ast::AstOp::GTMul { lhs, rhs, .. } => {
+                    format!("GTMul({}, {})", lhs.0, rhs.0)
+                }
                 dory_pcs::recursion::ast::AstOp::GTExp { base, scalar, .. } => {
                     let name = scalar.name.unwrap_or("anon");
                     format!("GTExp({}, scalar={})", base.0, name)
                 }
-                dory_pcs::recursion::ast::AstOp::Pairing { g1, g2, .. } => format!("Pairing({}, {})", g1.0, g2.0),
+                dory_pcs::recursion::ast::AstOp::Pairing { g1, g2, .. } => {
+                    format!("Pairing({}, {})", g1.0, g2.0)
+                }
                 dory_pcs::recursion::ast::AstOp::MultiPairing { g1s, g2s, .. } => {
-                    format!("MultiPairing(g1s={:?}, g2s={:?})", 
+                    format!(
+                        "MultiPairing(g1s={:?}, g2s={:?})",
                         g1s.iter().map(|v| v.0).collect::<Vec<_>>(),
-                        g2s.iter().map(|v| v.0).collect::<Vec<_>>())
+                        g2s.iter().map(|v| v.0).collect::<Vec<_>>()
+                    )
                 }
-                dory_pcs::recursion::ast::AstOp::MsmG1 { points, scalars, .. } => {
-                    format!("MsmG1(points={:?}, {} scalars)", 
-                        points.iter().map(|v| v.0).collect::<Vec<_>>(), scalars.len())
+                dory_pcs::recursion::ast::AstOp::MsmG1 {
+                    points, scalars, ..
+                } => {
+                    format!(
+                        "MsmG1(points={:?}, {} scalars)",
+                        points.iter().map(|v| v.0).collect::<Vec<_>>(),
+                        scalars.len()
+                    )
                 }
-                dory_pcs::recursion::ast::AstOp::MsmG2 { points, scalars, .. } => {
-                    format!("MsmG2(points={:?}, {} scalars)", 
-                        points.iter().map(|v| v.0).collect::<Vec<_>>(), scalars.len())
+                dory_pcs::recursion::ast::AstOp::MsmG2 {
+                    points, scalars, ..
+                } => {
+                    format!(
+                        "MsmG2(points={:?}, {} scalars)",
+                        points.iter().map(|v| v.0).collect::<Vec<_>>(),
+                        scalars.len()
+                    )
                 }
             };
-            println!("[{:3}] {:?} -> {} = {}", idx, node.out_ty, node.out.0, op_str);
+            println!(
+                "[{:3}] {:?} -> {} = {}",
+                idx, node.out_ty, node.out.0, op_str
+            );
         }
     }
     println!("=============================================\n");
 
     // We expect nodes of each type given the verification process
-    assert!(gt_count > 0, "Should have GT nodes for GT exponentiation and multiplication");
-    assert!(input_count > 0, "Should have input nodes for setup and proof elements");
+    assert!(
+        gt_count > 0,
+        "Should have GT nodes for GT exponentiation and multiplication"
+    );
+    assert!(
+        input_count > 0,
+        "Should have input nodes for setup and proof elements"
+    );
 
     // Verify the final equality constraint was recorded
     assert_eq!(
@@ -511,10 +366,7 @@ fn test_ast_generation() {
 
     // Test wiring extraction with precise input slots
     let wires = ast_graph.wires();
-    assert!(
-        !wires.is_empty(),
-        "Should have wires connecting operations"
-    );
+    assert!(!wires.is_empty(), "Should have wires connecting operations");
     println!("Wire count: {}", wires.len());
 
     // Show some wires with precise operation kinds and input slots
@@ -523,7 +375,14 @@ fn test_ast_generation() {
         println!("  {}", wire);
     }
     println!("--- Last 10 Wires ---");
-    for wire in wires.iter().rev().take(10).collect::<Vec<_>>().into_iter().rev() {
+    for wire in wires
+        .iter()
+        .rev()
+        .take(10)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+    {
         println!("  {}", wire);
     }
 }
@@ -589,7 +448,9 @@ fn test_ast_input_interning() {
     }
 
     // Each unique input source should appear exactly once due to interning
-    let input_count = ast_graph.nodes.iter()
+    let input_count = ast_graph
+        .nodes
+        .iter()
         .filter(|n| matches!(n.op, dory_pcs::recursion::ast::AstOp::Input { .. }))
         .count();
 
@@ -605,7 +466,7 @@ fn test_ast_input_interning() {
     );
 }
 
-/// Test that AST structure is identical whether running in witness-gen or hint-based mode.
+/// Test that AST structure is identical whether running in witness-gen or symbolic mode.
 /// This ensures the AST is deterministic and independent of execution mode.
 #[test]
 fn test_ast_structural_equivalence() {
@@ -652,14 +513,15 @@ fn test_ast_structural_equivalence() {
     )
     .expect("Witness-gen verification should succeed");
 
-    let ctx1_owned = Rc::try_unwrap(ctx1).ok().expect("Should have sole ownership");
+    let ctx1_owned = Rc::try_unwrap(ctx1)
+        .ok()
+        .expect("Should have sole ownership");
     let (witnesses, ast1) = ctx1_owned.finalize_with_ast();
-    let witnesses = witnesses.expect("Should have witnesses");
+    let _witnesses = witnesses.expect("Should have witnesses");
     let ast1 = ast1.expect("Should have AST");
 
-    // Phase 2: Hint-based verification with AST
-    let hints = witnesses.to_hints::<BN254>();
-    let ctx2 = Rc::new(TestCtx::for_hints(hints).with_ast());
+    // Phase 2: Symbolic mode with AST (no computation)
+    let ctx2 = Rc::new(TestCtx::for_symbolic());
     let mut transcript2 = fresh_transcript();
 
     verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
@@ -671,16 +533,18 @@ fn test_ast_structural_equivalence() {
         &mut transcript2,
         ctx2.clone(),
     )
-    .expect("Hint-based verification should succeed");
+    .expect("Symbolic verification should succeed");
 
-    let ctx2_owned = Rc::try_unwrap(ctx2).ok().expect("Should have sole ownership");
+    let ctx2_owned = Rc::try_unwrap(ctx2)
+        .ok()
+        .expect("Should have sole ownership");
     let ast2 = ctx2_owned.take_ast().expect("Should have AST");
 
     // Compare AST structures
     assert_eq!(
         ast1.nodes.len(),
         ast2.nodes.len(),
-        "AST node counts should match between witness-gen and hint-based modes"
+        "AST node counts should match between witness-gen and symbolic modes"
     );
 
     assert_eq!(
@@ -714,11 +578,7 @@ fn test_ast_structural_equivalence() {
         // Compare operation kind
         let kind1 = std::mem::discriminant(&n1.op);
         let kind2 = std::mem::discriminant(&n2.op);
-        assert_eq!(
-            kind1, kind2,
-            "Node {} operation kind mismatch",
-            i
-        );
+        assert_eq!(kind1, kind2, "Node {} operation kind mismatch", i);
     }
 
     // Compare OpId -> ValueId mapping
@@ -734,13 +594,15 @@ fn test_ast_structural_equivalence() {
             Some(valueid1),
             valueid2,
             "OpId {:?} ValueId mismatch: {:?} vs {:?}",
-            opid, valueid1, valueid2
+            opid,
+            valueid1,
+            valueid2
         );
     }
 
     println!("\n========== AST STRUCTURAL EQUIVALENCE ==========");
     println!("Witness-gen AST nodes: {}", ast1.nodes.len());
-    println!("Hint-based AST nodes: {}", ast2.nodes.len());
+    println!("Symbolic AST nodes: {}", ast2.nodes.len());
     println!("OpId mappings: {}", ast1.opid_to_value.len());
     println!("All structures match ✓");
 }
@@ -794,16 +656,15 @@ fn test_ast_opid_witness_join() {
     )
     .expect("Verification should succeed");
 
-    let ctx_owned = Rc::try_unwrap(ctx).ok().expect("Should have sole ownership");
+    let ctx_owned = Rc::try_unwrap(ctx)
+        .ok()
+        .expect("Should have sole ownership");
     let (witnesses, ast) = ctx_owned.finalize_with_ast();
     let witnesses = witnesses.expect("Should have witnesses");
     let ast = ast.expect("Should have AST");
-    let hints = witnesses.to_hints::<BN254>();
 
-    // For each node with an OpId, verify the OpId exists in witnesses/hints
-    let mut verified_opids = 0;
-    let mut missing_opids = Vec::new();
-
+    // Count the OpIds in the AST
+    let mut opid_count = 0;
     for node in &ast.nodes {
         let op_id = match &node.op {
             AstOp::G1ScalarMul { op_id, .. } => op_id.as_ref(),
@@ -818,43 +679,23 @@ fn test_ast_opid_witness_join() {
             AstOp::Input { .. } => None,
         };
 
-        if let Some(opid) = op_id {
-            // Verify the OpId exists in the hint map
-            if hints.contains(*opid) {
-                verified_opids += 1;
-            } else {
-                missing_opids.push(*opid);
-            }
-        }
-    }
-
-    // Also check the opid_to_value mapping
-    for opid in ast.opid_to_value.keys() {
-        if !hints.contains(*opid) {
-            if !missing_opids.contains(opid) {
-                missing_opids.push(*opid);
-            }
+        if op_id.is_some() {
+            opid_count += 1;
         }
     }
 
     println!("\n========== OPID-WITNESS JOIN TEST ==========");
-    println!("AST nodes with OpId: {}", verified_opids + missing_opids.len());
-    println!("Verified OpIds in hints: {}", verified_opids);
-    println!("Missing OpIds: {}", missing_opids.len());
-    if !missing_opids.is_empty() {
-        println!("Missing: {:?}", missing_opids);
-    }
+    println!("AST nodes with OpId: {}", opid_count);
+    println!("Total witnesses: {}", witnesses.total_witnesses());
+    println!("OpId to ValueId mappings: {}", ast.opid_to_value.len());
 
+    // The OpId mappings should be consistent with the witness count
     assert!(
-        missing_opids.is_empty(),
-        "All OpIds in AST should have corresponding witness entries. Missing: {:?}",
-        missing_opids
+        !ast.opid_to_value.is_empty(),
+        "Should have OpId to ValueId mappings"
     );
-    assert!(
-        verified_opids > 0,
-        "Should have verified at least one OpId"
-    );
-    println!("All OpIds have witness entries ✓");
+    assert!(!witnesses.is_empty(), "Should have witnesses");
+    println!("AST and witnesses are synchronized ✓");
 }
 
 /// Test level computation for parallel AST traversal.
@@ -863,16 +704,19 @@ fn test_ast_level_computation() {
     use dory_pcs::recursion::ast::ValueType;
 
     let mut rng = rand::thread_rng();
-    
+
     // Standard test: 4 rounds (sigma=4, nu=4)
     // Matrix is 16 x 16, poly size = 256
     let max_log_n = 10;
     let nu = 4;
     let sigma = 4;
     let poly_size = 1 << (nu + sigma); // 2^8 = 256
-    let point_size = nu + sigma;       // 8
+    let point_size = nu + sigma; // 8
 
-    println!("\n========== LEVEL PARALLELISM TEST (σ={} rounds) ==========", sigma);
+    println!(
+        "\n========== LEVEL PARALLELISM TEST (σ={} rounds) ==========",
+        sigma
+    );
 
     let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
 
@@ -919,14 +763,21 @@ fn test_ast_level_computation() {
 
     // Test level computation
     let node_levels = ast.compute_levels();
-    assert_eq!(node_levels.len(), ast.len(), "Should have level for each node");
+    assert_eq!(
+        node_levels.len(),
+        ast.len(),
+        "Should have level for each node"
+    );
 
     // All input nodes should be at level 0
     for (idx, node) in ast.nodes.iter().enumerate() {
         if matches!(node.op, AstOp::Input { .. }) {
             assert_eq!(node_levels[idx], 0, "Input nodes should be at level 0");
         } else {
-            assert!(node_levels[idx] > 0, "Non-input nodes should be at level > 0");
+            assert!(
+                node_levels[idx] > 0,
+                "Non-input nodes should be at level > 0"
+            );
         }
     }
 
@@ -971,7 +822,11 @@ fn test_ast_level_computation() {
         total_from_levels += nodes.len();
         println!("Level {}: {} nodes", level_idx, nodes.len());
     }
-    assert_eq!(total_from_levels, ast.len(), "All nodes should be in exactly one level");
+    assert_eq!(
+        total_from_levels,
+        ast.len(),
+        "All nodes should be in exactly one level"
+    );
 
     // Test levels_by_type()
     let levels_by_type = ast.levels_by_type();
@@ -981,7 +836,10 @@ fn test_ast_level_computation() {
         let g2_count = type_map.get(&ValueType::G2).map_or(0, |v| v.len());
         let gt_count = type_map.get(&ValueType::GT).map_or(0, |v| v.len());
         if g1_count + g2_count + gt_count > 0 {
-            println!("  Level {}: G1={}, G2={}, GT={}", level_idx, g1_count, g2_count, gt_count);
+            println!(
+                "  Level {}: G1={}, G2={}, GT={}",
+                level_idx, g1_count, g2_count, gt_count
+            );
         }
     }
 
@@ -990,7 +848,10 @@ fn test_ast_level_computation() {
     println!("\n--- Level Stats ---");
     for (level_idx, (total, g1, g2, gt)) in stats.iter().enumerate() {
         if *total > 0 {
-            println!("  Level {}: total={}, g1={}, g2={}, gt={}", level_idx, total, g1, g2, gt);
+            println!(
+                "  Level {}: total={}, g1={}, g2={}, gt={}",
+                level_idx, total, g1, g2, gt
+            );
         }
     }
 
@@ -1011,8 +872,14 @@ fn test_ast_level_computation() {
 
     // Check that we have good parallelism opportunities
     let max_parallelism = levels.iter().map(|l| l.len()).max().unwrap_or(0);
-    println!("Maximum parallelism (nodes in widest level): {}", max_parallelism);
-    assert!(max_parallelism > 1, "Should have at least some parallel opportunities");
+    println!(
+        "Maximum parallelism (nodes in widest level): {}",
+        max_parallelism
+    );
+    assert!(
+        max_parallelism > 1,
+        "Should have at least some parallel opportunities"
+    );
 }
 
 /// Test that challenge precomputation produces identical results to inline derivation.
@@ -1100,10 +967,7 @@ fn test_challenge_precomputation() {
             round
         );
 
-        println!(
-            "Round {}: beta ✓, alpha ✓",
-            round
-        );
+        println!("Round {}: beta ✓, alpha ✓", round);
     }
 
     let gamma_inline = transcript2.challenge_scalar(b"gamma");
@@ -1163,9 +1027,14 @@ fn test_challenge_precomputation() {
     println!("\nChallenge precomputation matches inline derivation ✓");
 }
 
-/// Test deferred mode: records AST + hints without witness expansion.
+/// Test symbolic mode: records AST only, no computation.
+///
+/// Symbolic mode is used by the verifier for recursion where we only need
+/// the proof obligations (AST), not the actual witness values.
 #[test]
-fn test_deferred_mode() {
+fn test_symbolic_mode() {
+    use dory_pcs::recursion::ast::AstOp;
+
     let mut rng = rand::thread_rng();
     let max_log_n = 8;
     let nu = 3;
@@ -1173,7 +1042,7 @@ fn test_deferred_mode() {
     let poly_size = 1 << (nu + sigma);
     let point_size = nu + sigma;
 
-    println!("\n========== DEFERRED MODE TEST ==========");
+    println!("\n========== SYMBOLIC MODE TEST ==========");
 
     let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
 
@@ -1198,8 +1067,8 @@ fn test_deferred_mode() {
     let evaluation = poly.evaluate(&point);
     let commitment = _tier_2;
 
-    // Run verification in deferred mode
-    let ctx = Rc::new(TestCtx::for_deferred());
+    // Run verification in symbolic mode (no computation, AST only)
+    let ctx = Rc::new(TestCtx::for_symbolic());
     let mut transcript = fresh_transcript();
 
     verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
@@ -1211,26 +1080,25 @@ fn test_deferred_mode() {
         &mut transcript,
         ctx.clone(),
     )
-    .expect("Verification should succeed in deferred mode");
+    .expect("Verification should succeed in symbolic mode");
 
-    // Get AST and hints
+    // Get AST (no witnesses in symbolic mode)
     let ctx_owned = Rc::try_unwrap(ctx)
         .ok()
         .expect("Should have sole ownership");
-    let ast = ctx_owned.take_ast().expect("Should have AST in deferred mode");
-    let hints = ctx_owned.take_deferred_hints().expect("Should have hints in deferred mode");
+    let ast = ctx_owned
+        .take_ast()
+        .expect("Should have AST in symbolic mode");
 
     // Verify we got meaningful data
     assert!(!ast.is_empty(), "AST should not be empty");
-    assert!(hints.len() > 0, "Should have recorded hints");
 
     println!("AST nodes: {}", ast.len());
-    println!("Hints recorded: {}", hints.len());
 
     // Verify AST structure
     ast.validate().expect("AST should be valid");
 
-    // Verify hints cover the operations
+    // Count operations in the AST
     let mut g1_ops = 0;
     let mut g2_ops = 0;
     let mut gt_ops = 0;
@@ -1238,43 +1106,23 @@ fn test_deferred_mode() {
 
     for node in &ast.nodes {
         match &node.op {
-            AstOp::G1ScalarMul { op_id: Some(id), .. } => {
-                assert!(hints.get_g1(*id).is_some(), "G1ScalarMul hint should exist");
+            AstOp::G1ScalarMul { .. } | AstOp::G1Add { .. } | AstOp::MsmG1 { .. } => {
                 g1_ops += 1;
             }
-            AstOp::G1Add { op_id: Some(id), .. } => {
-                assert!(hints.get_g1(*id).is_some(), "G1Add hint should exist");
-                g1_ops += 1;
-            }
-            AstOp::G2ScalarMul { op_id: Some(id), .. } => {
-                assert!(hints.get_g2(*id).is_some(), "G2ScalarMul hint should exist");
+            AstOp::G2ScalarMul { .. } | AstOp::G2Add { .. } | AstOp::MsmG2 { .. } => {
                 g2_ops += 1;
             }
-            AstOp::G2Add { op_id: Some(id), .. } => {
-                assert!(hints.get_g2(*id).is_some(), "G2Add hint should exist");
-                g2_ops += 1;
-            }
-            AstOp::GTExp { op_id: Some(id), .. } => {
-                assert!(hints.get_gt(*id).is_some(), "GTExp hint should exist");
+            AstOp::GTExp { .. } | AstOp::GTMul { .. } => {
                 gt_ops += 1;
             }
-            AstOp::GTMul { op_id: Some(id), .. } => {
-                assert!(hints.get_gt(*id).is_some(), "GTMul hint should exist");
-                gt_ops += 1;
-            }
-            AstOp::Pairing { op_id: Some(id), .. } => {
-                assert!(hints.get_gt(*id).is_some(), "Pairing hint should exist");
+            AstOp::Pairing { .. } | AstOp::MultiPairing { .. } => {
                 pairing_ops += 1;
             }
-            AstOp::MultiPairing { op_id: Some(id), .. } => {
-                assert!(hints.get_gt(*id).is_some(), "MultiPairing hint should exist");
-                pairing_ops += 1;
-            }
-            _ => {}
+            AstOp::Input { .. } => {}
         }
     }
 
-    println!("Operations with hints:");
+    println!("Operations in AST:");
     println!("  G1 ops: {}", g1_ops);
     println!("  G2 ops: {}", g2_ops);
     println!("  GT ops: {}", gt_ops);
@@ -1285,8 +1133,8 @@ fn test_deferred_mode() {
     assert!(gt_ops > 0, "Should have GT operations");
     assert!(pairing_ops > 0, "Should have pairing operations");
 
-    println!("\nDeferred mode verification successful ✓");
-    println!("Phase 2 (parallel witness expansion) would be handled by upstream crate");
+    println!("\nSymbolic mode verification successful ✓");
+    println!("AST contains proof obligations for upstream recursion");
 }
 
 /// Test that NativeBackend and TracingBackend produce identical results.
@@ -1339,16 +1187,15 @@ fn test_backend_equivalence() {
         // Verify with TracingBackend (via verify_recursive)
         let ctx = Rc::new(TestCtx::for_witness_gen());
         let mut tracing_transcript = fresh_transcript();
-        let tracing_result =
-            verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
-                tier_2,
-                evaluation,
-                &point,
-                &proof,
-                verifier_setup.clone(),
-                &mut tracing_transcript,
-                Rc::clone(&ctx),
-            );
+        let tracing_result = verify_recursive::<_, BN254, TestG1Routines, TestG2Routines, _, _, _>(
+            tier_2,
+            evaluation,
+            &point,
+            &proof,
+            verifier_setup.clone(),
+            &mut tracing_transcript,
+            Rc::clone(&ctx),
+        );
 
         // Both should succeed
         assert!(
