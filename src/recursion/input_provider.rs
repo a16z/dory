@@ -94,7 +94,9 @@ where
                             "commitment" => {
                                 // The commitment is passed to verify_recursive, not stored in proof.
                                 // Return None - caller should provide this separately.
-                                tracing::debug!("Commitment requested - should be provided externally");
+                                tracing::debug!(
+                                    "Commitment requested - should be provided externally"
+                                );
                                 None
                             }
                             // Final message elements

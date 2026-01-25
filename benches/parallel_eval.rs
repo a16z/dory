@@ -18,7 +18,9 @@ use dory_pcs::backends::arkworks::{
 use dory_pcs::primitives::arithmetic::{DoryRoutines, Field, PairingCurve};
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::recursion::ast::{AstGraph, AstNode, AstOp, ValueId};
-use dory_pcs::recursion::{EvalResult, InputProvider, OperationEvaluator, TaskExecutor, TraceContext};
+use dory_pcs::recursion::{
+    EvalResult, InputProvider, OperationEvaluator, TaskExecutor, TraceContext,
+};
 use dory_pcs::{prove, setup, verify_recursive};
 use rand::{thread_rng, Rng};
 
@@ -85,9 +87,7 @@ impl OperationEvaluator<BN254> for ArkworksEvaluator {
 }
 
 /// Generate test data: AST graph and input values.
-fn generate_test_data(
-    sigma: usize,
-) -> (AstGraph<BN254>, HashMap<ValueId, EvalResult<BN254>>) {
+fn generate_test_data(sigma: usize) -> (AstGraph<BN254>, HashMap<ValueId, EvalResult<BN254>>) {
     let mut rng = thread_rng();
 
     // Setup sizes based on sigma (number of rounds)
@@ -139,7 +139,9 @@ fn generate_test_data(
     )
     .expect("Verification should succeed");
 
-    let ctx_owned = Rc::try_unwrap(ctx).ok().expect("Should have sole ownership");
+    let ctx_owned = Rc::try_unwrap(ctx)
+        .ok()
+        .expect("Should have sole ownership");
     let ast = ctx_owned.take_ast().expect("Should have AST");
 
     // Extract input values from the graph by evaluating input nodes
@@ -151,19 +153,19 @@ fn generate_test_data(
             // Generate appropriate dummy values based on type
             let value = match node.out_ty {
                 dory_pcs::recursion::ast::ValueType::G1 => {
-                    let g1 = ark_bn254::G1Projective::generator() * ark_bn254::Fr::from(rng.gen::<u64>());
+                    let g1 = ark_bn254::G1Projective::generator()
+                        * ark_bn254::Fr::from(rng.gen::<u64>());
                     EvalResult::G1(ArkG1(g1))
                 }
                 dory_pcs::recursion::ast::ValueType::G2 => {
-                    let g2 = ark_bn254::G2Projective::generator() * ark_bn254::Fr::from(rng.gen::<u64>());
+                    let g2 = ark_bn254::G2Projective::generator()
+                        * ark_bn254::Fr::from(rng.gen::<u64>());
                     EvalResult::G2(ArkG2(g2))
                 }
-                dory_pcs::recursion::ast::ValueType::GT => {
-                    EvalResult::GT(BN254::pair(
-                        &ArkG1(ark_bn254::G1Projective::generator()),
-                        &ArkG2(ark_bn254::G2Projective::generator()),
-                    ))
-                }
+                dory_pcs::recursion::ast::ValueType::GT => EvalResult::GT(BN254::pair(
+                    &ArkG1(ark_bn254::G1Projective::generator()),
+                    &ArkG2(ark_bn254::G2Projective::generator()),
+                )),
             };
             inputs.insert(id, value);
         }
@@ -198,36 +200,35 @@ fn evaluate_node_seq(
     results: &HashMap<ValueId, EvalResult<BN254>>,
     ops: &ArkworksEvaluator,
 ) -> EvalResult<BN254> {
-    let get = |id: ValueId| -> &EvalResult<BN254> {
-        results.get(&id).expect("Dependency must exist")
-    };
+    let get =
+        |id: ValueId| -> &EvalResult<BN254> { results.get(&id).expect("Dependency must exist") };
 
     match &node.op {
         AstOp::Input { .. } => panic!("Should not evaluate input nodes"),
 
-        AstOp::G1Add { a, b, .. } => {
-            EvalResult::G1(ops.g1_add(get(*a).as_g1(), get(*b).as_g1()))
-        }
+        AstOp::G1Add { a, b, .. } => EvalResult::G1(ops.g1_add(get(*a).as_g1(), get(*b).as_g1())),
 
         AstOp::G1ScalarMul { point, scalar, .. } => {
             EvalResult::G1(ops.g1_scalar_mul(get(*point).as_g1(), &scalar.value))
         }
 
-        AstOp::MsmG1 { points, scalars, .. } => {
+        AstOp::MsmG1 {
+            points, scalars, ..
+        } => {
             let pts: Vec<ArkG1> = points.iter().map(|id| get(*id).as_g1().clone()).collect();
             let scs: Vec<_> = scalars.iter().map(|s| s.value.clone()).collect();
             EvalResult::G1(ops.g1_msm(&pts, &scs))
         }
 
-        AstOp::G2Add { a, b, .. } => {
-            EvalResult::G2(ops.g2_add(get(*a).as_g2(), get(*b).as_g2()))
-        }
+        AstOp::G2Add { a, b, .. } => EvalResult::G2(ops.g2_add(get(*a).as_g2(), get(*b).as_g2())),
 
         AstOp::G2ScalarMul { point, scalar, .. } => {
             EvalResult::G2(ops.g2_scalar_mul(get(*point).as_g2(), &scalar.value))
         }
 
-        AstOp::MsmG2 { points, scalars, .. } => {
+        AstOp::MsmG2 {
+            points, scalars, ..
+        } => {
             let pts: Vec<ArkG2> = points.iter().map(|id| get(*id).as_g2().clone()).collect();
             let scs: Vec<_> = scalars.iter().map(|s| s.value.clone()).collect();
             EvalResult::G2(ops.g2_msm(&pts, &scs))
@@ -258,7 +259,9 @@ fn evaluate_parallel(
     graph: &AstGraph<BN254>,
     inputs: &HashMap<ValueId, EvalResult<BN254>>,
 ) -> HashMap<ValueId, EvalResult<BN254>> {
-    let provider = MapInputProvider { inputs: inputs.clone() };
+    let provider = MapInputProvider {
+        inputs: inputs.clone(),
+    };
     let ops = ArkworksEvaluator;
 
     let executor = TaskExecutor::new(graph, &provider, &ops);
@@ -275,21 +278,13 @@ fn bench_evaluation(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("sequential", format!("σ={}_nodes={}", sigma, num_nodes)),
             &(&graph, &inputs),
-            |b, (graph, inputs)| {
-                b.iter(|| {
-                    black_box(evaluate_sequential(graph, inputs))
-                })
-            },
+            |b, (graph, inputs)| b.iter(|| black_box(evaluate_sequential(graph, inputs))),
         );
 
         group.bench_with_input(
             BenchmarkId::new("parallel", format!("σ={}_nodes={}", sigma, num_nodes)),
             &(&graph, &inputs),
-            |b, (graph, inputs)| {
-                b.iter(|| {
-                    black_box(evaluate_parallel(graph, inputs))
-                })
-            },
+            |b, (graph, inputs)| b.iter(|| black_box(evaluate_parallel(graph, inputs))),
         );
     }
 
@@ -306,15 +301,11 @@ fn bench_scaling(c: &mut Criterion) {
     println!("Benchmarking with {} nodes", num_nodes);
 
     group.bench_function("parallel_workstealing", |b| {
-        b.iter(|| {
-            black_box(evaluate_parallel(&graph, &inputs))
-        })
+        b.iter(|| black_box(evaluate_parallel(&graph, &inputs)))
     });
 
     group.bench_function("sequential_baseline", |b| {
-        b.iter(|| {
-            black_box(evaluate_sequential(&graph, &inputs))
-        })
+        b.iter(|| black_box(evaluate_sequential(&graph, &inputs)))
     });
 
     group.finish();

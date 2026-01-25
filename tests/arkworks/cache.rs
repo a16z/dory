@@ -70,7 +70,7 @@ fn cache_double_initialization_panics() {
 
     // First call should succeed (fresh cache)
     ark_cache::init_cache(&g1_vec, &g2_vec);
-    
+
     // Second call should panic
     let result = std::panic::catch_unwind(|| {
         ark_cache::init_cache(&g1_vec, &g2_vec);

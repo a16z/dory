@@ -1,0 +1,3 @@
+{
+    "rust-analyzer.cargo.features": ["recursion", "backends", "cache", "parallel", "disk-persistence"]
+}
