@@ -1,12 +1,12 @@
-//! Recursion example: trace generation and hint-based verification
+//! Recursion example: trace generation and symbolic verification
 //!
 //! This example demonstrates the recursion API workflow:
 //! 1. Standard proof generation
-//! 2. Witness-generating verification (captures operation traces)
-//! 3. Converting witnesses to hints
-//! 4. Hint-based verification
+//! 2. Witness-generating verification (captures operation traces for prover)
+//! 3. Symbolic verification (builds AST for recursion without computation)
 //!
-//! The hint-based verification enables efficient recursive proof composition.
+//! Symbolic mode enables efficient recursive proof composition by producing
+//! proof obligations (AST) that upstream recursion systems can consume.
 //!
 //! Run with: `cargo run --features recursion --example recursion`
 
@@ -126,16 +126,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("     - Total operations: {}", collection.total_witnesses());
     info!("     - Reduce-fold rounds: {}\n", collection.num_rounds);
 
-    // Step 7: Convert to hints
-    info!("7. Converting witnesses to hints...");
-    let hints = collection.to_hints::<BN254>();
-    info!("   HintMap entries: {} (one per operation)", hints.len());
+    // Step 7: Symbolic verification (for recursion)
+    info!("7. Symbolic verification (builds AST, no computation)...");
 
-    // Step 8: Hint-based verification
-    info!("8. Hint-based verification...");
-
-    let ctx = Rc::new(Ctx::for_hints(hints));
-    let mut hint_transcript = Blake2bTranscript::new(b"dory-recursion-example");
+    let ctx = Rc::new(Ctx::for_symbolic());
+    let mut symbolic_transcript = Blake2bTranscript::new(b"dory-recursion-example");
 
     verify_recursive::<_, BN254, G1Routines, G2Routines, _, _, _>(
         tier_2,
@@ -143,10 +138,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &point,
         &proof,
         verifier_setup,
-        &mut hint_transcript,
-        ctx,
+        &mut symbolic_transcript,
+        ctx.clone(),
     )?;
-    info!("   Hint-based verification passed\n");
+
+    let ctx_owned = Rc::try_unwrap(ctx)
+        .ok()
+        .expect("Should have sole ownership");
+    let ast = ctx_owned
+        .take_ast()
+        .expect("Should have AST in symbolic mode");
+
+    info!("   Symbolic verification passed");
+    info!(
+        "   AST nodes: {} (proof obligations for recursion)",
+        ast.len()
+    );
+    info!("   AST constraints: {}\n", ast.constraints.len());
 
     Ok(())
 }

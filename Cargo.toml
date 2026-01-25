@@ -91,6 +91,10 @@ name = "recursion"
 required-features = ["recursion"]
 
 [[example]]
+name = "print_ast"
+required-features = ["recursion"]
+
+[[example]]
 name = "homomorphic_mixed_sizes"
 required-features = ["backends"]
 
