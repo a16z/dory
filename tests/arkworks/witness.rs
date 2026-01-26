@@ -12,7 +12,7 @@ fn test_gt_exp_witness_generation() {
     let scalar = ArkFr::random(&mut rng);
     let result = base.scale(&scalar);
 
-    let witness = SimpleWitnessGenerator::generate_gt_exp(&base, &scalar, &result);
+    let witness = SimpleWitnessGenerator::<BN254>::generate_gt_exp(&base, &scalar, &result);
 
     assert_eq!(witness.base, base);
     assert_eq!(witness.result, result);
@@ -26,7 +26,7 @@ fn test_g1_scalar_mul_witness_generation() {
     let scalar = ArkFr::random(&mut rng);
     let result = point.scale(&scalar);
 
-    let witness = SimpleWitnessGenerator::generate_g1_scalar_mul(&point, &scalar, &result);
+    let witness = SimpleWitnessGenerator::<BN254>::generate_g1_scalar_mul(&point, &scalar, &result);
 
     assert_eq!(witness.point, point);
     assert_eq!(witness.result, result);
@@ -39,7 +39,7 @@ fn test_pairing_witness_generation() {
     let g2 = ArkG2::random(&mut rng);
     let result = BN254::pair(&g1, &g2);
 
-    let witness = SimpleWitnessGenerator::generate_pairing(&g1, &g2, &result);
+    let witness = SimpleWitnessGenerator::<BN254>::generate_pairing(&g1, &g2, &result);
 
     assert_eq!(witness.g1, g1);
     assert_eq!(witness.g2, g2);
