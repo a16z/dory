@@ -103,11 +103,6 @@ name = "arkworks_proof"
 harness = false
 required-features = ["backends", "cache", "parallel"]
 
-[[bench]]
-name = "parallel_eval"
-harness = false
-required-features = ["backends", "parallel", "recursion"]
-
 [lints.rust]
 missing_docs = "warn"
 unreachable_pub = "warn"

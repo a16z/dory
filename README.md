@@ -323,8 +323,6 @@ src/
     ├── challenges.rs              # Challenge precomputation and wiring
     ├── collection.rs              # WitnessCollection storage
     ├── collector.rs               # WitnessCollector and generator traits
-    ├── input_provider.rs          # Input adapters for tracing / evaluation
-    └── parallel.rs                # Optional parallel AST evaluation (feature: parallel)
 tests/arkworks/
 ├── mod.rs                         # Test utilities
 ├── setup.rs                       # Setup tests

@@ -1,9 +1,11 @@
-//! Simple/testing witness types for recursive proof composition.
+//! Default witness types for recursive proof composition (arkworks BN254).
 //!
-//! This module provides basic witness structures that capture inputs and outputs
-//! of arithmetic operations without detailed intermediate computation steps.
+//! This module provides a baseline witness backend/generator that captures inputs and outputs
+//! of arithmetic operations (and basic scalar bit decompositions) without detailed intermediate
+//! computation steps.
 //!
-//! For Jolt or other proof systems, we would provide a more involved witness gen and backend
+//! Upstream proof systems are expected to implement [`WitnessBackend`] / [`WitnessGenerator`]
+//! to capture the exact witness trace their circuit needs.
 
 use super::{ArkFr, ArkG1, ArkG2, ArkGT, BN254};
 use crate::primitives::arithmetic::Group;

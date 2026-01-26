@@ -45,8 +45,6 @@ pub mod challenges;
 mod collection;
 mod collector;
 mod context;
-pub mod input_provider;
-pub mod parallel;
 mod trace;
 mod witness;
 
@@ -55,9 +53,14 @@ pub use challenges::{precompute_challenges, ChallengeSet, RoundChallenges};
 pub use collection::WitnessCollection;
 pub use collector::WitnessGenerator;
 pub use context::{CtxHandle, ExecutionMode, TraceContext};
-pub use input_provider::{DoryInputProvider, DoryInputProviderWithCommitment};
-pub use parallel::{EvalResult, InputProvider, OperationEvaluator, TaskExecutor};
 pub use witness::{OpId, OpType, WitnessBackend, WitnessResult};
 
 pub(crate) use collector::{OpIdBuilder, WitnessCollector};
 pub use trace::{TraceG1, TraceG2, TraceGT};
+
+/// A baseline witness backend/generator for BN254 (arkworks).
+///
+/// Upstream proof systems can use this as a default starting point, or replace it by
+/// implementing [`WitnessBackend`] and [`WitnessGenerator`] with richer traces.
+#[cfg(feature = "arkworks")]
+pub use crate::backends::arkworks::{SimpleWitnessBackend, SimpleWitnessGenerator};
