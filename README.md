@@ -95,42 +95,38 @@ This property enables efficient proof aggregation and batch verification. See `e
 
 ### Recursive Proof Composition
 
-The `recursion` feature enables traced verification for building recursive SNARKs that compose Dory:
+The `recursion` feature enables *traced verification* for building recursive SNARKs that compose Dory. Verification is routed through a tracing backend controlled by a [`recursion::TraceContext`](src/recursion/context.rs):
 
-1. **Witness Generation**: Run verification while capturing traces of all arithmetic operations (GT exponentiations, scalar multiplications, pairings, etc.)
-
-2. **Hint-Based Verification**: Re-run verification using pre-computed hints instead of performing expensive ops
+- **Witness generation mode** (`TraceContext::for_witness_gen()`): compute operations and record per-op witnesses (prover-side).
+- **Symbolic mode** (`TraceContext::for_symbolic()`): do not compute; build an `AstGraph` describing proof obligations (verifier recursion / circuit wiring).
 
 ```rust
 use std::rc::Rc;
-use dory_pcs::{verify_recursive, setup, prove};
-use dory_pcs::backends::arkworks::{
-    SimpleWitnessBackend, SimpleWitnessGenerator, BN254, G1Routines, G2Routines,
-};
+use dory_pcs::{verify_recursive};
 use dory_pcs::recursion::TraceContext;
 
-type Ctx = TraceContext<SimpleWitnessBackend, BN254, SimpleWitnessGenerator>;
-
-// Phase 1: Witness generation - captures operation traces
-let ctx = Rc::new(Ctx::for_witness_gen());
-verify_recursive::<_, BN254, G1Routines, G2Routines, _, _, _>(
-    commitment, evaluation, &point, &proof, setup.clone(), &mut transcript, ctx.clone(),
+// Witness generation (prover-side)
+let ctx = Rc::new(TraceContext::for_witness_gen());
+verify_recursive::<_, E, M1, M2, _, W, Gen>(
+    commitment, evaluation, &point, &proof, setup.clone(), &mut transcript, ctx.clone()
 )?;
+let witnesses = Rc::try_unwrap(ctx).ok().unwrap().finalize();
 
-let collection = Rc::try_unwrap(ctx).ok().unwrap().finalize().unwrap();
-// collection contains detailed witnesses for each operation
-
-// Convert to hints
-let hints = collection.to_hints::<BN254>();
-
-// Phase 2: Hint-based verification
-let ctx = Rc::new(Ctx::for_hints(hints));
-verify_recursive::<_, BN254, G1Routines, G2Routines, _, _, _>(
-    commitment, evaluation, &point, &proof, setup, &mut transcript, ctx,
+// Symbolic mode (verifier recursion / circuit wiring)
+let ctx = Rc::new(TraceContext::for_symbolic());
+verify_recursive::<_, E, M1, M2, _, W, Gen>(
+    commitment, evaluation, &point, &proof, setup, &mut transcript, ctx.clone()
 )?;
+let ast = ctx.take_ast().unwrap();
 ```
 
-See `examples/recursion.rs` for a complete demonstration.
+To visualize the generated proof-obligation DAG, run:
+
+```bash
+cargo run --features recursion --example print_ast
+```
+
+See `examples/recursion.rs` for an end-to-end demonstration, and `examples/print_ast.rs` for the AST visualizer.
 
 ## Usage
 
@@ -209,9 +205,13 @@ The repository includes three comprehensive examples demonstrating different asp
    cargo run --example non_square --features backends
    ```
 
-4. **`recursion`** - Trace generation and hint-based verification for recursive proof composition
+4. **`recursion`** - Traced verification for witness generation and symbolic AST generation
    ```bash
    cargo run --example recursion --features recursion
+   ```
+5. **`print_ast`** - Pretty-print the verifier recursion AST/DAG for a small proof
+   ```bash
+   cargo run --example print_ast --features recursion
    ```
 
 ## Development Setup
@@ -314,10 +314,17 @@ src/
     ├── witness.rs                 # WitnessBackend, OpId, OpType traits/types
     ├── context.rs                 # TraceContext for execution modes
     ├── trace.rs                   # TraceG1, TraceG2, TraceGT wrappers
+    ├── backend.rs                 # TracingBackend implementing VerifierBackend
+    ├── ast/                       # AST/DAG representation (proof obligations)
+    │   ├── mod.rs                 # Public exports + tests
+    │   ├── core.rs                # Core DAG types + validation + builder
+    │   ├── wiring.rs              # Wiring obligations (slots/wires/op kinds)
+    │   └── analysis.rs            # Optional graph analysis helpers
+    ├── challenges.rs              # Challenge precomputation and wiring
     ├── collection.rs              # WitnessCollection storage
     ├── collector.rs               # WitnessCollector and generator traits
-    └── hint_map.rs                # Lightweight HintMap storage
-
+    ├── input_provider.rs          # Input adapters for tracing / evaluation
+    └── parallel.rs                # Optional parallel AST evaluation (feature: parallel)
 tests/arkworks/
 ├── mod.rs                         # Test utilities
 ├── setup.rs                       # Setup tests

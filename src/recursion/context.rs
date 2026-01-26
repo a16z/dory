@@ -117,9 +117,6 @@ where
     /// Enable AST tracing for this context.
     ///
     /// When enabled, all operations will record AST nodes for circuit wiring.
-    /// Enable AST tracing for this context.
-    ///
-    /// When enabled, all operations will record AST nodes for circuit wiring.
     pub fn with_ast(self) -> Self {
         *self.ast.borrow_mut() = Some(AstBuilder::new());
         self
@@ -135,12 +132,7 @@ where
     ///
     /// Returns `None` if AST tracing is not enabled.
     pub fn ast_mut(&self) -> Option<RefMut<'_, AstBuilder<E>>> {
-        let borrow = self.ast.borrow_mut();
-        if borrow.is_some() {
-            Some(RefMut::map(borrow, |opt| opt.as_mut().unwrap()))
-        } else {
-            None
-        }
+        RefMut::filter_map(self.ast.borrow_mut(), Option::as_mut).ok()
     }
 
     /// Get the current execution mode.

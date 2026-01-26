@@ -109,11 +109,9 @@ where
         name: &'static str,
         index: Option<usize>,
     ) -> Self {
-        let value_id = if let Some(mut ast) = ctx.ast_mut() {
-            Some(ast.intern_g1_setup(inner, name, index))
-        } else {
-            None
-        };
+        let value_id = ctx
+            .ast_mut()
+            .map(|mut ast| ast.intern_g1_setup(inner, name, index));
         Self {
             inner,
             ctx,
@@ -123,11 +121,9 @@ where
 
     /// Create a traced G1 from a proof element, interning it for AST if enabled.
     pub(crate) fn from_proof(inner: E::G1, ctx: CtxHandle<W, E, Gen>, name: &'static str) -> Self {
-        let value_id = if let Some(mut ast) = ctx.ast_mut() {
-            Some(ast.intern_g1_proof(inner, name))
-        } else {
-            None
-        };
+        let value_id = ctx
+            .ast_mut()
+            .map(|mut ast| ast.intern_g1_proof(inner, name));
         Self {
             inner,
             ctx,
@@ -143,11 +139,9 @@ where
         msg: super::ast::RoundMsg,
         name: &'static str,
     ) -> Self {
-        let value_id = if let Some(mut ast) = ctx.ast_mut() {
-            Some(ast.intern_g1_proof_round(inner, round, msg, name))
-        } else {
-            None
-        };
+        let value_id = ctx
+            .ast_mut()
+            .map(|mut ast| ast.intern_g1_proof_round(inner, round, msg, name));
         Self {
             inner,
             ctx,
@@ -182,26 +176,22 @@ where
         };
 
         // AST tracking: record the scalar mul operation
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let scalar_value = match scalar_name {
-                Some(name) => ScalarValue::named(scalar.clone(), name),
-                None => ScalarValue::new(scalar.clone()),
+                Some(name) => ScalarValue::named(*scalar, name),
+                None => ScalarValue::new(*scalar),
             };
-            Some(
-                ast.push(
-                    ValueType::G1,
-                    AstOp::G1ScalarMul {
-                        op_id: Some(id),
-                        point: self
-                            .value_id
-                            .expect("G1ScalarMul input must have ValueId when AST enabled"),
-                        scalar: scalar_value,
-                    },
-                ),
+            ast.push(
+                ValueType::G1,
+                AstOp::G1ScalarMul {
+                    op_id: Some(id),
+                    point: self
+                        .value_id
+                        .expect("G1ScalarMul input must have ValueId when AST enabled"),
+                    scalar: scalar_value,
+                },
             )
-        } else {
-            None
-        };
+        });
 
         Self {
             inner: result,
@@ -242,14 +232,14 @@ where
         };
 
         // AST tracking: record G1Add with OpId for witness linkage
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let a = self
                 .value_id
                 .expect("G1Add lhs must have ValueId when AST enabled");
             let b = rhs
                 .value_id
                 .expect("G1Add rhs must have ValueId when AST enabled");
-            Some(ast.push_with_opid(
+            ast.push_with_opid(
                 ValueType::G1,
                 AstOp::G1Add {
                     op_id: Some(id),
@@ -257,10 +247,8 @@ where
                     b,
                 },
                 id,
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         Self {
             inner: result,
@@ -295,14 +283,14 @@ where
         };
 
         // AST tracking: record G1Add with OpId for witness linkage
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let a = self
                 .value_id
                 .expect("G1Add lhs must have ValueId when AST enabled");
             let b = rhs
                 .value_id
                 .expect("G1Add rhs must have ValueId when AST enabled");
-            Some(ast.push_with_opid(
+            ast.push_with_opid(
                 ValueType::G1,
                 AstOp::G1Add {
                     op_id: Some(id),
@@ -310,10 +298,8 @@ where
                     b,
                 },
                 id,
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         Self {
             inner: result,
@@ -367,14 +353,14 @@ where
         };
 
         // AST tracking: record G1Add (subtraction is add with negated operand, but AST only tracks add)
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let a = self
                 .value_id
                 .expect("G1Sub lhs must have ValueId when AST enabled");
             let b = rhs
                 .value_id
                 .expect("G1Sub rhs must have ValueId when AST enabled");
-            Some(ast.push_with_opid(
+            ast.push_with_opid(
                 ValueType::G1,
                 AstOp::G1Add {
                     op_id: Some(add_id),
@@ -382,10 +368,8 @@ where
                     b,
                 },
                 add_id,
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         Self {
             inner: result,
@@ -507,11 +491,9 @@ where
         name: &'static str,
         index: Option<usize>,
     ) -> Self {
-        let value_id = if let Some(mut ast) = ctx.ast_mut() {
-            Some(ast.intern_g2_setup(inner, name, index))
-        } else {
-            None
-        };
+        let value_id = ctx
+            .ast_mut()
+            .map(|mut ast| ast.intern_g2_setup(inner, name, index));
         Self {
             inner,
             ctx,
@@ -521,11 +503,9 @@ where
 
     /// Create a traced G2 from a proof element, interning it for AST if enabled.
     pub(crate) fn from_proof(inner: E::G2, ctx: CtxHandle<W, E, Gen>, name: &'static str) -> Self {
-        let value_id = if let Some(mut ast) = ctx.ast_mut() {
-            Some(ast.intern_g2_proof(inner, name))
-        } else {
-            None
-        };
+        let value_id = ctx
+            .ast_mut()
+            .map(|mut ast| ast.intern_g2_proof(inner, name));
         Self {
             inner,
             ctx,
@@ -541,11 +521,9 @@ where
         msg: super::ast::RoundMsg,
         name: &'static str,
     ) -> Self {
-        let value_id = if let Some(mut ast) = ctx.ast_mut() {
-            Some(ast.intern_g2_proof_round(inner, round, msg, name))
-        } else {
-            None
-        };
+        let value_id = ctx
+            .ast_mut()
+            .map(|mut ast| ast.intern_g2_proof_round(inner, round, msg, name));
         Self {
             inner,
             ctx,
@@ -586,26 +564,22 @@ where
         };
 
         // AST tracking: record the scalar mul operation
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let scalar_value = match scalar_name {
-                Some(name) => ScalarValue::named(scalar.clone(), name),
-                None => ScalarValue::new(scalar.clone()),
+                Some(name) => ScalarValue::named(*scalar, name),
+                None => ScalarValue::new(*scalar),
             };
-            Some(
-                ast.push(
-                    ValueType::G2,
-                    AstOp::G2ScalarMul {
-                        op_id: Some(id),
-                        point: self
-                            .value_id
-                            .expect("G2ScalarMul input must have ValueId when AST enabled"),
-                        scalar: scalar_value,
-                    },
-                ),
+            ast.push(
+                ValueType::G2,
+                AstOp::G2ScalarMul {
+                    op_id: Some(id),
+                    point: self
+                        .value_id
+                        .expect("G2ScalarMul input must have ValueId when AST enabled"),
+                    scalar: scalar_value,
+                },
             )
-        } else {
-            None
-        };
+        });
 
         Self {
             inner: result,
@@ -646,14 +620,14 @@ where
         };
 
         // AST tracking: record G2Add with OpId for witness linkage
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let a = self
                 .value_id
                 .expect("G2Add lhs must have ValueId when AST enabled");
             let b = rhs
                 .value_id
                 .expect("G2Add rhs must have ValueId when AST enabled");
-            Some(ast.push_with_opid(
+            ast.push_with_opid(
                 ValueType::G2,
                 AstOp::G2Add {
                     op_id: Some(id),
@@ -661,10 +635,8 @@ where
                     b,
                 },
                 id,
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         Self {
             inner: result,
@@ -699,14 +671,14 @@ where
         };
 
         // AST tracking: record G2Add with OpId for witness linkage
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let a = self
                 .value_id
                 .expect("G2Add lhs must have ValueId when AST enabled");
             let b = rhs
                 .value_id
                 .expect("G2Add rhs must have ValueId when AST enabled");
-            Some(ast.push_with_opid(
+            ast.push_with_opid(
                 ValueType::G2,
                 AstOp::G2Add {
                     op_id: Some(id),
@@ -714,10 +686,8 @@ where
                     b,
                 },
                 id,
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         Self {
             inner: result,
@@ -771,14 +741,14 @@ where
         };
 
         // AST tracking: record G2Add (subtraction is add with negated operand, but AST only tracks add)
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let a = self
                 .value_id
                 .expect("G2Sub lhs must have ValueId when AST enabled");
             let b = rhs
                 .value_id
                 .expect("G2Sub rhs must have ValueId when AST enabled");
-            Some(ast.push_with_opid(
+            ast.push_with_opid(
                 ValueType::G2,
                 AstOp::G2Add {
                     op_id: Some(add_id),
@@ -786,10 +756,8 @@ where
                     b,
                 },
                 add_id,
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         Self {
             inner: result,
@@ -914,11 +882,9 @@ where
         name: &'static str,
         index: Option<usize>,
     ) -> Self {
-        let value_id = if let Some(mut ast) = ctx.ast_mut() {
-            Some(ast.intern_gt_setup(inner, name, index))
-        } else {
-            None
-        };
+        let value_id = ctx
+            .ast_mut()
+            .map(|mut ast| ast.intern_gt_setup(inner, name, index));
         Self {
             inner,
             ctx,
@@ -928,11 +894,9 @@ where
 
     /// Create a traced GT from a proof element, interning it for AST if enabled.
     pub(crate) fn from_proof(inner: E::GT, ctx: CtxHandle<W, E, Gen>, name: &'static str) -> Self {
-        let value_id = if let Some(mut ast) = ctx.ast_mut() {
-            Some(ast.intern_gt_proof(inner, name))
-        } else {
-            None
-        };
+        let value_id = ctx
+            .ast_mut()
+            .map(|mut ast| ast.intern_gt_proof(inner, name));
         Self {
             inner,
             ctx,
@@ -948,11 +912,9 @@ where
         msg: super::ast::RoundMsg,
         name: &'static str,
     ) -> Self {
-        let value_id = if let Some(mut ast) = ctx.ast_mut() {
-            Some(ast.intern_gt_proof_round(inner, round, msg, name))
-        } else {
-            None
-        };
+        let value_id = ctx
+            .ast_mut()
+            .map(|mut ast| ast.intern_gt_proof_round(inner, round, msg, name));
         Self {
             inner,
             ctx,
@@ -992,26 +954,22 @@ where
         };
 
         // AST tracking: record the exponentiation operation
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let scalar_value = match scalar_name {
-                Some(name) => ScalarValue::named(scalar.clone(), name),
-                None => ScalarValue::new(scalar.clone()),
+                Some(name) => ScalarValue::named(*scalar, name),
+                None => ScalarValue::new(*scalar),
             };
-            Some(
-                ast.push(
-                    ValueType::GT,
-                    AstOp::GTExp {
-                        op_id: Some(id),
-                        base: self
-                            .value_id
-                            .expect("GTExp input must have ValueId when AST enabled"),
-                        scalar: scalar_value,
-                    },
-                ),
+            ast.push(
+                ValueType::GT,
+                AstOp::GTExp {
+                    op_id: Some(id),
+                    base: self
+                        .value_id
+                        .expect("GTExp input must have ValueId when AST enabled"),
+                    scalar: scalar_value,
+                },
             )
-        } else {
-            None
-        };
+        });
 
         Self {
             inner: result,
@@ -1037,24 +995,22 @@ where
         };
 
         // AST tracking: record the multiplication operation
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let lhs_id = self
                 .value_id
                 .expect("GTMul lhs must have ValueId when AST enabled");
             let rhs_id = rhs
                 .value_id
                 .expect("GTMul rhs must have ValueId when AST enabled");
-            Some(ast.push(
+            ast.push(
                 ValueType::GT,
                 AstOp::GTMul {
                     op_id: Some(id),
                     lhs: lhs_id,
                     rhs: rhs_id,
                 },
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         Self {
             inner: result,
@@ -1168,24 +1124,22 @@ where
         };
 
         // AST tracking: record the pairing operation
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let g1_id = g1
                 .value_id
                 .expect("Pairing G1 input must have ValueId when AST enabled");
             let g2_id = g2
                 .value_id
                 .expect("Pairing G2 input must have ValueId when AST enabled");
-            Some(ast.push(
+            ast.push(
                 ValueType::GT,
                 AstOp::Pairing {
                     op_id: Some(id),
                     g1: g1_id,
                     g2: g2_id,
                 },
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         TraceGT {
             inner: result,
@@ -1242,7 +1196,7 @@ where
         };
 
         // AST tracking: record the multi-pairing operation
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let g1_ids: Vec<ValueId> = g1s
                 .iter()
                 .map(|g| {
@@ -1257,17 +1211,15 @@ where
                         .expect("MultiPairing G2 inputs must have ValueId when AST enabled")
                 })
                 .collect();
-            Some(ast.push(
+            ast.push(
                 ValueType::GT,
                 AstOp::MultiPairing {
                     op_id: Some(id),
                     g1s: g1_ids,
                     g2s: g2_ids,
                 },
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         TraceGT {
             inner: result,
@@ -1364,7 +1316,7 @@ where
         };
 
         // AST tracking: record the MSM operation
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let point_ids: Vec<ValueId> = bases
                 .iter()
                 .map(|b| {
@@ -1377,23 +1329,21 @@ where
                 .enumerate()
                 .map(|(i, s)| {
                     if let Some(names) = scalar_names {
-                        ScalarValue::named(s.clone(), names[i])
+                        ScalarValue::named(*s, names[i])
                     } else {
-                        ScalarValue::new(s.clone())
+                        ScalarValue::new(*s)
                     }
                 })
                 .collect();
-            Some(ast.push(
+            ast.push(
                 ValueType::G1,
                 AstOp::MsmG1 {
                     op_id: Some(id),
                     points: point_ids,
                     scalars: scalar_values,
                 },
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         TraceG1 {
             inner: result,
@@ -1477,7 +1427,7 @@ where
         };
 
         // AST tracking: record the MSM operation
-        let out_value_id = if let Some(mut ast) = self.ctx.ast_mut() {
+        let out_value_id = self.ctx.ast_mut().map(|mut ast| {
             let point_ids: Vec<ValueId> = bases
                 .iter()
                 .map(|b| {
@@ -1490,23 +1440,21 @@ where
                 .enumerate()
                 .map(|(i, s)| {
                     if let Some(names) = scalar_names {
-                        ScalarValue::named(s.clone(), names[i])
+                        ScalarValue::named(*s, names[i])
                     } else {
-                        ScalarValue::new(s.clone())
+                        ScalarValue::new(*s)
                     }
                 })
                 .collect();
-            Some(ast.push(
+            ast.push(
                 ValueType::G2,
                 AstOp::MsmG2 {
                     op_id: Some(id),
                     points: point_ids,
                     scalars: scalar_values,
                 },
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         TraceG2 {
             inner: result,
