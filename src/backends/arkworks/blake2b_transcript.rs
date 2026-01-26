@@ -4,6 +4,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::missing_panics_doc)]
 
+use crate::backends::arkworks::ArkFr;
 use crate::primitives::arithmetic::{Group, PairingCurve};
 use crate::primitives::serialization::Compress;
 use crate::primitives::transcript::Transcript;
@@ -109,8 +110,7 @@ impl Transcript for Blake2bTranscript<crate::backends::arkworks::BN254> {
         self.append_bytes_impl(label, &bytes);
     }
 
-    fn challenge_scalar(&mut self, label: &[u8]) -> crate::backends::arkworks::ArkFr {
-        use crate::backends::arkworks::ArkFr;
+    fn challenge_scalar(&mut self, label: &[u8]) -> ArkFr {
         ArkFr(self.challenge_scalar_impl(label))
     }
 

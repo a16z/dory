@@ -46,10 +46,11 @@ pub use wiring::*;
 mod tests {
     use super::*;
     use crate::backends::arkworks::BN254;
-    use crate::primitives::arithmetic::{Field, Group};
+    use crate::primitives::arithmetic::{Field, Group, PairingCurve};
+    use crate::recursion::witness::{OpId, OpType};
 
     // Type alias for convenience - use the public re-export
-    type Fr = <BN254 as crate::primitives::arithmetic::PairingCurve>::G1;
+    type Fr = <BN254 as PairingCurve>::G1;
     type Scalar = <Fr as Group>::Scalar;
 
     #[test]
@@ -276,8 +277,6 @@ mod tests {
 
     #[test]
     fn test_scalar_mul_with_opid() {
-        use crate::recursion::witness::{OpId, OpType};
-
         let mut builder = AstBuilder::<BN254>::new();
 
         let point = builder.intern_input(
@@ -555,7 +554,7 @@ mod tests {
         let graph = builder.finalize();
         assert!(graph.validate().is_ok());
         assert_eq!(graph.constraints.len(), 1);
-        assert!(graph.len() > 0);
+        assert!(!graph.is_empty());
     }
 
     #[test]

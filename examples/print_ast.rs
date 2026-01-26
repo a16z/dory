@@ -8,7 +8,7 @@ use dory_pcs::backends::arkworks::{
 };
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::recursion::ast::{AstOp, ValueType};
+use dory_pcs::recursion::ast::{AstConstraint, AstOp, ValueType};
 use dory_pcs::recursion::TraceContext;
 use dory_pcs::{prove, setup, verify_recursive};
 use rand::thread_rng;
@@ -249,8 +249,6 @@ fn main() {
     }
     println!("└─────────────────────────────────────────────────────────────┘");
     println!();
-
-    use dory_pcs::recursion::ast::AstConstraint;
     println!("┌─────────────────────────────────────────────────────────────┐");
     println!(
         "│ CONSTRAINTS ({})                                            │",

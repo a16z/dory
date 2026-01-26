@@ -18,6 +18,13 @@ pub struct BN254;
 mod pairing_helpers {
     use super::*;
     use super::{ArkG1, ArkG2, ArkGT};
+    use ark_bn254::{G1Affine, G2Affine};
+
+    #[cfg(feature = "parallel")]
+    use rayon::prelude::*;
+
+    #[cfg(feature = "cache")]
+    use crate::backends::arkworks::ark_cache::{get_prepared_g1, get_prepared_g2};
 
     /// Determine optimal chunk size for parallel Miller loop computation
     #[cfg(feature = "parallel")]
@@ -38,8 +45,6 @@ mod pairing_helpers {
     #[allow(dead_code)]
     #[tracing::instrument(skip_all, name = "multi_pair_sequential", fields(len = ps.len()))]
     pub(super) fn multi_pair_sequential(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        use ark_bn254::{G1Affine, G2Affine};
-
         let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = ps
             .iter()
             .map(|p| {
@@ -63,8 +68,6 @@ mod pairing_helpers {
     #[allow(dead_code)]
     #[tracing::instrument(skip_all, name = "multi_pair_g2_setup_sequential", fields(len = ps.len()))]
     pub(super) fn multi_pair_g2_setup_sequential(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        use ark_bn254::G1Affine;
-
         let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = ps
             .iter()
             .map(|p| {
@@ -75,14 +78,13 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         {
-            if let Some(cached_g2) = crate::backends::arkworks::ark_cache::get_prepared_g2() {
+            if let Some(cached_g2) = get_prepared_g2() {
                 if qs.len() <= cached_g2.len() {
                     return multi_pair_with_prepared(ps_prep, &cached_g2[..qs.len()]);
                 }
             }
         }
 
-        use ark_bn254::G2Affine;
         let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = qs
             .iter()
             .map(|q| {
@@ -97,8 +99,6 @@ mod pairing_helpers {
     #[allow(dead_code)]
     #[tracing::instrument(skip_all, name = "multi_pair_g1_setup_sequential", fields(len = ps.len()))]
     pub(super) fn multi_pair_g1_setup_sequential(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        use ark_bn254::G2Affine;
-
         let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = qs
             .iter()
             .map(|q| {
@@ -109,7 +109,7 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         {
-            if let Some(cached_g1) = crate::backends::arkworks::ark_cache::get_prepared_g1() {
+            if let Some(cached_g1) = get_prepared_g1() {
                 if ps.len() <= cached_g1.len() {
                     let ps_prep: Vec<_> = ps
                         .iter()
@@ -121,7 +121,6 @@ mod pairing_helpers {
             }
         }
 
-        use ark_bn254::G1Affine;
         let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = ps
             .iter()
             .map(|p| {
@@ -146,9 +145,6 @@ mod pairing_helpers {
     #[cfg(feature = "parallel")]
     #[tracing::instrument(skip_all, name = "multi_pair_parallel", fields(len = ps.len(), chunk_size = determine_chunk_size(ps.len())))]
     pub(super) fn multi_pair_parallel(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        use ark_bn254::{G1Affine, G2Affine};
-        use rayon::prelude::*;
-
         let chunk_size = determine_chunk_size(ps.len());
 
         let combined = ps
@@ -187,13 +183,10 @@ mod pairing_helpers {
     #[cfg(feature = "parallel")]
     #[tracing::instrument(skip_all, name = "multi_pair_g2_setup_parallel", fields(len = ps.len(), chunk_size = determine_chunk_size(ps.len())))]
     pub(super) fn multi_pair_g2_setup_parallel(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        use ark_bn254::G1Affine;
-        use rayon::prelude::*;
-
         let chunk_size = determine_chunk_size(ps.len());
 
         #[cfg(feature = "cache")]
-        let cached_g2 = crate::backends::arkworks::ark_cache::get_prepared_g2();
+        let cached_g2 = get_prepared_g2();
         #[cfg(not(feature = "cache"))]
         let cached_g2: Option<&[_]> = None;
 
@@ -216,7 +209,6 @@ mod pairing_helpers {
                     if let Some(cached) = cached_g2.filter(|c| end_idx <= c.len()) {
                         cached[start_idx..end_idx].to_vec()
                     } else {
-                        use ark_bn254::G2Affine;
                         qs[start_idx..end_idx]
                             .iter()
                             .map(|q| {
@@ -242,13 +234,10 @@ mod pairing_helpers {
     #[cfg(feature = "parallel")]
     #[tracing::instrument(skip_all, name = "multi_pair_g1_setup_parallel", fields(len = ps.len(), chunk_size = determine_chunk_size(ps.len())))]
     pub(super) fn multi_pair_g1_setup_parallel(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
-        use ark_bn254::G2Affine;
-        use rayon::prelude::*;
-
         let chunk_size = determine_chunk_size(ps.len());
 
         #[cfg(feature = "cache")]
-        let cached_g1 = crate::backends::arkworks::ark_cache::get_prepared_g1();
+        let cached_g1 = get_prepared_g1();
         #[cfg(not(feature = "cache"))]
         let cached_g1: Option<&[_]> = None;
 
@@ -271,7 +260,6 @@ mod pairing_helpers {
                     if let Some(cached) = cached_g1.filter(|c| end_idx <= c.len()) {
                         cached[start_idx..end_idx].to_vec()
                     } else {
-                        use ark_bn254::G1Affine;
                         ps[start_idx..end_idx]
                             .iter()
                             .map(|p| {
