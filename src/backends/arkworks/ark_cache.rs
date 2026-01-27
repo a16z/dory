@@ -5,9 +5,13 @@
 //! and preprocessing steps, providing ~20-30% speedup for repeated pairings.
 
 use super::ark_group::{ArkG1, ArkG2};
-use ark_bn254::{Bn254, G1Affine, G2Affine};
+use ark_bn254::{Bn254, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::pairing::Pairing;
+use ark_ec::CurveGroup;
 use once_cell::sync::OnceCell;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Global cache for prepared points
 #[derive(Debug)]
@@ -39,21 +43,26 @@ static CACHE: OnceCell<PreparedCache> = OnceCell::new();
 /// init_cache(&setup.g1_vec, &setup.g2_vec);
 /// ```
 pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {
-    let g1_prepared: Vec<<Bn254 as Pairing>::G1Prepared> = g1_vec
-        .iter()
-        .map(|g| {
-            let affine: G1Affine = g.0.into();
-            affine.into()
-        })
-        .collect();
+    // Batch-normalize projectives to amortize inversions.
+    let g1_proj: Vec<G1Projective> = g1_vec.iter().map(|g| g.0).collect();
+    let g1_aff: Vec<G1Affine> = G1Projective::normalize_batch(&g1_proj);
 
-    let g2_prepared: Vec<<Bn254 as Pairing>::G2Prepared> = g2_vec
-        .iter()
-        .map(|g| {
-            let affine: G2Affine = g.0.into();
-            affine.into()
-        })
-        .collect();
+    #[cfg(feature = "parallel")]
+    let g1_prepared: Vec<<Bn254 as Pairing>::G1Prepared> =
+        g1_aff.into_par_iter().map(Into::into).collect();
+    #[cfg(not(feature = "parallel"))]
+    let g1_prepared: Vec<<Bn254 as Pairing>::G1Prepared> =
+        g1_aff.into_iter().map(Into::into).collect();
+
+    let g2_proj: Vec<G2Projective> = g2_vec.iter().map(|g| g.0).collect();
+    let g2_aff: Vec<G2Affine> = G2Projective::normalize_batch(&g2_proj);
+
+    #[cfg(feature = "parallel")]
+    let g2_prepared: Vec<<Bn254 as Pairing>::G2Prepared> =
+        g2_aff.into_par_iter().map(Into::into).collect();
+    #[cfg(not(feature = "parallel"))]
+    let g2_prepared: Vec<<Bn254 as Pairing>::G2Prepared> =
+        g2_aff.into_iter().map(Into::into).collect();
 
     CACHE
         .set(PreparedCache {
