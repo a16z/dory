@@ -98,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Generating evaluation proof with combined commitment...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-homomorphic-mixed");
-    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
         &combined_poly,
         &point,
         combined_tier1,

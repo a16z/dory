@@ -107,7 +107,7 @@ fn bench_verify(c: &mut Criterion) {
 
     let mut prover_transcript = Blake2bTranscript::new(b"dory-bench");
     let mut rng = thread_rng();
-    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, ThreadRng>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, ThreadRng>(
         &poly,
         &point,
         tier_1,
@@ -173,17 +173,18 @@ fn bench_end_to_end(c: &mut Criterion) {
 
             // Prove
             let mut prover_transcript = Blake2bTranscript::new(b"dory-bench");
-            let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, ThreadRng>(
-                &poly,
-                &point,
-                tier_1,
-                nu,
-                sigma,
-                &prover_setup,
-                &mut prover_transcript,
-                &mut rng,
-            )
-            .unwrap();
+            let (proof, _) =
+                prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, ThreadRng>(
+                    &poly,
+                    &point,
+                    tier_1,
+                    nu,
+                    sigma,
+                    &prover_setup,
+                    &mut prover_transcript,
+                    &mut rng,
+                )
+                .unwrap();
 
             // Verify
             let mut verifier_transcript = Blake2bTranscript::new(b"dory-bench");
