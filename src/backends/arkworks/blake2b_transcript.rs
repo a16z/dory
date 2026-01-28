@@ -42,8 +42,7 @@ impl<E: PairingCurve> Blake2bTranscript<E> {
 
     pub fn append_group_impl<G: CanonicalSerialize>(&mut self, label: &[u8], g: &G) {
         let mut bytes = Vec::new();
-        g.serialize_compressed(&mut bytes)
-            .expect("Serialization should not fail");
+        g.serialize_compressed(&mut bytes).expect("Serialization should not fail");
         self.append_bytes_impl(label, &bytes);
     }
 
@@ -97,15 +96,13 @@ impl Transcript for Blake2bTranscript<crate::backends::arkworks::BN254> {
 
     fn append_group<G: Group + DorySerialize>(&mut self, label: &[u8], g: &G) {
         let mut bytes: Vec<u8> = Vec::new();
-        g.serialize_with_mode(&mut bytes, Compress::Yes)
-            .expect("DorySerialize should not fail");
+        g.serialize_with_mode(&mut bytes, Compress::Yes).expect("DorySerialize should not fail");
         self.append_bytes_impl(label, &bytes);
     }
 
     fn append_serde<S: DorySerialize>(&mut self, label: &[u8], s: &S) {
         let mut bytes: Vec<u8> = Vec::new();
-        s.serialize_with_mode(&mut bytes, Compress::Yes)
-            .expect("DorySerialize should not fail");
+        s.serialize_with_mode(&mut bytes, Compress::Yes).expect("DorySerialize should not fail");
         self.append_bytes_impl(label, &bytes);
     }
 

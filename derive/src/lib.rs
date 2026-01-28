@@ -209,10 +209,7 @@ pub fn derive_valid(input: TokenStream) -> TokenStream {
         if let Fields::Named(fields) = &data.fields {
             for field in &fields.named {
                 let ty = &field.ty;
-                generics
-                    .make_where_clause()
-                    .predicates
-                    .push(syn::parse_quote! { #ty: Valid });
+                generics.make_where_clause().predicates.push(syn::parse_quote! { #ty: Valid });
             }
         }
     }

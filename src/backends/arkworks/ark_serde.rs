@@ -16,9 +16,7 @@ use crate::setup::{ProverSetup, VerifierSetup};
 
 impl Valid for ArkFr {
     fn check(&self) -> Result<(), SerializationError> {
-        self.0
-            .check()
-            .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
+        self.0.check().map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
     }
 }
 
@@ -62,9 +60,7 @@ impl DoryDeserialize for ArkFr {
         };
 
         if matches!(validate, Validate::Yes) {
-            inner
-                .check()
-                .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
+            inner.check().map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
         }
 
         Ok(ArkFr(inner))
@@ -73,9 +69,7 @@ impl DoryDeserialize for ArkFr {
 
 impl Valid for ArkG1 {
     fn check(&self) -> Result<(), SerializationError> {
-        self.0
-            .check()
-            .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
+        self.0.check().map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
     }
 }
 
@@ -119,9 +113,7 @@ impl DoryDeserialize for ArkG1 {
         };
 
         if matches!(validate, Validate::Yes) {
-            inner
-                .check()
-                .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
+            inner.check().map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
         }
 
         Ok(ArkG1(inner))
@@ -130,9 +122,7 @@ impl DoryDeserialize for ArkG1 {
 
 impl Valid for ArkG2 {
     fn check(&self) -> Result<(), SerializationError> {
-        self.0
-            .check()
-            .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
+        self.0.check().map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
     }
 }
 
@@ -176,9 +166,7 @@ impl DoryDeserialize for ArkG2 {
         };
 
         if matches!(validate, Validate::Yes) {
-            inner
-                .check()
-                .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
+            inner.check().map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
         }
 
         Ok(ArkG2(inner))
@@ -187,9 +175,7 @@ impl DoryDeserialize for ArkG2 {
 
 impl Valid for ArkGT {
     fn check(&self) -> Result<(), SerializationError> {
-        self.0
-            .check()
-            .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
+        self.0.check().map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
     }
 }
 
@@ -233,9 +219,7 @@ impl DoryDeserialize for ArkGT {
         };
 
         if matches!(validate, Validate::Yes) {
-            inner
-                .check()
-                .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
+            inner.check().map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
         }
 
         Ok(ArkGT(inner))

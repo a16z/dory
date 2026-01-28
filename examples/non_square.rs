@@ -23,10 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 1: Setup
     let max_log_n = 10;
-    info!(
-        "1. Generating transparent setup (max_log_n = {})...",
-        max_log_n
-    );
+    info!("1. Generating transparent setup (max_log_n = {})...", max_log_n);
     let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
     info!("   ✓ Setup complete\n");
 
@@ -50,10 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 3: Commit
     info!("3. Computing polynomial commitment...");
     let (tier_2, tier_1) = poly.commit::<BN254, G1Routines>(nu, sigma, &prover_setup)?;
-    info!(
-        "   ✓ Tier-1 commitment: {} row commitments (G1)",
-        tier_1.len()
-    );
+    info!("   ✓ Tier-1 commitment: {} row commitments (G1)", tier_1.len());
     info!("   ✓ Tier-2 commitment: final commitment (GT)\n");
 
     // Step 4: Evaluation

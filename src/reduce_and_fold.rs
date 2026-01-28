@@ -152,10 +152,7 @@ where
         debug_assert_eq!(v1.len(), v2.len(), "v1 and v2 must have equal length");
         debug_assert_eq!(v1.len(), s1.len(), "v1 and s1 must have equal length");
         debug_assert_eq!(v1.len(), s2.len(), "v1 and s2 must have equal length");
-        debug_assert!(
-            v1.len().is_power_of_two(),
-            "vector length must be power of 2"
-        );
+        debug_assert!(v1.len().is_power_of_two(), "vector length must be power of 2");
         if let Some(sc) = v2_scalars.as_ref() {
             debug_assert_eq!(sc.len(), v2.len(), "v2_scalars must match v2 length");
         }
@@ -218,10 +215,7 @@ where
         [<E::G1 as Group>::Scalar; 2],
         [<E::G1 as Group>::Scalar; 2],
     ) {
-        assert!(
-            self.num_rounds > 0,
-            "Not enough rounds left in prover state"
-        );
+        assert!(self.num_rounds > 0, "Not enough rounds left in prover state");
 
         let n2 = 1 << (self.num_rounds - 1); // n/2
 
@@ -254,10 +248,7 @@ where
             let g2_fin = &self.setup.g2_vec[0];
             (E::pair(&sum_left, g2_fin), E::pair(&sum_right, g2_fin))
         } else {
-            (
-                E::multi_pair_g1_setup(g1_prime, v2_l),
-                E::multi_pair_g1_setup(g1_prime, v2_r),
-            )
+            (E::multi_pair_g1_setup(g1_prime, v2_l), E::multi_pair_g1_setup(g1_prime, v2_r))
         };
 
         // ZK: mask D values (identity for Transparent mode)
@@ -634,14 +625,8 @@ where
     E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
     E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
 {
-    let (k1, k2) = (
-        <E::G1 as Group>::Scalar::random(rng),
-        <E::G1 as Group>::Scalar::random(rng),
-    );
-    let a = E::pair(
-        &setup.h1,
-        &(setup.g2_vec[0].scale(&k1) + setup.h2.scale(&k2)),
-    );
+    let (k1, k2) = (<E::G1 as Group>::Scalar::random(rng), <E::G1 as Group>::Scalar::random(rng));
+    let a = E::pair(&setup.h1, &(setup.g2_vec[0].scale(&k1) + setup.h2.scale(&k2)));
     transcript.append_serde(b"sigma2_a", &a);
     let c = transcript.challenge_scalar(b"sigma2_c");
     Sigma2Proof {
@@ -668,10 +653,7 @@ where
     transcript.append_serde(b"sigma2_a", &proof.a);
     let c = transcript.challenge_scalar(b"sigma2_c");
     let expected = E::pair(e1, &setup.g2_0) - *d2;
-    let lhs = E::pair(
-        &setup.h1,
-        &(setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2)),
-    );
+    let lhs = E::pair(&setup.h1, &(setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2)));
     if lhs == proof.a + expected.scale(&c) {
         Ok(())
     } else {
@@ -799,10 +781,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
         <E::G1 as Group>::Scalar: Field,
     {
-        debug_assert_eq!(
-            self.num_rounds, 0,
-            "num_rounds must be 0 for final verification"
-        );
+        debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for final verification");
 
         let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
         let d_inv = (*d).inv().expect("d must be invertible");
@@ -867,10 +846,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
         <E::G1 as Group>::Scalar: Field,
     {
-        debug_assert_eq!(
-            self.num_rounds, 0,
-            "num_rounds must be 0 for final verification"
-        );
+        debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for final verification");
 
         let d_inv = (*d).inv().expect("d must be invertible");
         let c_sq = *c * *c;

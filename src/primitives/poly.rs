@@ -129,10 +129,7 @@ pub trait Polynomial<F: Field> {
 /// - Start with [1-r₀, r₀]
 /// - For each variable rᵢ, split each value v into [v*(1-rᵢ), v*rᵢ]
 pub(crate) fn multilinear_lagrange_basis<F: Field>(output: &mut [F], point: &[F]) {
-    assert!(
-        output.len() <= (1 << point.len()),
-        "Output length must be at most 2^point.len()"
-    );
+    assert!(output.len() <= (1 << point.len()), "Output length must be at most 2^point.len()");
 
     if point.is_empty() || output.is_empty() {
         output.fill(F::one());

@@ -19,11 +19,7 @@ impl ArkworksPolynomial {
     pub fn new(coefficients: Vec<ArkFr>) -> Self {
         let len = coefficients.len();
         let num_vars = (len as f64).log2() as usize;
-        assert_eq!(
-            1 << num_vars,
-            len,
-            "Coefficient length must be a power of 2"
-        );
+        assert_eq!(1 << num_vars, len, "Coefficient length must be a power of 2");
         Self {
             coefficients,
             num_vars,
