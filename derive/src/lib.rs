@@ -152,14 +152,14 @@ pub fn derive_dory_deserialize(input: TokenStream) -> TokenStream {
             }
             Fields::Unnamed(fields) => {
                 let field_deserialize = fields.unnamed.iter().enumerate().map(|(i, f)| {
-                    let field_name = syn::Ident::new(&format!("field_{}", i), f.ty.span());
+                    let field_name = syn::Ident::new(&format!("field_{i}"), f.ty.span());
                     let field_ty = &f.ty;
                     quote! {
                         let #field_name = <#field_ty>::deserialize_with_mode(&mut reader, compress, validate)?;
                     }
                 });
                 let field_names = (0..fields.unnamed.len())
-                    .map(|i| syn::Ident::new(&format!("field_{}", i), fields.unnamed.span()));
+                    .map(|i| syn::Ident::new(&format!("field_{i}"), fields.unnamed.span()));
                 quote! {
                     #(#field_deserialize)*
                     Ok(Self(#(#field_names),*))

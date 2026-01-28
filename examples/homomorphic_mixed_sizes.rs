@@ -9,7 +9,7 @@ use dory_pcs::backends::arkworks::{
 };
 use dory_pcs::primitives::arithmetic::{Field, Group};
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{prove, setup, verify};
+use dory_pcs::{prove, setup, verify, Transparent};
 use rand::thread_rng;
 use tracing::info;
 
@@ -102,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Generating evaluation proof with combined commitment...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-homomorphic-mixed");
-    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -110,6 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         2,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )?;
     info!("✓ Proof generated\n");
 

@@ -44,6 +44,11 @@ pub struct ProverSetup<E: PairingCurve> {
 ///
 /// Contains precomputed pairing values for efficient verification.
 /// Derived from the prover setup.
+///
+/// # Generator semantics
+/// - `g1_0`, `g2_0`: Final generators (Γ1,fin, Γ2,fin) used as commitment bases
+/// - `h1`, `h2`: Blinding generators (H1, H2) used for zero-knowledge masking
+/// - These MUST be linearly independent (discrete log unknown between them)
 #[derive(Clone, Debug, DorySerialize, DoryDeserialize)]
 pub struct VerifierSetup<E: PairingCurve> {
     /// Δ₁L\[k\] = e(Γ₁\[..2^(k-1)\], Γ₂\[..2^(k-1)\])
@@ -61,20 +66,24 @@ pub struct VerifierSetup<E: PairingCurve> {
     /// χ\[k\] = e(Γ₁\[..2^k\], Γ₂\[..2^k\])
     pub chi: Vec<E::GT>,
 
-    /// First G1 generator
+    /// Γ1,fin - first G1 generator (commitment base, NOT for blinding)
     pub g1_0: E::G1,
 
-    /// First G2 generator
+    /// Γ2,fin - first G2 generator (commitment base, NOT for blinding)
     pub g2_0: E::G2,
 
-    /// Blinding generator in G1
+    /// H1 - blinding generator in G1 (linearly independent from g1_0)
     pub h1: E::G1,
 
-    /// Blinding generator in G2
+    /// H2 - blinding generator in G2 (linearly independent from g2_0)
     pub h2: E::G2,
 
-    /// h_t = e(h₁, h₂)
+    /// HT = e(H1, H2) - blinding base in GT
     pub ht: E::GT,
+
+    /// e(H1, Γ2,fin) = e(h1, g2_0) - precomputed for ZK Sigma2 verification
+    #[cfg(feature = "zk")]
+    pub h1_g2_fin: E::GT,
 
     /// Maximum log₂ of polynomial size supported
     pub max_log_n: usize,
@@ -169,6 +178,8 @@ impl<E: PairingCurve> ProverSetup<E> {
             h1: self.h1,
             h2: self.h2,
             ht: self.ht,
+            #[cfg(feature = "zk")]
+            h1_g2_fin: E::pair(&self.h1, &self.g2_vec[0]),
             max_log_n: max_num_rounds * 2, // Since square matrices: max_log_n = 2 * max_nu
         }
     }
@@ -236,7 +247,11 @@ fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
 
     cache_directory.map(|mut path| {
         path.push("dory");
-        path.push(format!("dory_{}.urs", max_log_n));
+        #[cfg(feature = "zk")]
+        let filename = format!("dory_{}_zk.urs", max_log_n);
+        #[cfg(not(feature = "zk"))]
+        let filename = format!("dory_{}.urs", max_log_n);
+        path.push(filename);
         path
     })
 }

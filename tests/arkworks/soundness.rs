@@ -5,7 +5,7 @@ use ark_bn254::{Fq12, Fr, G1Projective, G2Projective};
 use ark_ff::UniformRand;
 use dory_pcs::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{prove, verify};
+use dory_pcs::{prove, verify, Transparent};
 use std::mem::swap;
 
 #[allow(clippy::type_complexity)]
@@ -31,8 +31,9 @@ fn create_valid_proof_components(
         .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
+    let mut rng = rand::thread_rng();
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -40,6 +41,7 @@ fn create_valid_proof_components(
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);

@@ -15,9 +15,11 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use dory_pcs::backends::arkworks::{
     ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
 };
+use dory_pcs::mode::Transparent;
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify};
+use rand::rngs::ThreadRng;
 use rand::thread_rng;
 
 #[cfg(feature = "cache")]
@@ -82,7 +84,8 @@ fn bench_prove(c: &mut Criterion) {
     c.bench_function("prove_2^26_coefficients", |b| {
         b.iter(|| {
             let mut transcript = Blake2bTranscript::new(b"dory-bench");
-            prove::<_, BN254, G1Routines, G2Routines, _, _>(
+            let mut rng = thread_rng();
+            prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, ThreadRng>(
                 black_box(&poly),
                 black_box(&point),
                 black_box(tier_1.clone()),
@@ -90,6 +93,7 @@ fn bench_prove(c: &mut Criterion) {
                 black_box(sigma),
                 black_box(&prover_setup),
                 black_box(&mut transcript),
+                black_box(&mut rng),
             )
             .unwrap()
         })
@@ -106,7 +110,8 @@ fn bench_verify(c: &mut Criterion) {
         .unwrap();
 
     let mut prover_transcript = Blake2bTranscript::new(b"dory-bench");
-    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _>(
+    let mut rng = thread_rng();
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, ThreadRng>(
         &poly,
         &point,
         tier_1,
@@ -114,6 +119,7 @@ fn bench_verify(c: &mut Criterion) {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
 
@@ -172,16 +178,18 @@ fn bench_end_to_end(c: &mut Criterion) {
 
             // Prove
             let mut prover_transcript = Blake2bTranscript::new(b"dory-bench");
-            let proof = prove::<_, BN254, G1Routines, G2Routines, _, _>(
-                &poly,
-                &point,
-                tier_1,
-                nu,
-                sigma,
-                &prover_setup,
-                &mut prover_transcript,
-            )
-            .unwrap();
+            let (proof, _) =
+                prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, ThreadRng>(
+                    &poly,
+                    &point,
+                    tier_1,
+                    nu,
+                    sigma,
+                    &prover_setup,
+                    &mut prover_transcript,
+                    &mut rng,
+                )
+                .unwrap();
 
             // Verify
             let mut verifier_transcript = Blake2bTranscript::new(b"dory-bench");

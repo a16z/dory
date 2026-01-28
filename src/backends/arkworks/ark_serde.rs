@@ -10,6 +10,8 @@ use std::io::{Read, Write};
 
 use super::BN254;
 use crate::messages::{FirstReduceMessage, ScalarProductMessage, SecondReduceMessage, VMVMessage};
+#[cfg(feature = "zk")]
+use crate::messages::{ScalarProductProof, Sigma1Proof, Sigma2Proof};
 use crate::setup::{ProverSetup, VerifierSetup};
 
 impl Valid for ArkFr {
@@ -292,6 +294,45 @@ impl CanonicalSerialize for ArkDoryProof {
         CanonicalSerialize::serialize_with_mode(&(self.nu as u32), &mut writer, compress)?;
         CanonicalSerialize::serialize_with_mode(&(self.sigma as u32), &mut writer, compress)?;
 
+        #[cfg(feature = "zk")]
+        {
+            let is_zk = self.e2.is_some()
+                || self.y_com.is_some()
+                || self.sigma1_proof.is_some()
+                || self.sigma2_proof.is_some()
+                || self.scalar_product_proof.is_some();
+            CanonicalSerialize::serialize_with_mode(&(is_zk as u8), &mut writer, compress)?;
+            if is_zk {
+                CanonicalSerialize::serialize_with_mode(
+                    self.e2.as_ref().expect("zk proof missing e2"),
+                    &mut writer,
+                    compress,
+                )?;
+                CanonicalSerialize::serialize_with_mode(
+                    self.y_com.as_ref().expect("zk proof missing y_com"),
+                    &mut writer,
+                    compress,
+                )?;
+                CanonicalSerialize::serialize_with_mode(
+                    self.sigma1_proof.as_ref().expect("zk proof missing sigma1"),
+                    &mut writer,
+                    compress,
+                )?;
+                CanonicalSerialize::serialize_with_mode(
+                    self.sigma2_proof.as_ref().expect("zk proof missing sigma2"),
+                    &mut writer,
+                    compress,
+                )?;
+                CanonicalSerialize::serialize_with_mode(
+                    self.scalar_product_proof
+                        .as_ref()
+                        .expect("zk proof missing scalar product proof"),
+                    &mut writer,
+                    compress,
+                )?;
+            }
+        }
+
         Ok(())
     }
 
@@ -332,6 +373,40 @@ impl CanonicalSerialize for ArkDoryProof {
 
         // nu and sigma
         size += 8; // 2 * u32
+
+        #[cfg(feature = "zk")]
+        {
+            size += 1; // is_zk flag
+            if self.e2.is_some()
+                || self.y_com.is_some()
+                || self.sigma1_proof.is_some()
+                || self.sigma2_proof.is_some()
+                || self.scalar_product_proof.is_some()
+            {
+                size += CanonicalSerialize::serialized_size(
+                    self.e2.as_ref().expect("zk proof missing e2"),
+                    compress,
+                );
+                size += CanonicalSerialize::serialized_size(
+                    self.y_com.as_ref().expect("zk proof missing y_com"),
+                    compress,
+                );
+                size += CanonicalSerialize::serialized_size(
+                    self.sigma1_proof.as_ref().expect("zk proof missing sigma1"),
+                    compress,
+                );
+                size += CanonicalSerialize::serialized_size(
+                    self.sigma2_proof.as_ref().expect("zk proof missing sigma2"),
+                    compress,
+                );
+                size += CanonicalSerialize::serialized_size(
+                    self.scalar_product_proof
+                        .as_ref()
+                        .expect("zk proof missing scalar product proof"),
+                    compress,
+                );
+            }
+        }
 
         size
     }
@@ -417,6 +492,36 @@ impl CanonicalDeserialize for ArkDoryProof {
             <u32 as CanonicalDeserialize>::deserialize_with_mode(&mut reader, compress, validate)?
                 as usize;
 
+        #[cfg(feature = "zk")]
+        let (e2, y_com, sigma1_proof, sigma2_proof, scalar_product_proof) = {
+            let is_zk = <u8 as CanonicalDeserialize>::deserialize_with_mode(
+                &mut reader,
+                compress,
+                validate,
+            )? != 0;
+            if is_zk {
+                let e2 =
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+                let y_com =
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+                let sigma1_proof =
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+                let sigma2_proof =
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+                let scalar_product_proof =
+                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+                (
+                    Some(e2),
+                    Some(y_com),
+                    Some(sigma1_proof),
+                    Some(sigma2_proof),
+                    Some(scalar_product_proof),
+                )
+            } else {
+                (None, None, None, None, None)
+            }
+        };
+
         Ok(ArkDoryProof {
             vmv_message,
             first_messages,
@@ -424,6 +529,173 @@ impl CanonicalDeserialize for ArkDoryProof {
             final_message,
             nu,
             sigma,
+            #[cfg(feature = "zk")]
+            e2,
+            #[cfg(feature = "zk")]
+            y_com,
+            #[cfg(feature = "zk")]
+            sigma1_proof,
+            #[cfg(feature = "zk")]
+            sigma2_proof,
+            #[cfg(feature = "zk")]
+            scalar_product_proof,
+        })
+    }
+}
+
+#[cfg(feature = "zk")]
+impl CanonicalSerialize for Sigma1Proof<ArkG1, ArkG2, ArkFr> {
+    fn serialize_with_mode<W: Write>(
+        &self,
+        mut writer: W,
+        compress: ArkCompress,
+    ) -> Result<(), ArkSerializationError> {
+        CanonicalSerialize::serialize_with_mode(&self.a1, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.a2, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.z1, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.z2, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.z3, &mut writer, compress)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self, compress: ArkCompress) -> usize {
+        CanonicalSerialize::serialized_size(&self.a1, compress)
+            + CanonicalSerialize::serialized_size(&self.a2, compress)
+            + CanonicalSerialize::serialized_size(&self.z1, compress)
+            + CanonicalSerialize::serialized_size(&self.z2, compress)
+            + CanonicalSerialize::serialized_size(&self.z3, compress)
+    }
+}
+
+#[cfg(feature = "zk")]
+impl ArkValid for Sigma1Proof<ArkG1, ArkG2, ArkFr> {
+    fn check(&self) -> Result<(), ArkSerializationError> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "zk")]
+impl CanonicalDeserialize for Sigma1Proof<ArkG1, ArkG2, ArkFr> {
+    fn deserialize_with_mode<R: Read>(
+        mut reader: R,
+        compress: ArkCompress,
+        validate: ArkValidate,
+    ) -> Result<Self, ArkSerializationError> {
+        let a1 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let a2 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let z1 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let z2 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let z3 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        Ok(Sigma1Proof { a1, a2, z1, z2, z3 })
+    }
+}
+
+#[cfg(feature = "zk")]
+impl CanonicalSerialize for Sigma2Proof<ArkFr, ArkGT> {
+    fn serialize_with_mode<W: Write>(
+        &self,
+        mut writer: W,
+        compress: ArkCompress,
+    ) -> Result<(), ArkSerializationError> {
+        CanonicalSerialize::serialize_with_mode(&self.a, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.z1, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.z2, &mut writer, compress)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self, compress: ArkCompress) -> usize {
+        CanonicalSerialize::serialized_size(&self.a, compress)
+            + CanonicalSerialize::serialized_size(&self.z1, compress)
+            + CanonicalSerialize::serialized_size(&self.z2, compress)
+    }
+}
+
+#[cfg(feature = "zk")]
+impl ArkValid for Sigma2Proof<ArkFr, ArkGT> {
+    fn check(&self) -> Result<(), ArkSerializationError> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "zk")]
+impl CanonicalDeserialize for Sigma2Proof<ArkFr, ArkGT> {
+    fn deserialize_with_mode<R: Read>(
+        mut reader: R,
+        compress: ArkCompress,
+        validate: ArkValidate,
+    ) -> Result<Self, ArkSerializationError> {
+        let a = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let z1 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let z2 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        Ok(Sigma2Proof { a, z1, z2 })
+    }
+}
+
+#[cfg(feature = "zk")]
+impl CanonicalSerialize for ScalarProductProof<ArkG1, ArkG2, ArkFr, ArkGT> {
+    fn serialize_with_mode<W: Write>(
+        &self,
+        mut writer: W,
+        compress: ArkCompress,
+    ) -> Result<(), ArkSerializationError> {
+        CanonicalSerialize::serialize_with_mode(&self.p1, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.p2, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.q, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.r, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.e1, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.e2, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.r1, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.r2, &mut writer, compress)?;
+        CanonicalSerialize::serialize_with_mode(&self.r3, &mut writer, compress)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self, compress: ArkCompress) -> usize {
+        CanonicalSerialize::serialized_size(&self.p1, compress)
+            + CanonicalSerialize::serialized_size(&self.p2, compress)
+            + CanonicalSerialize::serialized_size(&self.q, compress)
+            + CanonicalSerialize::serialized_size(&self.r, compress)
+            + CanonicalSerialize::serialized_size(&self.e1, compress)
+            + CanonicalSerialize::serialized_size(&self.e2, compress)
+            + CanonicalSerialize::serialized_size(&self.r1, compress)
+            + CanonicalSerialize::serialized_size(&self.r2, compress)
+            + CanonicalSerialize::serialized_size(&self.r3, compress)
+    }
+}
+
+#[cfg(feature = "zk")]
+impl ArkValid for ScalarProductProof<ArkG1, ArkG2, ArkFr, ArkGT> {
+    fn check(&self) -> Result<(), ArkSerializationError> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "zk")]
+impl CanonicalDeserialize for ScalarProductProof<ArkG1, ArkG2, ArkFr, ArkGT> {
+    fn deserialize_with_mode<R: Read>(
+        mut reader: R,
+        compress: ArkCompress,
+        validate: ArkValidate,
+    ) -> Result<Self, ArkSerializationError> {
+        let p1 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let p2 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let q = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let r = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let e1 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let e2 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let r1 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let r2 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        let r3 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
+        Ok(ScalarProductProof {
+            p1,
+            p2,
+            q,
+            r,
+            e1,
+            e2,
+            r1,
+            r2,
+            r3,
         })
     }
 }

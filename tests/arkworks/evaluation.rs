@@ -2,10 +2,11 @@
 
 use super::*;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{prove, verify};
+use dory_pcs::{prove, verify, Transparent};
 
 #[test]
 fn test_evaluation_proof_small() {
+    let mut rng = rand::thread_rng();
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -20,7 +21,7 @@ fn test_evaluation_proof_small() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -28,10 +29,11 @@ fn test_evaluation_proof_small() {
         sigma,
         &setup,
         &mut prover_transcript,
+        &mut rng,
     );
     assert!(result.is_ok());
 
-    let proof = result.unwrap();
+    let (proof, _) = result.unwrap();
     let evaluation = poly.evaluate(&point);
 
     let mut verifier_transcript = fresh_transcript();
@@ -49,6 +51,7 @@ fn test_evaluation_proof_small() {
 
 #[test]
 fn test_evaluation_proof_with_precomputed_commitment() {
+    let mut rng = rand::thread_rng();
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -63,7 +66,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -71,10 +74,11 @@ fn test_evaluation_proof_with_precomputed_commitment() {
         sigma,
         &setup,
         &mut prover_transcript,
+        &mut rng,
     );
     assert!(result.is_ok());
 
-    let proof = result.unwrap();
+    let (proof, _) = result.unwrap();
     let evaluation = poly.evaluate(&point);
 
     let mut verifier_transcript = fresh_transcript();
@@ -92,6 +96,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
 
 #[test]
 fn test_evaluation_proof_constant_polynomial() {
+    let mut rng = rand::thread_rng();
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -109,7 +114,7 @@ fn test_evaluation_proof_constant_polynomial() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -117,6 +122,7 @@ fn test_evaluation_proof_constant_polynomial() {
         sigma,
         &setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
 
@@ -138,6 +144,7 @@ fn test_evaluation_proof_constant_polynomial() {
 
 #[test]
 fn test_evaluation_proof_wrong_evaluation_fails() {
+    let mut rng = rand::thread_rng();
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -152,7 +159,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -160,6 +167,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
         sigma,
         &setup,
         &mut prover_transcript,
+        &mut rng,
     )
     .unwrap();
 
@@ -181,6 +189,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
 
 #[test]
 fn test_evaluation_proof_different_sizes() {
+    let mut rng = rand::thread_rng();
     {
         let setup = test_setup(4);
         let verifier_setup = setup.to_verifier_setup();
@@ -191,7 +200,7 @@ fn test_evaluation_proof_different_sizes() {
         let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(1, 1, &setup).unwrap();
 
         let mut prover_transcript = fresh_transcript();
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1,
@@ -199,6 +208,7 @@ fn test_evaluation_proof_different_sizes() {
             1,
             &setup,
             &mut prover_transcript,
+            &mut rng,
         )
         .unwrap();
         let evaluation = poly.evaluate(&point);
@@ -225,7 +235,7 @@ fn test_evaluation_proof_different_sizes() {
         let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(3, 3, &setup).unwrap();
 
         let mut prover_transcript = fresh_transcript();
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1,
@@ -233,6 +243,7 @@ fn test_evaluation_proof_different_sizes() {
             3,
             &setup,
             &mut prover_transcript,
+            &mut rng,
         )
         .unwrap();
         let evaluation = poly.evaluate(&point);
@@ -252,6 +263,7 @@ fn test_evaluation_proof_different_sizes() {
 
 #[test]
 fn test_multiple_evaluations_same_commitment() {
+    let mut rng = rand::thread_rng();
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -267,7 +279,7 @@ fn test_multiple_evaluations_same_commitment() {
         let point = random_point(4);
 
         let mut prover_transcript = fresh_transcript();
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1.clone(),
@@ -275,6 +287,7 @@ fn test_multiple_evaluations_same_commitment() {
             sigma,
             &setup,
             &mut prover_transcript,
+            &mut rng,
         )
         .unwrap();
 
