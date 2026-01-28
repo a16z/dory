@@ -53,10 +53,6 @@ pub struct DoryProof<G1: Group, G2, GT> {
     #[cfg(feature = "zk")]
     pub sigma1_proof: Option<Sigma1Proof<G1, G2, G1::Scalar>>,
 
-    /// Blinding used for y_com = y·Γ1,fin + r_y·H1
-    #[cfg(feature = "zk")]
-    pub y_blinding: Option<G1::Scalar>,
-
     /// Sigma2 proof: proves VMV relation holds with blinds
     #[cfg(feature = "zk")]
     pub sigma2_proof: Option<Sigma2Proof<G1::Scalar, GT>>,

@@ -314,13 +314,6 @@ impl CanonicalSerialize for ArkDoryProof {
                     compress,
                 )?;
                 CanonicalSerialize::serialize_with_mode(
-                    self.y_blinding
-                        .as_ref()
-                        .expect("zk proof missing y blinding"),
-                    &mut writer,
-                    compress,
-                )?;
-                CanonicalSerialize::serialize_with_mode(
                     self.sigma1_proof.as_ref().expect("zk proof missing sigma1"),
                     &mut writer,
                     compress,
@@ -386,7 +379,6 @@ impl CanonicalSerialize for ArkDoryProof {
             size += 1; // is_zk flag
             if self.e2.is_some()
                 || self.y_com.is_some()
-                || self.y_blinding.is_some()
                 || self.sigma1_proof.is_some()
                 || self.sigma2_proof.is_some()
                 || self.scalar_product_proof.is_some()
@@ -397,12 +389,6 @@ impl CanonicalSerialize for ArkDoryProof {
                 );
                 size += CanonicalSerialize::serialized_size(
                     self.y_com.as_ref().expect("zk proof missing y_com"),
-                    compress,
-                );
-                size += CanonicalSerialize::serialized_size(
-                    self.y_blinding
-                        .as_ref()
-                        .expect("zk proof missing y blinding"),
                     compress,
                 );
                 size += CanonicalSerialize::serialized_size(
@@ -507,7 +493,7 @@ impl CanonicalDeserialize for ArkDoryProof {
                 as usize;
 
         #[cfg(feature = "zk")]
-        let (e2, y_com, y_blinding, sigma1_proof, sigma2_proof, scalar_product_proof) = {
+        let (e2, y_com, sigma1_proof, sigma2_proof, scalar_product_proof) = {
             let is_zk = <u8 as CanonicalDeserialize>::deserialize_with_mode(
                 &mut reader,
                 compress,
@@ -518,8 +504,6 @@ impl CanonicalDeserialize for ArkDoryProof {
                     CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
                 let y_com =
                     CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
-                let y_blinding =
-                    CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
                 let sigma1_proof =
                     CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
                 let sigma2_proof =
@@ -529,13 +513,12 @@ impl CanonicalDeserialize for ArkDoryProof {
                 (
                     Some(e2),
                     Some(y_com),
-                    Some(y_blinding),
                     Some(sigma1_proof),
                     Some(sigma2_proof),
                     Some(scalar_product_proof),
                 )
             } else {
-                (None, None, None, None, None, None)
+                (None, None, None, None, None)
             }
         };
 
@@ -550,8 +533,6 @@ impl CanonicalDeserialize for ArkDoryProof {
             e2,
             #[cfg(feature = "zk")]
             y_com,
-            #[cfg(feature = "zk")]
-            y_blinding,
             #[cfg(feature = "zk")]
             sigma1_proof,
             #[cfg(feature = "zk")]

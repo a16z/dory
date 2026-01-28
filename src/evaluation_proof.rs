@@ -74,7 +74,7 @@ pub fn create_evaluation_proof<F, E, M1, M2, T, P, Mo, R>(
     setup: &ProverSetup<E>,
     transcript: &mut T,
     rng: &mut R,
-) -> Result<DoryProof<E::G1, E::G2, E::GT>, DoryError>
+) -> Result<(DoryProof<E::G1, E::G2, E::GT>, Option<F>), DoryError>
 where
     F: Field,
     E: PairingCurve,
@@ -249,7 +249,7 @@ where
     transcript.append_serde(b"final_e2", &final_message.e2);
     let _d = transcript.challenge_scalar(b"d");
 
-    Ok(DoryProof {
+    let proof = DoryProof {
         vmv_message,
         first_messages,
         second_messages,
@@ -263,12 +263,16 @@ where
         #[cfg(feature = "zk")]
         sigma1_proof: zk_sigma1,
         #[cfg(feature = "zk")]
-        y_blinding: zk_y_blinding,
-        #[cfg(feature = "zk")]
         sigma2_proof: zk_sigma2,
         #[cfg(feature = "zk")]
         scalar_product_proof,
-    })
+    };
+
+    #[cfg(feature = "zk")]
+    return Ok((proof, zk_y_blinding));
+
+    #[cfg(not(feature = "zk"))]
+    Ok((proof, None))
 }
 
 /// Verify an evaluation proof
