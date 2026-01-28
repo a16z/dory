@@ -208,7 +208,7 @@ fn test_zk_statistical_indistinguishability() {
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let proof =
+            let (proof, _) =
                 create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,
@@ -247,7 +247,7 @@ fn test_zk_statistical_indistinguishability() {
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let proof =
+            let (proof, _) =
                 create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,
@@ -284,7 +284,7 @@ fn test_zk_statistical_indistinguishability() {
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let proof =
+            let (proof, _) =
                 create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,
@@ -393,7 +393,7 @@ fn test_zk_witness_independence() {
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let proof =
+            let (proof, _) =
                 create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,
@@ -430,7 +430,7 @@ fn test_zk_witness_independence() {
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
-            let proof =
+            let (proof, _) =
                 create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
                     &poly,
                     &point,

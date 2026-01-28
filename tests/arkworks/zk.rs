@@ -23,7 +23,7 @@ fn test_zk_full_workflow() {
     let expected_evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
         &poly,
         &point,
         tier_1,
@@ -67,7 +67,7 @@ fn test_zk_small_polynomial() {
     let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
         &poly,
         &point,
         tier_1,
@@ -113,7 +113,7 @@ fn test_zk_larger_polynomial() {
     let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
         &poly,
         &point,
         tier_1,
@@ -160,7 +160,7 @@ fn test_zk_non_square_matrix() {
     let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
         &poly,
         &point,
         tier_1,
@@ -209,17 +209,18 @@ fn test_zk_hidden_evaluation() {
 
     // Create ZK proof using unified API with ZK mode
     let mut prover_transcript = fresh_transcript();
-    let proof = create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
-        &poly,
-        &point,
-        Some(tier_1),
-        nu,
-        sigma,
-        &prover_setup,
-        &mut prover_transcript,
-        &mut rng,
-    )
-    .unwrap();
+    let (proof, _) =
+        create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+            &poly,
+            &point,
+            Some(tier_1),
+            nu,
+            sigma,
+            &prover_setup,
+            &mut prover_transcript,
+            &mut rng,
+        )
+        .unwrap();
 
     // Verify y_com is present in proof
     assert!(proof.y_com.is_some(), "ZK proof should contain y_com");
@@ -263,7 +264,7 @@ fn test_zk_tampered_e2_rejected() {
     let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let mut proof =
+    let (mut proof, _) =
         create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
             &poly,
             &point,
@@ -312,17 +313,18 @@ fn test_zk_hidden_evaluation_larger() {
     let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let proof = create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
-        &poly,
-        &point,
-        Some(tier_1),
-        nu,
-        sigma,
-        &prover_setup,
-        &mut prover_transcript,
-        &mut rng,
-    )
-    .unwrap();
+    let (proof, _) =
+        create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+            &poly,
+            &point,
+            Some(tier_1),
+            nu,
+            sigma,
+            &prover_setup,
+            &mut prover_transcript,
+            &mut rng,
+        )
+        .unwrap();
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(

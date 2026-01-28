@@ -242,7 +242,11 @@ fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
 
     cache_directory.map(|mut path| {
         path.push("dory");
-        path.push(format!("dory_{max_log_n}.urs"));
+        #[cfg(feature = "zk")]
+        let filename = format!("dory_{max_log_n}_zk.urs");
+        #[cfg(not(feature = "zk"))]
+        let filename = format!("dory_{max_log_n}.urs");
+        path.push(filename);
         path
     })
 }
