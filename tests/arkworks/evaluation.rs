@@ -16,9 +16,7 @@ fn test_evaluation_proof_small() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
-        .unwrap();
+    let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(nu, sigma, &setup).unwrap();
 
     let mut prover_transcript = fresh_transcript();
     let result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
@@ -33,7 +31,7 @@ fn test_evaluation_proof_small() {
     );
     assert!(result.is_ok());
 
-    let proof = result.unwrap();
+    let (proof, _) = result.unwrap();
     let evaluation = poly.evaluate(&point);
 
     let mut verifier_transcript = fresh_transcript();
@@ -61,9 +59,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
-        .unwrap();
+    let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(nu, sigma, &setup).unwrap();
 
     let mut prover_transcript = fresh_transcript();
     let result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
@@ -78,7 +74,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
     );
     assert!(result.is_ok());
 
-    let proof = result.unwrap();
+    let (proof, _) = result.unwrap();
     let evaluation = poly.evaluate(&point);
 
     let mut verifier_transcript = fresh_transcript();
@@ -109,12 +105,10 @@ fn test_evaluation_proof_constant_polynomial() {
     let expected_eval = poly.evaluate(&point);
     assert_eq!(expected_eval, ArkFr::from_u64(7));
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
-        .unwrap();
+    let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(nu, sigma, &setup).unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -154,12 +148,10 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
-        .unwrap();
+    let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(nu, sigma, &setup).unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -200,7 +192,7 @@ fn test_evaluation_proof_different_sizes() {
         let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(1, 1, &setup).unwrap();
 
         let mut prover_transcript = fresh_transcript();
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1,
@@ -235,7 +227,7 @@ fn test_evaluation_proof_different_sizes() {
         let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(3, 3, &setup).unwrap();
 
         let mut prover_transcript = fresh_transcript();
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1,
@@ -271,15 +263,13 @@ fn test_multiple_evaluations_same_commitment() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
-        .unwrap();
+    let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(nu, sigma, &setup).unwrap();
 
     for _ in 0..3 {
         let point = random_point(4);
 
         let mut prover_transcript = fresh_transcript();
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1.clone(),

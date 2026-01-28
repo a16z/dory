@@ -23,7 +23,7 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -80,10 +80,7 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
         &mut rng,
     );
 
-    assert!(
-        proof_result.is_err(),
-        "Proof generation should be rejected for nu > sigma"
-    );
+    assert!(proof_result.is_err(), "Proof generation should be rejected for nu > sigma");
 }
 
 #[test]
@@ -105,7 +102,7 @@ fn test_non_square_matrix_small() {
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -129,10 +126,7 @@ fn test_non_square_matrix_small() {
         &mut verifier_transcript,
     );
 
-    assert!(
-        result.is_ok(),
-        "Verification should succeed for nu < sigma (small)"
-    );
+    assert!(result.is_ok(), "Verification should succeed for nu < sigma (small)");
 }
 
 #[test]
@@ -155,7 +149,7 @@ fn test_non_square_matrix_very_rectangular() {
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -179,8 +173,5 @@ fn test_non_square_matrix_very_rectangular() {
         &mut verifier_transcript,
     );
 
-    assert!(
-        result.is_ok(),
-        "Verification should succeed for nu << sigma (very rectangular)"
-    );
+    assert!(result.is_ok(), "Verification should succeed for nu << sigma (very rectangular)");
 }
