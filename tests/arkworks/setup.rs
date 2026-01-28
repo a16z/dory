@@ -121,10 +121,14 @@ fn test_arkworks_setup_canonical_serialization() {
     let verifier = prover.to_verifier_setup();
 
     let mut prover_bytes = Vec::new();
-    prover.serialize_compressed(&mut prover_bytes).expect("Failed to serialize prover setup");
+    prover
+        .serialize_compressed(&mut prover_bytes)
+        .expect("Failed to serialize prover setup");
 
     let mut verifier_bytes = Vec::new();
-    verifier.serialize_compressed(&mut verifier_bytes).expect("Failed to serialize verifier setup");
+    verifier
+        .serialize_compressed(&mut verifier_bytes)
+        .expect("Failed to serialize verifier setup");
 
     let loaded_prover = ArkworksProverSetup::deserialize_compressed(&prover_bytes[..])
         .expect("Failed to deserialize prover setup");
@@ -197,8 +201,14 @@ fn test_arkworks_setup_new_from_urs() {
     let prover2 = ArkworksProverSetup::new_from_urs(&mut rng, max_log_n);
 
     // Verify they match (proving it loaded from disk)
-    assert_eq!(prover1.g1_vec[0], prover2.g1_vec[0], "g1_vec[0] should match");
-    assert_eq!(prover1.g2_vec[0], prover2.g2_vec[0], "g2_vec[0] should match");
+    assert_eq!(
+        prover1.g1_vec[0], prover2.g1_vec[0],
+        "g1_vec[0] should match"
+    );
+    assert_eq!(
+        prover1.g2_vec[0], prover2.g2_vec[0],
+        "g2_vec[0] should match"
+    );
     assert_eq!(prover1.h1, prover2.h1, "h1 should match");
     assert_eq!(prover1.h2, prover2.h2, "h2 should match");
     assert_eq!(prover1.ht, prover2.ht, "ht should match");

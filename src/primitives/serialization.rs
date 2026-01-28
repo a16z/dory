@@ -217,7 +217,9 @@ mod primitive_impls {
             match byte[0] {
                 0 => Ok(false),
                 1 => Ok(true),
-                _ => Err(SerializationError::InvalidData("Invalid bool value".to_string())),
+                _ => Err(SerializationError::InvalidData(
+                    "Invalid bool value".to_string(),
+                )),
             }
         }
     }

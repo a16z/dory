@@ -34,8 +34,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Poly1: {:?}", poly1);
     info!("Poly2: {:?}", poly2);
 
-    let commitment1 = poly1.commit::<BN254, G1Routines>(2, 2, &prover_setup).unwrap();
-    let commitment2 = poly2.commit::<BN254, G1Routines>(1, 1, &prover_setup).unwrap();
+    let commitment1 = poly1
+        .commit::<BN254, G1Routines>(2, 2, &prover_setup)
+        .unwrap();
+    let commitment2 = poly2
+        .commit::<BN254, G1Routines>(1, 1, &prover_setup)
+        .unwrap();
     info!("✓ Commitments ready\n");
 
     info!("Sampling random combination scalars r1, r2...");
@@ -123,8 +127,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("✓ Proof verified!");
 
     info!("===========================================");
-    let padded_poly_commitment =
-        padded_poly2.commit::<BN254, G1Routines>(2, 2, &prover_setup).unwrap();
+    let padded_poly_commitment = padded_poly2
+        .commit::<BN254, G1Routines>(2, 2, &prover_setup)
+        .unwrap();
     assert_eq!(padded_poly_commitment.0, commitment2.0);
     info!("✓ Padded poly commitment matches original poly2 commitment");
 

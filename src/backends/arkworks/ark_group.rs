@@ -254,7 +254,11 @@ pub struct G1Routines;
 impl DoryRoutines<ArkG1> for G1Routines {
     #[tracing::instrument(skip_all, name = "G1::msm", fields(len = bases.len()))]
     fn msm(bases: &[ArkG1], scalars: &[ArkFr]) -> ArkG1 {
-        assert_eq!(bases.len(), scalars.len(), "MSM requires equal length vectors");
+        assert_eq!(
+            bases.len(),
+            scalars.len(),
+            "MSM requires equal length vectors"
+        );
 
         if bases.is_empty() {
             return ArkG1::identity();
@@ -292,7 +296,11 @@ pub struct G2Routines;
 impl DoryRoutines<ArkG2> for G2Routines {
     #[tracing::instrument(skip_all, name = "G2::msm", fields(len = bases.len()))]
     fn msm(bases: &[ArkG2], scalars: &[ArkFr]) -> ArkG2 {
-        assert_eq!(bases.len(), scalars.len(), "MSM requires equal length vectors");
+        assert_eq!(
+            bases.len(),
+            scalars.len(),
+            "MSM requires equal length vectors"
+        );
 
         if bases.is_empty() {
             return ArkG2::identity();

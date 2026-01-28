@@ -77,7 +77,9 @@ fn bench_prove(c: &mut Criterion) {
     let nu = 13;
     let sigma = 13;
 
-    let (_, tier_1) = poly.commit::<BN254, G1Routines>(nu, sigma, &prover_setup).unwrap();
+    let (_, tier_1) = poly
+        .commit::<BN254, G1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
 
     c.bench_function("prove_2^26_coefficients", |b| {
         b.iter(|| {
@@ -103,7 +105,9 @@ fn bench_verify(c: &mut Criterion) {
     let nu = 13;
     let sigma = 13;
 
-    let (tier_2, tier_1) = poly.commit::<BN254, G1Routines>(nu, sigma, &prover_setup).unwrap();
+    let (tier_2, tier_1) = poly
+        .commit::<BN254, G1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
 
     let mut prover_transcript = Blake2bTranscript::new(b"dory-bench");
     let mut rng = thread_rng();
@@ -164,8 +168,9 @@ fn bench_end_to_end(c: &mut Criterion) {
             let poly = ArkworksPolynomial::new(coefficients);
 
             // Commit
-            let (tier_2, tier_1) =
-                poly.commit::<BN254, G1Routines>(nu, sigma, &prover_setup).unwrap();
+            let (tier_2, tier_1) = poly
+                .commit::<BN254, G1Routines>(nu, sigma, &prover_setup)
+                .unwrap();
 
             // Evaluate
             let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random(&mut rng)).collect();
@@ -201,5 +206,11 @@ fn bench_end_to_end(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_commitment, bench_prove, bench_verify, bench_end_to_end);
+criterion_group!(
+    benches,
+    bench_commitment,
+    bench_prove,
+    bench_verify,
+    bench_end_to_end
+);
 criterion_main!(benches);

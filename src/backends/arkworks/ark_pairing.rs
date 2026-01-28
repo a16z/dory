@@ -108,8 +108,11 @@ mod pairing_helpers {
         #[cfg(feature = "cache")]
         {
             if let Some(cached_g1) = crate::backends::arkworks::ark_cache::get_prepared_g1() {
-                let ps_prep: Vec<_> =
-                    ps.iter().enumerate().map(|(i, _)| cached_g1[i].clone()).collect();
+                let ps_prep: Vec<_> = ps
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| cached_g1[i].clone())
+                    .collect();
                 return multi_pair_with_prepared(ps_prep, &qs_prep);
             }
         }
@@ -332,7 +335,11 @@ impl PairingCurve for BN254 {
 
     #[tracing::instrument(skip_all, name = "BN254::multi_pair", fields(len = ps.len()))]
     fn multi_pair(ps: &[Self::G1], qs: &[Self::G2]) -> Self::GT {
-        assert_eq!(ps.len(), qs.len(), "multi_pair requires equal length vectors");
+        assert_eq!(
+            ps.len(),
+            qs.len(),
+            "multi_pair requires equal length vectors"
+        );
 
         if ps.is_empty() {
             return Self::GT::identity();
@@ -343,7 +350,11 @@ impl PairingCurve for BN254 {
 
     #[tracing::instrument(skip_all, name = "BN254::multi_pair_g2_setup", fields(len = ps.len()))]
     fn multi_pair_g2_setup(ps: &[Self::G1], qs: &[Self::G2]) -> Self::GT {
-        assert_eq!(ps.len(), qs.len(), "multi_pair_g2_setup requires equal length vectors");
+        assert_eq!(
+            ps.len(),
+            qs.len(),
+            "multi_pair_g2_setup requires equal length vectors"
+        );
 
         if ps.is_empty() {
             return Self::GT::identity();
@@ -354,7 +365,11 @@ impl PairingCurve for BN254 {
 
     #[tracing::instrument(skip_all, name = "BN254::multi_pair_g1_setup", fields(len = ps.len()))]
     fn multi_pair_g1_setup(ps: &[Self::G1], qs: &[Self::G2]) -> Self::GT {
-        assert_eq!(ps.len(), qs.len(), "multi_pair_g1_setup requires equal length vectors");
+        assert_eq!(
+            ps.len(),
+            qs.len(),
+            "multi_pair_g1_setup requires equal length vectors"
+        );
 
         if ps.is_empty() {
             return Self::GT::identity();

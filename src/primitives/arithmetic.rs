@@ -73,7 +73,11 @@ pub trait PairingCurve: Clone {
 
     /// Π e(p_i, q_i)
     fn multi_pair(ps: &[Self::G1], qs: &[Self::G2]) -> Self::GT {
-        assert_eq!(ps.len(), qs.len(), "multi_pair requires equal length vectors");
+        assert_eq!(
+            ps.len(),
+            qs.len(),
+            "multi_pair requires equal length vectors"
+        );
 
         if ps.is_empty() {
             return Self::GT::identity();
@@ -81,7 +85,9 @@ pub trait PairingCurve: Clone {
 
         ps.iter()
             .zip(qs.iter())
-            .fold(Self::GT::identity(), |acc, (p, q)| acc.add(&Self::pair(p, q)))
+            .fold(Self::GT::identity(), |acc, (p, q)| {
+                acc.add(&Self::pair(p, q))
+            })
     }
 
     /// Optimized multi-pairing when G2 points come from setup/generators

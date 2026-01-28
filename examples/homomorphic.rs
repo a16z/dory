@@ -25,7 +25,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 1: Setup
     let max_log_n = 10;
-    info!("1. Generating transparent setup (max_log_n = {})...", max_log_n);
+    info!(
+        "1. Generating transparent setup (max_log_n = {})...",
+        max_log_n
+    );
     let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
     info!("   ✓ Setup complete\n");
 
@@ -50,7 +53,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("3. Computing individual commitments...");
     let commitments: Vec<_> = polys
         .iter()
-        .map(|poly| poly.commit::<BN254, G1Routines>(nu, sigma, &prover_setup).unwrap())
+        .map(|poly| {
+            poly.commit::<BN254, G1Routines>(nu, sigma, &prover_setup)
+                .unwrap()
+        })
         .collect();
     info!("   ✓ {} commitments computed\n", num_polys);
 
@@ -95,15 +101,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for coeff_idx in 0..poly_size {
             // Create point that selects the coeff_idx-th vertex of the hypercube
             let point: Vec<ArkFr> = (0..num_vars)
-                .map(
-                    |bit_idx| {
-                        if (coeff_idx >> bit_idx) & 1 == 1 {
-                            ArkFr::one()
-                        } else {
-                            ArkFr::zero()
-                        }
-                    },
-                )
+                .map(|bit_idx| {
+                    if (coeff_idx >> bit_idx) & 1 == 1 {
+                        ArkFr::one()
+                    } else {
+                        ArkFr::zero()
+                    }
+                })
                 .collect();
 
             let eval = polys[poly_idx].evaluate(&point);
@@ -162,7 +166,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("===========================================");
     info!("Homomorphic combination verified!");
-    info!("Combined {} polynomials using random coefficients", num_polys);
+    info!(
+        "Combined {} polynomials using random coefficients",
+        num_polys
+    );
 
     Ok(())
 }

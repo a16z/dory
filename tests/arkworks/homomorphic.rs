@@ -21,7 +21,10 @@ fn test_homomorphic_combination_e2e() {
 
     let commitments: Vec<_> = polys
         .iter()
-        .map(|poly| poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup).unwrap())
+        .map(|poly| {
+            poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+                .unwrap()
+        })
         .collect();
 
     let coeffs: Vec<ArkFr> = (0..5).map(|_| ArkFr::random(&mut rng)).collect();
@@ -51,15 +54,13 @@ fn test_homomorphic_combination_e2e() {
         #[allow(clippy::needless_range_loop)]
         for coeff_idx in 0..poly_size {
             let point: Vec<ArkFr> = (0..num_vars)
-                .map(
-                    |bit_idx| {
-                        if (coeff_idx >> bit_idx) & 1 == 1 {
-                            ArkFr::one()
-                        } else {
-                            ArkFr::zero()
-                        }
-                    },
-                )
+                .map(|bit_idx| {
+                    if (coeff_idx >> bit_idx) & 1 == 1 {
+                        ArkFr::one()
+                    } else {
+                        ArkFr::zero()
+                    }
+                })
                 .collect();
 
             let eval = polys[poly_idx].evaluate(&point);
@@ -108,7 +109,10 @@ fn test_homomorphic_combination_e2e() {
         &mut verifier_transcript,
     );
 
-    assert!(result.is_ok(), "Verification should succeed for homomorphically combined commitment");
+    assert!(
+        result.is_ok(),
+        "Verification should succeed for homomorphically combined commitment"
+    );
 }
 
 #[test]
@@ -125,7 +129,10 @@ fn test_homomorphic_combination_small() {
 
     let commitments: Vec<_> = polys
         .iter()
-        .map(|poly| poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup).unwrap())
+        .map(|poly| {
+            poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+                .unwrap()
+        })
         .collect();
 
     let coeffs: Vec<ArkFr> = (0..5).map(|_| ArkFr::random(&mut rng)).collect();
@@ -150,15 +157,13 @@ fn test_homomorphic_combination_small() {
         #[allow(clippy::needless_range_loop)]
         for coeff_idx in 0..poly_size {
             let point: Vec<ArkFr> = (0..num_vars)
-                .map(
-                    |bit_idx| {
-                        if (coeff_idx >> bit_idx) & 1 == 1 {
-                            ArkFr::one()
-                        } else {
-                            ArkFr::zero()
-                        }
-                    },
-                )
+                .map(|bit_idx| {
+                    if (coeff_idx >> bit_idx) & 1 == 1 {
+                        ArkFr::one()
+                    } else {
+                        ArkFr::zero()
+                    }
+                })
                 .collect();
 
             let eval = polys[poly_idx].evaluate(&point);

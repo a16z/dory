@@ -166,7 +166,10 @@ where
         }
 
         // Setup not found on disk - generate new setup
-        tracing::info!("Setup not found on disk, generating new setup for max_log_n={}", max_log_n);
+        tracing::info!(
+            "Setup not found on disk, generating new setup for max_log_n={}",
+            max_log_n
+        );
         let prover_setup = ProverSetup::new(rng, max_log_n);
         let verifier_setup = prover_setup.to_verifier_setup();
 

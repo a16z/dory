@@ -132,7 +132,11 @@ where
 
     // D₂ = e(⟨Γ₁[sigma], v_vec⟩, Γ2,fin) + r_d2·HT
     let g1_bases = &setup.g1_vec[..1 << sigma];
-    let d2 = Mo::mask(E::pair(&M1::msm(g1_bases, &v_vec), g2_fin), &setup.ht, &r_d2);
+    let d2 = Mo::mask(
+        E::pair(&M1::msm(g1_bases, &v_vec), g2_fin),
+        &setup.ht,
+        &r_d2,
+    );
 
     // E₁ = ⟨row_commitments, left_vec⟩ + r_e1·H₁
     let e1 = Mo::mask(M1::msm(&row_commitments, &left_vec), &setup.h1, &r_e1);

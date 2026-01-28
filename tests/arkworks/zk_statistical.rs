@@ -27,7 +27,9 @@ impl BucketTracker {
     }
 
     fn record(&mut self, name: &str, bucket: usize) {
-        self.buckets.entry(name.to_string()).or_insert_with(|| vec![0; NUM_BUCKETS])[bucket] += 1;
+        self.buckets
+            .entry(name.to_string())
+            .or_insert_with(|| vec![0; NUM_BUCKETS])[bucket] += 1;
     }
 
     fn chi_squared(&self, name: &str, expected: f64) -> Option<f64> {
@@ -81,26 +83,62 @@ fn collect_full_zk_proof_stats(proof: &ArkDoryProof, tracker: &mut BucketTracker
     // First reduce messages (D values only - e1_beta/e2_beta are public)
     for (i, msg) in proof.first_messages.iter().enumerate() {
         let prefix = format!("zk_first_{}", i);
-        tracker.record(&format!("{}_d1_left", prefix), bucket_from_serializable(&msg.d1_left));
-        tracker.record(&format!("{}_d1_right", prefix), bucket_from_serializable(&msg.d1_right));
-        tracker.record(&format!("{}_d2_left", prefix), bucket_from_serializable(&msg.d2_left));
-        tracker.record(&format!("{}_d2_right", prefix), bucket_from_serializable(&msg.d2_right));
+        tracker.record(
+            &format!("{}_d1_left", prefix),
+            bucket_from_serializable(&msg.d1_left),
+        );
+        tracker.record(
+            &format!("{}_d1_right", prefix),
+            bucket_from_serializable(&msg.d1_right),
+        );
+        tracker.record(
+            &format!("{}_d2_left", prefix),
+            bucket_from_serializable(&msg.d2_left),
+        );
+        tracker.record(
+            &format!("{}_d2_right", prefix),
+            bucket_from_serializable(&msg.d2_right),
+        );
     }
 
     // Second reduce messages
     for (i, msg) in proof.second_messages.iter().enumerate() {
         let prefix = format!("zk_second_{}", i);
-        tracker.record(&format!("{}_c_plus", prefix), bucket_from_serializable(&msg.c_plus));
-        tracker.record(&format!("{}_c_minus", prefix), bucket_from_serializable(&msg.c_minus));
-        tracker.record(&format!("{}_e1_plus", prefix), bucket_from_serializable(&msg.e1_plus));
-        tracker.record(&format!("{}_e1_minus", prefix), bucket_from_serializable(&msg.e1_minus));
-        tracker.record(&format!("{}_e2_plus", prefix), bucket_from_serializable(&msg.e2_plus));
-        tracker.record(&format!("{}_e2_minus", prefix), bucket_from_serializable(&msg.e2_minus));
+        tracker.record(
+            &format!("{}_c_plus", prefix),
+            bucket_from_serializable(&msg.c_plus),
+        );
+        tracker.record(
+            &format!("{}_c_minus", prefix),
+            bucket_from_serializable(&msg.c_minus),
+        );
+        tracker.record(
+            &format!("{}_e1_plus", prefix),
+            bucket_from_serializable(&msg.e1_plus),
+        );
+        tracker.record(
+            &format!("{}_e1_minus", prefix),
+            bucket_from_serializable(&msg.e1_minus),
+        );
+        tracker.record(
+            &format!("{}_e2_plus", prefix),
+            bucket_from_serializable(&msg.e2_plus),
+        );
+        tracker.record(
+            &format!("{}_e2_minus", prefix),
+            bucket_from_serializable(&msg.e2_minus),
+        );
     }
 
     // Final message
-    tracker.record("zk_final_e1", bucket_from_serializable(&proof.final_message.e1));
-    tracker.record("zk_final_e2", bucket_from_serializable(&proof.final_message.e2));
+    tracker.record(
+        "zk_final_e1",
+        bucket_from_serializable(&proof.final_message.e1),
+    );
+    tracker.record(
+        "zk_final_e2",
+        bucket_from_serializable(&proof.final_message.e2),
+    );
 
     // Sigma1 proof (proves y_com and E2 commit to same y)
     if let Some(ref sigma1) = proof.sigma1_proof {
@@ -164,8 +202,9 @@ fn test_zk_statistical_indistinguishability() {
             let coeffs = vec![ArkFr::zero(); poly_size];
             let poly = ArkworksPolynomial::new(coeffs);
 
-            let (tier_2, tier_1) =
-                poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup).unwrap();
+            let (tier_2, tier_1) = poly
+                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+                .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
@@ -202,8 +241,9 @@ fn test_zk_statistical_indistinguishability() {
             let coeffs = vec![ArkFr::one(); poly_size];
             let poly = ArkworksPolynomial::new(coeffs);
 
-            let (tier_2, tier_1) =
-                poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup).unwrap();
+            let (tier_2, tier_1) = poly
+                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+                .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
@@ -238,8 +278,9 @@ fn test_zk_statistical_indistinguishability() {
         {
             let poly = random_polynomial(poly_size);
 
-            let (tier_2, tier_1) =
-                poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup).unwrap();
+            let (tier_2, tier_1) = poly
+                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+                .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
@@ -284,19 +325,28 @@ fn test_zk_statistical_indistinguishability() {
         // Test uniformity for each witness type
         if let Some(chi2) = tracker_zeros.chi_squared(&name, expected) {
             if chi2 >= critical_value {
-                failures.push(format!("zeros/{}: χ²={:.2} >= {:.2}", name, chi2, critical_value));
+                failures.push(format!(
+                    "zeros/{}: χ²={:.2} >= {:.2}",
+                    name, chi2, critical_value
+                ));
             }
         }
 
         if let Some(chi2) = tracker_ones.chi_squared(&name, expected) {
             if chi2 >= critical_value {
-                failures.push(format!("ones/{}: χ²={:.2} >= {:.2}", name, chi2, critical_value));
+                failures.push(format!(
+                    "ones/{}: χ²={:.2} >= {:.2}",
+                    name, chi2, critical_value
+                ));
             }
         }
 
         if let Some(chi2) = tracker_random.chi_squared(&name, expected) {
             if chi2 >= critical_value {
-                failures.push(format!("random/{}: χ²={:.2} >= {:.2}", name, chi2, critical_value));
+                failures.push(format!(
+                    "random/{}: χ²={:.2} >= {:.2}",
+                    name, chi2, critical_value
+                ));
             }
         }
     }
@@ -337,8 +387,9 @@ fn test_zk_witness_independence() {
             coeffs[0] = ArkFr::from_u64(42);
             let poly = ArkworksPolynomial::new(coeffs);
 
-            let (tier_2, tier_1) =
-                poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup).unwrap();
+            let (tier_2, tier_1) = poly
+                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+                .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
@@ -373,8 +424,9 @@ fn test_zk_witness_independence() {
         {
             let poly = random_polynomial(poly_size);
 
-            let (tier_2, tier_1) =
-                poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup).unwrap();
+            let (tier_2, tier_1) = poly
+                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+                .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
