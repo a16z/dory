@@ -57,6 +57,7 @@ fn test_setup_consistency() {
 }
 
 #[test]
+#[cfg(feature = "disk-persistence")]
 fn test_setup_disk_persistence() {
     use dory_pcs::backends::arkworks::BN254;
     use dory_pcs::setup::{load_setup, save_setup};
@@ -88,6 +89,7 @@ fn test_setup_disk_persistence() {
 }
 
 #[test]
+#[cfg(feature = "disk-persistence")]
 fn test_setup_function_uses_disk() {
     use dory_pcs::backends::arkworks::BN254;
     use dory_pcs::{generate_urs, setup};

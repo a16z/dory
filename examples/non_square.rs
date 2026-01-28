@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 5: Prove
     info!("5. Generating evaluation proof...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-non-square-example");
-    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,

@@ -5,7 +5,7 @@
 use crate::primitives::arithmetic::{Group, PairingCurve};
 use crate::primitives::DorySerialize;
 
-/// Transcript to standardize fiat shamir across different transcript impleemntations
+/// Transcript to standardize fiat shamir across different transcript implementations
 pub trait Transcript {
     type Curve: PairingCurve;
     fn append_bytes(&mut self, label: &[u8], bytes: &[u8]);

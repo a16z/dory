@@ -33,7 +33,7 @@ fn test_evaluation_proof_small() {
     );
     assert!(result.is_ok());
 
-    let proof = result.unwrap();
+    let (proof, _) = result.unwrap();
     let evaluation = poly.evaluate(&point);
 
     let mut verifier_transcript = fresh_transcript();
@@ -78,7 +78,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
     );
     assert!(result.is_ok());
 
-    let proof = result.unwrap();
+    let (proof, _) = result.unwrap();
     let evaluation = poly.evaluate(&point);
 
     let mut verifier_transcript = fresh_transcript();
@@ -114,7 +114,7 @@ fn test_evaluation_proof_constant_polynomial() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -159,7 +159,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
         &point,
         tier_1,
@@ -200,7 +200,7 @@ fn test_evaluation_proof_different_sizes() {
         let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(1, 1, &setup).unwrap();
 
         let mut prover_transcript = fresh_transcript();
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1,
@@ -235,7 +235,7 @@ fn test_evaluation_proof_different_sizes() {
         let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(3, 3, &setup).unwrap();
 
         let mut prover_transcript = fresh_transcript();
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1,
@@ -279,7 +279,7 @@ fn test_multiple_evaluations_same_commitment() {
         let point = random_point(4);
 
         let mut prover_transcript = fresh_transcript();
-        let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
             &poly,
             &point,
             tier_1.clone(),

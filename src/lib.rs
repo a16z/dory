@@ -277,7 +277,7 @@ pub fn prove<F, E, M1, M2, P, T, Mo, R>(
     setup: &ProverSetup<E>,
     transcript: &mut T,
     rng: &mut R,
-) -> Result<DoryProof<E::G1, E::G2, E::GT>, DoryError>
+) -> Result<(DoryProof<E::G1, E::G2, E::GT>, Option<F>), DoryError>
 where
     F: Field,
     E: PairingCurve,

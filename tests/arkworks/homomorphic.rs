@@ -87,7 +87,7 @@ fn test_homomorphic_combination_e2e() {
 
     // Create evaluation proof using combined commitment
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -178,7 +178,7 @@ fn test_homomorphic_combination_small() {
     let evaluation = combined_poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &combined_poly,
         &point,
         combined_tier1,

@@ -139,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 8: Generate proof
     info!("8. Generating evaluation proof for combined polynomial...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-homomorphic-example");
-    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
         &combined_poly,
         &point,
         combined_tier1,

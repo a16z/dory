@@ -74,7 +74,7 @@ pub fn create_evaluation_proof<F, E, M1, M2, T, P, Mo, R>(
     setup: &ProverSetup<E>,
     transcript: &mut T,
     rng: &mut R,
-) -> Result<DoryProof<E::G1, E::G2, E::GT>, DoryError>
+) -> Result<(DoryProof<E::G1, E::G2, E::GT>, Option<F>), DoryError>
 where
     F: Field,
     E: PairingCurve,
@@ -149,7 +149,7 @@ where
 
     // ZK mode: compute y, y_com, E2, and sigma proofs
     #[cfg(feature = "zk")]
-    let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2) =
+    let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2, zk_y_blinding) =
         if std::any::TypeId::of::<Mo>() == std::any::TypeId::of::<ZK>() {
             use crate::reduce_and_fold::{generate_sigma1_proof, generate_sigma2_proof};
 
@@ -169,9 +169,9 @@ where
             let t2 = -r_d2;
             let sigma2 = generate_sigma2_proof::<E, T, R>(&t1, &t2, setup, transcript, rng);
 
-            (Some(e2), Some(y_com), Some(sigma1), Some(sigma2))
+            (Some(e2), Some(y_com), Some(sigma1), Some(sigma2), Some(r_y))
         } else {
-            (None, None, None, None)
+            (None, None, None, None, None)
         };
 
     // v₂ = v_vec · Γ₂,fin
@@ -249,7 +249,7 @@ where
     transcript.append_serde(b"final_e2", &final_message.e2);
     let _d = transcript.challenge_scalar(b"d");
 
-    Ok(DoryProof {
+    let proof = DoryProof {
         vmv_message,
         first_messages,
         second_messages,
@@ -266,7 +266,13 @@ where
         sigma2_proof: zk_sigma2,
         #[cfg(feature = "zk")]
         scalar_product_proof,
-    })
+    };
+
+    #[cfg(feature = "zk")]
+    return Ok((proof, zk_y_blinding));
+
+    #[cfg(not(feature = "zk"))]
+    Ok((proof, None))
 }
 
 /// Verify an evaluation proof
