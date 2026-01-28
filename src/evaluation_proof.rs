@@ -149,7 +149,7 @@ where
 
     // ZK mode: compute y, y_com, E2, and sigma proofs
     #[cfg(feature = "zk")]
-    let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2) =
+    let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2, zk_y_blinding) =
         if std::any::TypeId::of::<Mo>() == std::any::TypeId::of::<ZK>() {
             use crate::reduce_and_fold::{generate_sigma1_proof, generate_sigma2_proof};
 
@@ -169,9 +169,9 @@ where
             let t2 = -r_d2;
             let sigma2 = generate_sigma2_proof::<E, T, R>(&t1, &t2, setup, transcript, rng);
 
-            (Some(e2), Some(y_com), Some(sigma1), Some(sigma2))
+            (Some(e2), Some(y_com), Some(sigma1), Some(sigma2), Some(r_y))
         } else {
-            (None, None, None, None)
+            (None, None, None, None, None)
         };
 
     // v₂ = v_vec · Γ₂,fin
@@ -262,6 +262,8 @@ where
         y_com: zk_y_com,
         #[cfg(feature = "zk")]
         sigma1_proof: zk_sigma1,
+        #[cfg(feature = "zk")]
+        y_blinding: zk_y_blinding,
         #[cfg(feature = "zk")]
         sigma2_proof: zk_sigma2,
         #[cfg(feature = "zk")]
