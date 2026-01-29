@@ -153,7 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Examples
 
-The repository includes three comprehensive examples demonstrating different aspects of Dory:
+The repository includes four comprehensive examples demonstrating different aspects of Dory:
 
 1. **`basic_e2e`** - Standard end-to-end workflow with square matrix (nu=4, sigma=4)
    ```bash
@@ -168,6 +168,11 @@ The repository includes three comprehensive examples demonstrating different asp
 3. **`non_square`** - Non-square matrix layout (nu=3, sigma=4) demonstrating flexibility
    ```bash
    cargo run --example non_square --features backends
+   ```
+
+4. **`homomorphic_mixed_sizes`** - Combining polynomials with different matrix dimensions
+   ```bash
+   cargo run --example homomorphic_mixed_sizes --features backends
    ```
 
 ## Development Setup

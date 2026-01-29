@@ -31,8 +31,8 @@
 //! - [`error`] - Error types
 //!
 //! ### Backend Implementations
-//! - [`backends`] - Concrete backend implementations (available with feature flags)
-//!   - [`backends::arkworks`] - Arkworks backend with BN254 curve (requires `arkworks` feature)
+//! - `backends` - Concrete backend implementations (available with feature flags)
+//!   - `backends::arkworks` - Arkworks backend with BN254 curve (requires `arkworks` feature)
 //!
 //! ## Usage
 //!
@@ -84,9 +84,10 @@
 //!
 //! ## Feature Flags
 //!
-//! - `backends` - Enable concrete backends (currently Arkworks BN254)
+//! - `backends` - Enable concrete backends (currently Arkworks BN254, includes `disk-persistence`)
 //! - `cache` - Enable prepared point caching (~20-30% speedup, requires `parallel`)
 //! - `parallel` - Enable Rayon parallelization for MSMs and pairings
+//! - `disk-persistence` - Enable automatic setup caching to disk
 
 /// Error types for Dory PCS operations
 pub mod error;

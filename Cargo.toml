@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "dory-pcs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.75"
 authors = [
@@ -13,7 +13,7 @@ authors = [
 license = "Apache-2.0 OR MIT"
 description = "A high performance and modular implementation of the Dory polynomial commitment scheme."
 repository = "https://github.com/a16z/dory"
-documentation = "https://docs.rs/dory"
+documentation = "https://docs.rs/dory-pcs"
 readme = "README.md"
 keywords = ["cryptography", "zkp", "commitment", "polynomial", "pcs"]
 categories = ["cryptography", "algorithms"]
@@ -22,6 +22,7 @@ include = [
     "examples/**",
     "benches/**",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE-APACHE",
     "LICENSE-MIT",
     "Cargo.toml",
@@ -52,7 +53,7 @@ disk-persistence = []
 [dependencies]
 thiserror = "2.0"
 rand_core = "0.6"
-dory-derive = { version = "0.1.0", path = "derive" }
+dory-derive = { version = "0.2.0", path = "derive" }
 tracing = "0.1"
 
 # Arkworks backend
