@@ -50,25 +50,40 @@ fn cache_initialization() {
     let g1_vec: Vec<ArkG1> = (0..10).map(|_| ArkG1::random(&mut rng)).collect();
     let g2_vec: Vec<ArkG2> = (0..10).map(|_| ArkG2::random(&mut rng)).collect();
 
-    assert!(!ark_cache::is_cached());
-
     ark_cache::init_cache(&g1_vec, &g2_vec);
 
     assert!(ark_cache::is_cached());
-    assert_eq!(ark_cache::get_prepared_g1().unwrap().len(), 10);
-    assert_eq!(ark_cache::get_prepared_g2().unwrap().len(), 10);
+    let cache = ark_cache::get_prepared_cache().unwrap();
+    assert_eq!(cache.g1_prepared.len(), 10);
+    assert_eq!(cache.g2_prepared.len(), 10);
 }
 
 #[cfg(feature = "cache")]
 #[test]
-#[should_panic(expected = "Cache already initialized")]
-fn cache_double_initialization_panics() {
+fn cache_smart_reinit() {
     let mut rng = thread_rng();
-    let g1_vec: Vec<ArkG1> = (0..5).map(|_| ArkG1::random(&mut rng)).collect();
-    let g2_vec: Vec<ArkG2> = (0..5).map(|_| ArkG2::random(&mut rng)).collect();
 
-    ark_cache::init_cache(&g1_vec, &g2_vec);
-    ark_cache::init_cache(&g1_vec, &g2_vec);
+    // Initialize with small size
+    let g1_small: Vec<ArkG1> = (0..5).map(|_| ArkG1::random(&mut rng)).collect();
+    let g2_small: Vec<ArkG2> = (0..5).map(|_| ArkG2::random(&mut rng)).collect();
+    ark_cache::init_cache(&g1_small, &g2_small);
+
+    let cache = ark_cache::get_prepared_cache().unwrap();
+    let small_len = cache.g1_prepared.len();
+
+    // Re-init with same size — should be a no-op (reuses existing)
+    ark_cache::init_cache(&g1_small, &g2_small);
+    let cache = ark_cache::get_prepared_cache().unwrap();
+    assert_eq!(cache.g1_prepared.len(), small_len);
+
+    // Re-init with larger size — should replace cache
+    let g1_large: Vec<ArkG1> = (0..20).map(|_| ArkG1::random(&mut rng)).collect();
+    let g2_large: Vec<ArkG2> = (0..20).map(|_| ArkG2::random(&mut rng)).collect();
+    ark_cache::init_cache(&g1_large, &g2_large);
+
+    let cache = ark_cache::get_prepared_cache().unwrap();
+    assert_eq!(cache.g1_prepared.len(), 20);
+    assert_eq!(cache.g2_prepared.len(), 20);
 }
 
 #[cfg(feature = "cache")]

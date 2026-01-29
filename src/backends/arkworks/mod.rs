@@ -21,4 +21,4 @@ pub use ark_setup::{ArkworksProverSetup, ArkworksVerifierSetup};
 pub use blake2b_transcript::Blake2bTranscript;
 
 #[cfg(feature = "cache")]
-pub use ark_cache::{get_prepared_g1, get_prepared_g2, init_cache, is_cached};
+pub use ark_cache::{get_prepared_cache, init_cache, is_cached, PreparedCache};

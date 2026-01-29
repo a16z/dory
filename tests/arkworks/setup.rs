@@ -186,7 +186,7 @@ fn test_arkworks_setup_new_from_urs() {
 
     let cache_file = cache_directory.map(|mut path| {
         path.push("dory");
-        path.push(format!("dory_{}.urs", max_log_n));
+        path.push(format!("dory_{max_log_n}.urs"));
         path
     });
 

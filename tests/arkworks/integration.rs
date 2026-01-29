@@ -108,7 +108,7 @@ fn test_batched_proofs() {
     for i in 0..5 {
         let point = random_point(8);
 
-        let mut prover_transcript = Blake2bTranscript::new(format!("test-{}", i).as_bytes());
+        let mut prover_transcript = Blake2bTranscript::new(format!("test-{i}").as_bytes());
         let proof = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _>(
             &poly,
             &point,
@@ -121,7 +121,7 @@ fn test_batched_proofs() {
         .unwrap();
         let evaluation = poly.evaluate(&point);
 
-        let mut verifier_transcript = Blake2bTranscript::new(format!("test-{}", i).as_bytes());
+        let mut verifier_transcript = Blake2bTranscript::new(format!("test-{i}").as_bytes());
         let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
             tier_2,
             evaluation,
@@ -131,7 +131,7 @@ fn test_batched_proofs() {
             &mut verifier_transcript,
         );
 
-        assert!(result.is_ok(), "Proof {} should verify", i);
+        assert!(result.is_ok(), "Proof {i} should verify");
     }
 }
 

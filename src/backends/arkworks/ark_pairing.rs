@@ -75,8 +75,8 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         {
-            if let Some(cached_g2) = crate::backends::arkworks::ark_cache::get_prepared_g2() {
-                return multi_pair_with_prepared(ps_prep, &cached_g2[..qs.len()]);
+            if let Some(cache) = crate::backends::arkworks::ark_cache::get_prepared_cache() {
+                return multi_pair_with_prepared(ps_prep, &cache.g2_prepared[..qs.len()]);
             }
         }
 
@@ -107,11 +107,11 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         {
-            if let Some(cached_g1) = crate::backends::arkworks::ark_cache::get_prepared_g1() {
+            if let Some(cache) = crate::backends::arkworks::ark_cache::get_prepared_cache() {
                 let ps_prep: Vec<_> = ps
                     .iter()
                     .enumerate()
-                    .map(|(i, _)| cached_g1[i].clone())
+                    .map(|(i, _)| cache.g1_prepared[i].clone())
                     .collect();
                 return multi_pair_with_prepared(ps_prep, &qs_prep);
             }
@@ -189,9 +189,11 @@ mod pairing_helpers {
         let chunk_size = determine_chunk_size(ps.len());
 
         #[cfg(feature = "cache")]
-        let cached_g2 = crate::backends::arkworks::ark_cache::get_prepared_g2();
+        let cache = crate::backends::arkworks::ark_cache::get_prepared_cache();
         #[cfg(not(feature = "cache"))]
-        let cached_g2: Option<&[_]> = None;
+        let cache: Option<
+            std::sync::Arc<crate::backends::arkworks::ark_cache::PreparedCache>,
+        > = None;
 
         let combined = ps
             .par_chunks(chunk_size)
@@ -208,8 +210,8 @@ mod pairing_helpers {
                     })
                     .collect();
 
-                let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = if let Some(cached) = cached_g2 {
-                    cached[start_idx..end_idx].to_vec()
+                let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = if let Some(ref c) = cache {
+                    c.g2_prepared[start_idx..end_idx].to_vec()
                 } else {
                     use ark_bn254::G2Affine;
                     qs[start_idx..end_idx]
@@ -243,9 +245,11 @@ mod pairing_helpers {
         let chunk_size = determine_chunk_size(ps.len());
 
         #[cfg(feature = "cache")]
-        let cached_g1 = crate::backends::arkworks::ark_cache::get_prepared_g1();
+        let cache = crate::backends::arkworks::ark_cache::get_prepared_cache();
         #[cfg(not(feature = "cache"))]
-        let cached_g1: Option<&[_]> = None;
+        let cache: Option<
+            std::sync::Arc<crate::backends::arkworks::ark_cache::PreparedCache>,
+        > = None;
 
         let combined = qs
             .par_chunks(chunk_size)
@@ -262,8 +266,8 @@ mod pairing_helpers {
                     })
                     .collect();
 
-                let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = if let Some(cached) = cached_g1 {
-                    cached[start_idx..end_idx].to_vec()
+                let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = if let Some(ref c) = cache {
+                    c.g1_prepared[start_idx..end_idx].to_vec()
                 } else {
                     use ark_bn254::G1Affine;
                     ps[start_idx..end_idx]

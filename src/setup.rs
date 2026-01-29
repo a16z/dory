@@ -236,7 +236,7 @@ fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
 
     cache_directory.map(|mut path| {
         path.push("dory");
-        path.push(format!("dory_{}.urs", max_log_n));
+        path.push(format!("dory_{max_log_n}.urs"));
         path
     })
 }
@@ -265,21 +265,21 @@ pub fn save_setup<E: PairingCurve>(
 
     if let Some(parent) = storage_path.parent() {
         fs::create_dir_all(parent)
-            .unwrap_or_else(|e| panic!("Failed to create storage directory: {}", e));
+            .unwrap_or_else(|e| panic!("Failed to create storage directory: {e}"));
     }
 
     tracing::info!("Saving setup to {}", storage_path.display());
 
-    let file = File::create(&storage_path)
-        .unwrap_or_else(|e| panic!("Failed to create setup file: {}", e));
+    let file =
+        File::create(&storage_path).unwrap_or_else(|e| panic!("Failed to create setup file: {e}"));
 
     let mut writer = BufWriter::new(file);
 
     DorySerialize::serialize_compressed(prover, &mut writer)
-        .unwrap_or_else(|e| panic!("Failed to serialize prover setup: {}", e));
+        .unwrap_or_else(|e| panic!("Failed to serialize prover setup: {e}"));
 
     DorySerialize::serialize_compressed(verifier, &mut writer)
-        .unwrap_or_else(|e| panic!("Failed to serialize verifier setup: {}", e));
+        .unwrap_or_else(|e| panic!("Failed to serialize verifier setup: {e}"));
 
     tracing::info!("Successfully saved setup to disk");
 }
@@ -316,16 +316,16 @@ where
     tracing::info!("Looking for saved setup at {}", storage_path.display());
 
     let file = File::open(&storage_path)
-        .map_err(|e| crate::DoryError::InvalidURS(format!("Failed to open setup file: {}", e)))?;
+        .map_err(|e| crate::DoryError::InvalidURS(format!("Failed to open setup file: {e}")))?;
 
     let mut reader = BufReader::new(file);
 
     let prover = DoryDeserialize::deserialize_compressed(&mut reader).map_err(|e| {
-        crate::DoryError::InvalidURS(format!("Failed to deserialize prover setup: {}", e))
+        crate::DoryError::InvalidURS(format!("Failed to deserialize prover setup: {e}"))
     })?;
 
     let verifier = DoryDeserialize::deserialize_compressed(&mut reader).map_err(|e| {
-        crate::DoryError::InvalidURS(format!("Failed to deserialize verifier setup: {}", e))
+        crate::DoryError::InvalidURS(format!("Failed to deserialize verifier setup: {e}"))
     })?;
 
     tracing::info!("Loaded setup for max_log_n={}", max_log_n);
