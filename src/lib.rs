@@ -155,7 +155,7 @@ where
             }
             Err(e) => {
                 // File exists but is corrupted - unrecoverable
-                panic!("Failed to load setup from disk: {}", e);
+                panic!("Failed to load setup from disk: {e}");
             }
         }
 

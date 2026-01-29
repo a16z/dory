@@ -36,6 +36,9 @@ static CACHE: RwLock<Option<Arc<PreparedCache>>> = RwLock::new(None);
 /// * `g1_vec` - Vector of G1 points to prepare and cache
 /// * `g2_vec` - Vector of G2 points to prepare and cache
 ///
+/// # Panics
+/// Panics if the internal `RwLock` is poisoned.
+///
 /// # Example
 /// ```ignore
 /// use dory_pcs::backends::arkworks::{init_cache, BN254};
@@ -93,6 +96,9 @@ pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {
 /// Returns `None` if cache has not been initialized.
 /// The returned `Arc` keeps the cache data alive even if the cache is replaced.
 ///
+/// # Panics
+/// Panics if the internal `RwLock` is poisoned.
+///
 /// # Returns
 /// Arc-wrapped cache, or `None` if uninitialized.
 pub fn get_prepared_cache() -> Option<Arc<PreparedCache>> {
@@ -100,6 +106,9 @@ pub fn get_prepared_cache() -> Option<Arc<PreparedCache>> {
 }
 
 /// Check if cache is initialized.
+///
+/// # Panics
+/// Panics if the internal `RwLock` is poisoned.
 ///
 /// # Returns
 /// `true` if cache has been initialized, `false` otherwise.

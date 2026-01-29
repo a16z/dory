@@ -16,7 +16,7 @@ impl Valid for ArkFr {
     fn check(&self) -> Result<(), SerializationError> {
         self.0
             .check()
-            .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
+            .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))
     }
 }
 
@@ -30,11 +30,11 @@ impl DorySerialize for ArkFr {
             Compress::Yes => self
                 .0
                 .serialize_compressed(writer)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e))),
+                .map_err(|e| SerializationError::InvalidData(format!("{e}"))),
             Compress::No => self
                 .0
                 .serialize_uncompressed(writer)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e))),
+                .map_err(|e| SerializationError::InvalidData(format!("{e}"))),
         }
     }
 
@@ -54,15 +54,15 @@ impl DoryDeserialize for ArkFr {
     ) -> Result<Self, SerializationError> {
         let inner = match compress {
             Compress::Yes => ark_bn254::Fr::deserialize_compressed(reader)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e)))?,
+                .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
             Compress::No => ark_bn254::Fr::deserialize_uncompressed(reader)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e)))?,
+                .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
         };
 
         if matches!(validate, Validate::Yes) {
             inner
                 .check()
-                .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
+                .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))?;
         }
 
         Ok(ArkFr(inner))
@@ -73,7 +73,7 @@ impl Valid for ArkG1 {
     fn check(&self) -> Result<(), SerializationError> {
         self.0
             .check()
-            .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
+            .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))
     }
 }
 
@@ -87,11 +87,11 @@ impl DorySerialize for ArkG1 {
             Compress::Yes => self
                 .0
                 .serialize_compressed(writer)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e))),
+                .map_err(|e| SerializationError::InvalidData(format!("{e}"))),
             Compress::No => self
                 .0
                 .serialize_uncompressed(writer)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e))),
+                .map_err(|e| SerializationError::InvalidData(format!("{e}"))),
         }
     }
 
@@ -111,15 +111,15 @@ impl DoryDeserialize for ArkG1 {
     ) -> Result<Self, SerializationError> {
         let inner = match compress {
             Compress::Yes => ark_bn254::G1Projective::deserialize_compressed(reader)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e)))?,
+                .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
             Compress::No => ark_bn254::G1Projective::deserialize_uncompressed(reader)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e)))?,
+                .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
         };
 
         if matches!(validate, Validate::Yes) {
             inner
                 .check()
-                .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
+                .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))?;
         }
 
         Ok(ArkG1(inner))
@@ -130,7 +130,7 @@ impl Valid for ArkG2 {
     fn check(&self) -> Result<(), SerializationError> {
         self.0
             .check()
-            .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
+            .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))
     }
 }
 
@@ -144,11 +144,11 @@ impl DorySerialize for ArkG2 {
             Compress::Yes => self
                 .0
                 .serialize_compressed(writer)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e))),
+                .map_err(|e| SerializationError::InvalidData(format!("{e}"))),
             Compress::No => self
                 .0
                 .serialize_uncompressed(writer)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e))),
+                .map_err(|e| SerializationError::InvalidData(format!("{e}"))),
         }
     }
 
@@ -168,15 +168,15 @@ impl DoryDeserialize for ArkG2 {
     ) -> Result<Self, SerializationError> {
         let inner = match compress {
             Compress::Yes => ark_bn254::G2Projective::deserialize_compressed(reader)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e)))?,
+                .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
             Compress::No => ark_bn254::G2Projective::deserialize_uncompressed(reader)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e)))?,
+                .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
         };
 
         if matches!(validate, Validate::Yes) {
             inner
                 .check()
-                .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
+                .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))?;
         }
 
         Ok(ArkG2(inner))
@@ -187,7 +187,7 @@ impl Valid for ArkGT {
     fn check(&self) -> Result<(), SerializationError> {
         self.0
             .check()
-            .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))
+            .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))
     }
 }
 
@@ -201,11 +201,11 @@ impl DorySerialize for ArkGT {
             Compress::Yes => self
                 .0
                 .serialize_compressed(writer)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e))),
+                .map_err(|e| SerializationError::InvalidData(format!("{e}"))),
             Compress::No => self
                 .0
                 .serialize_uncompressed(writer)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e))),
+                .map_err(|e| SerializationError::InvalidData(format!("{e}"))),
         }
     }
 
@@ -225,15 +225,15 @@ impl DoryDeserialize for ArkGT {
     ) -> Result<Self, SerializationError> {
         let inner = match compress {
             Compress::Yes => ark_bn254::Fq12::deserialize_compressed(reader)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e)))?,
+                .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
             Compress::No => ark_bn254::Fq12::deserialize_uncompressed(reader)
-                .map_err(|e| SerializationError::InvalidData(format!("{}", e)))?,
+                .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
         };
 
         if matches!(validate, Validate::Yes) {
             inner
                 .check()
-                .map_err(|e| SerializationError::InvalidData(format!("{:?}", e)))?;
+                .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))?;
         }
 
         Ok(ArkGT(inner))
