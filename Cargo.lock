@@ -389,7 +389,6 @@ dependencies = [
  "criterion",
  "digest",
  "dory-derive",
- "once_cell",
  "rand",
  "rand_core",
  "rayon",
