@@ -179,11 +179,44 @@ mod primitive_impls {
     impl_primitive_serialization!(u16, 2);
     impl_primitive_serialization!(u32, 4);
     impl_primitive_serialization!(u64, 8);
-    impl_primitive_serialization!(usize, std::mem::size_of::<usize>());
     impl_primitive_serialization!(i8, 1);
     impl_primitive_serialization!(i16, 2);
     impl_primitive_serialization!(i32, 4);
     impl_primitive_serialization!(i64, 8);
+
+    // usize serialization: always use 8 bytes (u64) for cross-platform compatibility
+    impl Valid for usize {
+        fn check(&self) -> Result<(), SerializationError> {
+            Ok(())
+        }
+    }
+
+    impl DorySerialize for usize {
+        fn serialize_with_mode<W: Write>(
+            &self,
+            mut writer: W,
+            _compress: Compress,
+        ) -> Result<(), SerializationError> {
+            writer.write_all(&(*self as u64).to_le_bytes())?;
+            Ok(())
+        }
+
+        fn serialized_size(&self, _compress: Compress) -> usize {
+            8
+        }
+    }
+
+    impl DoryDeserialize for usize {
+        fn deserialize_with_mode<R: Read>(
+            mut reader: R,
+            _compress: Compress,
+            _validate: Validate,
+        ) -> Result<Self, SerializationError> {
+            let mut bytes = [0u8; 8];
+            reader.read_exact(&mut bytes)?;
+            Ok(u64::from_le_bytes(bytes) as usize)
+        }
+    }
 
     impl Valid for bool {
         fn check(&self) -> Result<(), SerializationError> {
