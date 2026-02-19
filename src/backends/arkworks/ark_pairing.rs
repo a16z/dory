@@ -291,6 +291,117 @@ mod pairing_helpers {
         ArkGT(result.0)
     }
 
+    /// Sequential multi-pairing with G2 looked up by index from cache
+    #[cfg(feature = "cache")]
+    #[tracing::instrument(skip_all, name = "multi_pair_g2_indexed_sequential", fields(len = ps.len()))]
+    pub(super) fn multi_pair_g2_indexed_sequential(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+        indices: &[usize],
+    ) -> ArkGT {
+        use ark_bn254::G1Affine;
+
+        let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = ps
+            .iter()
+            .map(|p| {
+                let affine: G1Affine = p.0.into();
+                affine.into()
+            })
+            .collect();
+
+        if let Some(cache) = crate::backends::arkworks::ark_cache::get_prepared_cache() {
+            let qs_prep: Vec<_> = indices
+                .iter()
+                .map(|&idx| cache.g2_prepared[idx].clone())
+                .collect();
+            return multi_pair_with_prepared(ps_prep, &qs_prep);
+        }
+
+        use ark_bn254::G2Affine;
+        let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = qs
+            .iter()
+            .map(|q| {
+                let affine: G2Affine = q.0.into();
+                affine.into()
+            })
+            .collect();
+        multi_pair_with_prepared(ps_prep, &qs_prep)
+    }
+
+    /// Parallel multi-pairing with G2 looked up by index from cache
+    #[cfg(all(feature = "cache", feature = "parallel"))]
+    #[tracing::instrument(skip_all, name = "multi_pair_g2_indexed_parallel", fields(len = ps.len(), chunk_size = determine_chunk_size(ps.len())))]
+    pub(super) fn multi_pair_g2_indexed_parallel(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+        indices: &[usize],
+    ) -> ArkGT {
+        use ark_bn254::G1Affine;
+        use rayon::prelude::*;
+
+        let chunk_size = determine_chunk_size(ps.len());
+        let cache = crate::backends::arkworks::ark_cache::get_prepared_cache();
+
+        let combined = ps
+            .par_chunks(chunk_size)
+            .enumerate()
+            .map(|(chunk_idx, ps_chunk)| {
+                let start_idx = chunk_idx * chunk_size;
+                let end_idx = start_idx + ps_chunk.len();
+
+                let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = ps_chunk
+                    .iter()
+                    .map(|p| {
+                        let affine: G1Affine = p.0.into();
+                        affine.into()
+                    })
+                    .collect();
+
+                let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = if let Some(ref c) = cache {
+                    indices[start_idx..end_idx]
+                        .iter()
+                        .map(|&idx| c.g2_prepared[idx].clone())
+                        .collect()
+                } else {
+                    use ark_bn254::G2Affine;
+                    qs[start_idx..end_idx]
+                        .iter()
+                        .map(|q| {
+                            let affine: G2Affine = q.0.into();
+                            affine.into()
+                        })
+                        .collect()
+                };
+
+                Bn254::multi_miller_loop(ps_prep, qs_prep)
+            })
+            .reduce(
+                || ark_ec::pairing::MillerLoopOutput(<<Bn254 as Pairing>::TargetField>::one()),
+                |a, b| ark_ec::pairing::MillerLoopOutput(a.0 * b.0),
+            );
+
+        let result =
+            Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
+        ArkGT(result.0)
+    }
+
+    /// Optimized multi-pairing dispatch for G2 by index
+    #[cfg(feature = "cache")]
+    pub(super) fn multi_pair_g2_indexed_optimized(
+        ps: &[ArkG1],
+        qs: &[ArkG2],
+        indices: &[usize],
+    ) -> ArkGT {
+        #[cfg(feature = "parallel")]
+        {
+            multi_pair_g2_indexed_parallel(ps, qs, indices)
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            multi_pair_g2_indexed_sequential(ps, qs, indices)
+        }
+    }
+
     /// Optimized multi-pairing dispatch
     pub(super) fn multi_pair_optimized(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
         #[cfg(feature = "parallel")]
@@ -380,5 +491,26 @@ impl PairingCurve for BN254 {
         }
 
         pairing_helpers::multi_pair_g1_setup_optimized(ps, qs)
+    }
+
+    #[cfg(feature = "cache")]
+    #[tracing::instrument(skip_all, name = "BN254::multi_pair_g2_indexed", fields(len = ps.len()))]
+    fn multi_pair_g2_indexed(ps: &[Self::G1], qs: &[Self::G2], indices: &[usize]) -> Self::GT {
+        assert_eq!(
+            ps.len(),
+            qs.len(),
+            "multi_pair_g2_indexed requires equal length vectors"
+        );
+        assert_eq!(
+            ps.len(),
+            indices.len(),
+            "multi_pair_g2_indexed requires indices for every element"
+        );
+
+        if ps.is_empty() {
+            return Self::GT::identity();
+        }
+
+        pairing_helpers::multi_pair_g2_indexed_optimized(ps, qs, indices)
     }
 }

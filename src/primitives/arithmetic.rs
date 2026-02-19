@@ -127,6 +127,20 @@ pub trait PairingCurve: Clone {
     fn multi_pair_g1_setup(ps: &[Self::G1], qs: &[Self::G2]) -> Self::GT {
         Self::multi_pair(ps, qs)
     }
+
+    /// Π e(p_i, qs[indices[i]]) - indexed multi-pairing with G2 from setup
+    ///
+    /// Like [`multi_pair_g2_setup`](Self::multi_pair_g2_setup), but for cases where the
+    /// G2 points are a **non-contiguous** subset of the setup generators. The caller
+    /// provides the original indices so the cache can look up the correct prepared
+    /// points directly.
+    ///
+    /// # Parameters
+    /// - `ps`: G1 points (e.g., row commitments)
+    /// - `qs`: Full G2 generator array from setup
+    /// - `indices`: Which elements of `qs` to pair with each `ps[i]`
+    #[cfg(feature = "cache")]
+    fn multi_pair_g2_indexed(ps: &[Self::G1], qs: &[Self::G2], indices: &[usize]) -> Self::GT;
 }
 
 /// Dory requires MSMs and vector scaling ops, hence we expose a trait for optimized versions of such routines.
