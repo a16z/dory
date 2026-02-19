@@ -292,7 +292,7 @@ mod pairing_helpers {
     }
 
     /// Sequential multi-pairing with G2 looked up by index from cache
-    #[cfg(feature = "cache")]
+    #[cfg(all(feature = "cache", not(feature = "parallel")))]
     #[tracing::instrument(skip_all, name = "multi_pair_g2_indexed_sequential", fields(len = ps.len()))]
     pub(super) fn multi_pair_g2_indexed_sequential(
         ps: &[ArkG1],

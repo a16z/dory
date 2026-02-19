@@ -128,7 +128,7 @@ pub trait PairingCurve: Clone {
         Self::multi_pair(ps, qs)
     }
 
-    /// Π e(p_i, qs[indices[i]]) - indexed multi-pairing with G2 from setup
+    /// Π e(p_i, qs\[indices\[i\]\]) - indexed multi-pairing with G2 from setup
     ///
     /// Like [`multi_pair_g2_setup`](Self::multi_pair_g2_setup), but for cases where the
     /// G2 points are a **non-contiguous** subset of the setup generators. The caller
