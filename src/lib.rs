@@ -145,7 +145,7 @@ where
     ProverSetup<E>: DorySerialize + DoryDeserialize,
     VerifierSetup<E>: DorySerialize + DoryDeserialize,
 {
-    #[cfg(feature = "disk-persistence")]
+    #[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
     {
         // Try to load from disk
         match setup::load_setup::<E>(max_log_n) {
@@ -161,10 +161,7 @@ where
         }
 
         // Setup not found on disk - generate new setup
-        tracing::info!(
-            "Setup not found on disk, generating new setup for max_log_n={}",
-            max_log_n
-        );
+        tracing::info!("Setup not found on disk, generating new setup for max_log_n={}", max_log_n);
         let prover_setup = ProverSetup::new(rng, max_log_n);
         let verifier_setup = prover_setup.to_verifier_setup();
 
@@ -174,7 +171,7 @@ where
         (prover_setup, verifier_setup)
     }
 
-    #[cfg(not(feature = "disk-persistence"))]
+    #[cfg(any(not(feature = "disk-persistence"), target_arch = "wasm32"))]
     {
         tracing::info!("Generating new setup for max_log_n={}", max_log_n);
 
@@ -203,7 +200,7 @@ where
 ///
 /// # Availability
 /// This function is only available when the `disk-persistence` feature is enabled.
-#[cfg(feature = "disk-persistence")]
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
 pub fn generate_urs<E: PairingCurve, R: rand_core::RngCore>(
     rng: &mut R,
     max_log_n: usize,

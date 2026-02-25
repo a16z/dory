@@ -40,7 +40,7 @@ impl ArkworksProverSetup {
     }
 
     /// Load prover setup from disk cache, or generate and cache if not available
-    #[cfg(feature = "disk-persistence")]
+    #[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
     pub fn new_from_urs<R: RngCore>(rng: &mut R, max_log_n: usize) -> Self {
         let (prover_setup, _) = crate::setup::<BN254, _>(rng, max_log_n);
         Self(prover_setup)

@@ -8,11 +8,11 @@ use crate::primitives::arithmetic::{Group, PairingCurve};
 use crate::primitives::serialization::{DoryDeserialize, DorySerialize};
 use rand_core::RngCore;
 
-#[cfg(feature = "disk-persistence")]
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
 use std::fs::{self, File};
-#[cfg(feature = "disk-persistence")]
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
 use std::io::{BufReader, BufWriter};
-#[cfg(feature = "disk-persistence")]
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
 use std::path::PathBuf;
 
 /// Prover setup parameters
@@ -204,7 +204,7 @@ impl<E: PairingCurve> ProverSetup<E> {
 /// - Windows: `{FOLDERID_LocalAppData}\dory\`
 ///
 /// Note: Detects OS at runtime by checking environment variables then chooses XDG cache directory for persistent storage.
-#[cfg(feature = "disk-persistence")]
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
 fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
     let cache_directory = {
         // Check for Windows first (LOCALAPPDATA is Windows-specific)
@@ -252,7 +252,7 @@ fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
 /// - Directory creation fails
 /// - File creation fails
 /// - Serialization of prover or verifier setup fails
-#[cfg(feature = "disk-persistence")]
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
 pub fn save_setup<E: PairingCurve>(
     prover: &ProverSetup<E>,
     verifier: &VerifierSetup<E>,
@@ -294,7 +294,7 @@ pub fn save_setup<E: PairingCurve>(
 /// - Setup file doesn't exist
 /// - File cannot be opened
 /// - Deserialization fails
-#[cfg(feature = "disk-persistence")]
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
 pub fn load_setup<E: PairingCurve>(
     max_log_n: usize,
 ) -> Result<(ProverSetup<E>, VerifierSetup<E>), crate::DoryError>
