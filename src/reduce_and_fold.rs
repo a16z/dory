@@ -176,10 +176,7 @@ where
         r_e1: Scalar<E>,
         r_e2: Scalar<E>,
     ) {
-        self.r_c = r_c;
-        self.r_d2 = r_d2;
-        self.r_e1 = r_e1;
-        self.r_e2 = r_e2;
+        (self.r_c, self.r_d2, self.r_e1, self.r_e2) = (r_c, r_d2, r_e1, r_e2);
     }
 
     /// Compute first reduce message for current round
@@ -214,16 +211,16 @@ where
         self.round_d1 = [M::sample(rng), M::sample(rng)];
         self.round_d2 = [M::sample(rng), M::sample(rng)];
 
-        // Compute D values: multi-pairings between v-vectors and generators
-        // D₁L = ⟨v₁L, Γ₂'⟩, D₁R = ⟨v₁R, Γ₂'⟩ - g2_prime is from setup, use cached version
+        // D₁L = ⟨v₁L, Γ₂'⟩, D₁R = ⟨v₁R, Γ₂'⟩
+        let ht = &self.setup.ht;
         let d1_left = M::mask(
             E::multi_pair_g2_setup(v1_l, g2_prime),
-            &self.setup.ht,
+            ht,
             &self.round_d1[0],
         );
         let d1_right = M::mask(
             E::multi_pair_g2_setup(v1_r, g2_prime),
-            &self.setup.ht,
+            ht,
             &self.round_d1[1],
         );
 
@@ -241,8 +238,8 @@ where
                 E::multi_pair_g1_setup(g1_prime, v2_r),
             )
         };
-        let d2_left = M::mask(d2_left_base, &self.setup.ht, &self.round_d2[0]);
-        let d2_right = M::mask(d2_right_base, &self.setup.ht, &self.round_d2[1]);
+        let d2_left = M::mask(d2_left_base, ht, &self.round_d2[0]);
+        let d2_right = M::mask(d2_right_base, ht, &self.round_d2[1]);
 
         // Compute E values for extended protocol: MSMs with scalar vectors
         // E₁β = ⟨Γ₁, s₂⟩
@@ -313,11 +310,10 @@ where
         self.round_e1 = [M::sample(rng), M::sample(rng)];
         self.round_e2 = [M::sample(rng), M::sample(rng)];
 
-        // Compute C terms: cross products of v-vectors
-        // C₊ = ⟨v₁L, v₂R⟩
-        let c_plus = M::mask(E::multi_pair(v1_l, v2_r), &self.setup.ht, &self.round_c[0]);
-        // C₋ = ⟨v₁R, v₂L⟩
-        let c_minus = M::mask(E::multi_pair(v1_r, v2_l), &self.setup.ht, &self.round_c[1]);
+        // C₊ = ⟨v₁L, v₂R⟩, C₋ = ⟨v₁R, v₂L⟩
+        let ht = &self.setup.ht;
+        let c_plus = M::mask(E::multi_pair(v1_l, v2_r), ht, &self.round_c[0]);
+        let c_minus = M::mask(E::multi_pair(v1_r, v2_l), ht, &self.round_c[1]);
 
         // Compute E terms for extended protocol: cross products with scalars
         let e1_plus = M::mask(M1::msm(v1_l, s2_r), &self.setup.h1, &self.round_e1[0]);
@@ -411,55 +407,50 @@ where
         ScalarProductMessage { e1, e2 }
     }
 
-    /// Generate ZK scalar product proof (Σ-protocol).
-    ///
-    /// Must be called BEFORE `compute_final_message` because that modifies r_c.
+    /// Generate ZK scalar product proof. Must be called BEFORE `compute_final_message`.
     #[cfg(feature = "zk")]
     pub fn scalar_product_proof<T: Transcript<Curve = E>, R: rand_core::RngCore>(
         &self,
         transcript: &mut T,
         rng: &mut R,
     ) -> ScalarProductProof<E::G1, E::G2, Scalar<E>, E::GT> {
-        debug_assert_eq!(self.v1.len(), 1);
-        debug_assert_eq!(self.v2.len(), 1);
-
         let (v1, v2) = (self.v1[0], self.v2[0]);
         let (g1, g2) = (self.setup.g1_vec[0], self.setup.g2_vec[0]);
-
-        let mut rand = || -> Scalar<E> { Field::random(rng) };
-        let (s_d1, s_d2) = (rand(), rand());
-        let (d1, d2) = (g1.scale(&s_d1), g2.scale(&s_d2));
-        let (r_p1, r_p2, r_q, r_r) = (rand(), rand(), rand(), rand());
-
-        let p1 = E::pair(&d1, &g2) + self.setup.ht.scale(&r_p1);
-        let p2 = E::pair(&g1, &d2) + self.setup.ht.scale(&r_p2);
-        let q = E::pair(&d1, &v2) + E::pair(&v1, &d2) + self.setup.ht.scale(&r_q);
-        let r = E::pair(&d1, &d2) + self.setup.ht.scale(&r_r);
-
-        transcript.append_serde(b"sigma_p1", &p1);
-        transcript.append_serde(b"sigma_p2", &p2);
-        transcript.append_serde(b"sigma_q", &q);
-        transcript.append_serde(b"sigma_r", &r);
+        let ht = &self.setup.ht;
+        let mut r = || -> Scalar<E> { Field::random(rng) };
+        let (sd1, sd2) = (r(), r());
+        let (d1, d2) = (g1.scale(&sd1), g2.scale(&sd2));
+        let (rp1, rp2, rq, rr) = (r(), r(), r(), r());
+        let p1 = E::pair(&d1, &g2) + ht.scale(&rp1);
+        let p2 = E::pair(&g1, &d2) + ht.scale(&rp2);
+        let q = E::pair(&d1, &v2) + E::pair(&v1, &d2) + ht.scale(&rq);
+        let rr_val = E::pair(&d1, &d2) + ht.scale(&rr);
+        for (label, val) in [
+            (b"sigma_p1" as &[u8], &p1),
+            (b"sigma_p2", &p2),
+            (b"sigma_q", &q),
+            (b"sigma_r", &rr_val),
+        ] {
+            transcript.append_serde(label, val);
+        }
         let c = transcript.challenge_scalar(b"sigma_c");
-
-        let c_sq = c * c;
         ScalarProductProof {
             p1,
             p2,
             q,
-            r,
+            r: rr_val,
             e1: d1 + v1.scale(&c),
             e2: d2 + v2.scale(&c),
-            r1: r_p1 + c * self.r_d1,
-            r2: r_p2 + c * self.r_d2,
-            r3: r_r + c * r_q + c_sq * self.r_c,
+            r1: rp1 + c * self.r_d1,
+            r2: rp2 + c * self.r_d2,
+            r3: rr + c * rq + c * c * self.r_c,
         }
     }
 }
 
 /// Generate Sigma1 proof: proves knowledge of (y, rE2, ry).
 #[cfg(feature = "zk")]
-pub fn generate_sigma1_proof<E: PairingCurve, T: Transcript<Curve = E>, R: rand_core::RngCore>(
+pub fn generate_sigma1_proof<E, T, R>(
     y: &Scalar<E>,
     r_e2: &Scalar<E>,
     r_y: &Scalar<E>,
@@ -468,12 +459,18 @@ pub fn generate_sigma1_proof<E: PairingCurve, T: Transcript<Curve = E>, R: rand_
     rng: &mut R,
 ) -> Sigma1Proof<E::G1, E::G2, Scalar<E>>
 where
+    E: PairingCurve,
+    T: Transcript<Curve = E>,
+    R: rand_core::RngCore,
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
 {
     let (g2_fin, g1_fin) = (&setup.g2_vec[0], &setup.g1_vec[0]);
-    let (k1, k2, k3): (Scalar<E>, _, _) =
-        (Field::random(rng), Field::random(rng), Field::random(rng));
+    let (k1, k2, k3) = (
+        Scalar::<E>::random(rng),
+        Scalar::<E>::random(rng),
+        Scalar::<E>::random(rng),
+    );
     let a1 = g2_fin.scale(&k1) + setup.h2.scale(&k2);
     let a2 = g1_fin.scale(&k1) + setup.h1.scale(&k3);
     transcript.append_serde(b"sigma1_a1", &a1);
@@ -515,7 +512,7 @@ where
 
 /// Generate Sigma2 proof: proves e(E1, Γ2,fin) - D2 = e(H1, t1·Γ2,fin + t2·H2).
 #[cfg(feature = "zk")]
-pub fn generate_sigma2_proof<E: PairingCurve, T: Transcript<Curve = E>, R: rand_core::RngCore>(
+pub fn generate_sigma2_proof<E, T, R>(
     t1: &Scalar<E>,
     t2: &Scalar<E>,
     setup: &ProverSetup<E>,
@@ -523,11 +520,14 @@ pub fn generate_sigma2_proof<E: PairingCurve, T: Transcript<Curve = E>, R: rand_
     rng: &mut R,
 ) -> Sigma2Proof<Scalar<E>, E::GT>
 where
+    E: PairingCurve,
+    T: Transcript<Curve = E>,
+    R: rand_core::RngCore,
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
     E::GT: Group<Scalar = Scalar<E>>,
 {
-    let (k1, k2): (Scalar<E>, _) = (Field::random(rng), Field::random(rng));
+    let (k1, k2) = (Scalar::<E>::random(rng), Scalar::<E>::random(rng));
     let a = E::pair(
         &setup.h1,
         &(setup.g2_vec[0].scale(&k1) + setup.h2.scale(&k2)),
@@ -767,17 +767,15 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         d: &Scalar<E>,
     ) -> Result<(), DoryError>
     where
-        E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
-        E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
-        <E::G1 as Group>::Scalar: Field,
+        E::G2: Group<Scalar = Scalar<E>>,
+        E::GT: Group<Scalar = Scalar<E>>,
+        Scalar<E>: Field,
     {
         let d_inv = (*d).inv().expect("d must be invertible");
-        let (c_sq, lhs) = (
-            *c * *c,
-            E::pair(
-                &(proof.e1 + self.setup.g1_0.scale(d)),
-                &(proof.e2 + self.setup.g2_0.scale(&d_inv)),
-            ),
+        let c_sq = *c * *c;
+        let lhs = E::pair(
+            &(proof.e1 + self.setup.g1_0.scale(d)),
+            &(proof.e2 + self.setup.g2_0.scale(&d_inv)),
         );
         let mut rhs = self.setup.chi[0] + proof.r + proof.q.scale(c) + self.c.scale(&c_sq);
         rhs = rhs + proof.p2.scale(d) + self.d2.scale(&(*d * *c));
@@ -787,7 +785,6 @@ impl<E: PairingCurve> DoryVerifierState<E> {
                 .setup
                 .ht
                 .scale(&(proof.r3 + *d * proof.r2 + d_inv * proof.r1));
-
         if lhs == rhs {
             Ok(())
         } else {

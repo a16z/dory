@@ -118,16 +118,19 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
             });
         }
         let (num_rows, num_cols) = (1 << nu, 1 << sigma);
-        let g1_bases = &setup.g1_vec[..num_cols];
+        let g1 = &setup.g1_vec[..num_cols];
         let blinds: Vec<ArkFr> = (0..num_rows).map(|_| ArkFr::random(rng)).collect();
-        let row_commitments: Vec<E::G1> = (0..num_rows)
+        let rows: Vec<E::G1> = (0..num_rows)
             .map(|i| {
-                let row = &self.coefficients[i * num_cols..(i + 1) * num_cols];
-                M1::msm(g1_bases, row) + setup.h1.scale(&blinds[i])
+                M1::msm(g1, &self.coefficients[i * num_cols..(i + 1) * num_cols])
+                    + setup.h1.scale(&blinds[i])
             })
             .collect();
-        let commitment = E::multi_pair_g2_setup(&row_commitments, &setup.g2_vec[..num_rows]);
-        Ok((commitment, row_commitments, blinds))
+        Ok((
+            E::multi_pair_g2_setup(&rows, &setup.g2_vec[..num_rows]),
+            rows,
+            blinds,
+        ))
     }
 }
 

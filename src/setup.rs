@@ -79,7 +79,6 @@ pub struct VerifierSetup<E: PairingCurve> {
     /// e(H1, Γ2,fin) - precomputed for ZK verification
     #[cfg(feature = "zk")]
     pub h1_g2_fin: E::GT,
-
     /// Maximum log₂ of polynomial size supported
     pub max_log_n: usize,
 }
@@ -243,10 +242,13 @@ fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
     cache_directory.map(|mut path| {
         path.push("dory");
         #[cfg(feature = "zk")]
-        let filename = format!("dory_{max_log_n}_zk.urs");
+        {
+            path.push(format!("dory_{max_log_n}_zk.urs"));
+        }
         #[cfg(not(feature = "zk"))]
-        let filename = format!("dory_{max_log_n}.urs");
-        path.push(filename);
+        {
+            path.push(format!("dory_{max_log_n}.urs"));
+        }
         path
     })
 }

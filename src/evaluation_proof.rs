@@ -129,11 +129,13 @@ where
         padded_row_commitments.resize(1 << sigma, E::G1::identity());
     }
 
-    // Sample VMV blinds (zero in Transparent mode, random in ZK mode)
-    let r_c: F = Mo::sample(rng);
-    let r_d2: F = Mo::sample(rng);
-    let r_e1: F = Mo::sample(rng);
-    let r_e2: F = Mo::sample(rng);
+    // Sample VMV blinds (zero in Transparent, random in ZK)
+    let (r_c, r_d2, r_e1, r_e2): (F, F, F, F) = (
+        Mo::sample(rng),
+        Mo::sample(rng),
+        Mo::sample(rng),
+        Mo::sample(rng),
+    );
 
     let g2_fin = &setup.g2_vec[0];
 
@@ -142,9 +144,8 @@ where
     let c = Mo::mask(E::pair(&t_vec_v, g2_fin), &setup.ht, &r_c);
 
     // D₂ = e(⟨Γ₁[sigma], v_vec⟩, Γ2,fin) + r_d2·HT
-    let g1_bases = &setup.g1_vec[..1 << sigma];
     let d2 = Mo::mask(
-        E::pair(&M1::msm(g1_bases, &v_vec), g2_fin),
+        E::pair(&M1::msm(&setup.g1_vec[..1 << sigma], &v_vec), g2_fin),
         &setup.ht,
         &r_d2,
     );
@@ -158,25 +159,19 @@ where
     transcript.append_serde(b"vmv_d2", &vmv_message.d2);
     transcript.append_serde(b"vmv_e1", &vmv_message.e1);
 
-    // ZK mode: compute y, y_com, E2, and sigma proofs
     #[cfg(feature = "zk")]
-    let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2, zk_y_blinding) =
+    let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2, zk_r_y) =
         if std::any::TypeId::of::<Mo>() == std::any::TypeId::of::<ZK>() {
             use crate::reduce_and_fold::{generate_sigma1_proof, generate_sigma2_proof};
-
             let y = polynomial.evaluate(point);
             let r_y: F = Mo::sample(rng);
-
             let e2 = Mo::mask(g2_fin.scale(&y), &setup.h2, &r_e2);
             let y_com = setup.g1_vec[0].scale(&y) + setup.h1.scale(&r_y);
-
             transcript.append_serde(b"vmv_e2", &e2);
             transcript.append_serde(b"vmv_y_com", &y_com);
-
-            let sigma1 = generate_sigma1_proof::<E, T, R>(&y, &r_e2, &r_y, setup, transcript, rng);
-            let sigma2 = generate_sigma2_proof::<E, T, R>(&r_e1, &-r_d2, setup, transcript, rng);
-
-            (Some(e2), Some(y_com), Some(sigma1), Some(sigma2), Some(r_y))
+            let s1 = generate_sigma1_proof::<E, T, R>(&y, &r_e2, &r_y, setup, transcript, rng);
+            let s2 = generate_sigma2_proof::<E, T, R>(&r_e1, &-r_d2, setup, transcript, rng);
+            (Some(e2), Some(y_com), Some(s1), Some(s2), Some(r_y))
         } else {
             (None, None, None, None, None)
         };
@@ -266,10 +261,8 @@ where
         #[cfg(feature = "zk")]
         scalar_product_proof,
     };
-
     #[cfg(feature = "zk")]
-    return Ok((proof, zk_y_blinding));
-
+    return Ok((proof, zk_r_y));
     #[cfg(not(feature = "zk"))]
     Ok((proof, None))
 }
@@ -340,32 +333,21 @@ where
     transcript.append_serde(b"vmv_d2", &vmv_message.d2);
     transcript.append_serde(b"vmv_e1", &vmv_message.e1);
 
-    // Determine E2 based on proof mode (ZK vs transparent)
     #[cfg(feature = "zk")]
-    let (e2, is_zk) = if let (Some(proof_e2), Some(y_com)) = (&proof.e2, &proof.y_com) {
+    let (e2, is_zk) = if let (Some(pe2), Some(yc)) = (&proof.e2, &proof.y_com) {
         use crate::reduce_and_fold::{verify_sigma1_proof, verify_sigma2_proof};
-
-        transcript.append_serde(b"vmv_e2", proof_e2);
-        transcript.append_serde(b"vmv_y_com", y_com);
-
-        if let Some(ref sigma1) = proof.sigma1_proof {
-            verify_sigma1_proof::<E, T>(proof_e2, y_com, sigma1, &setup, transcript)?;
+        transcript.append_serde(b"vmv_e2", pe2);
+        transcript.append_serde(b"vmv_y_com", yc);
+        if let Some(ref s) = proof.sigma1_proof {
+            verify_sigma1_proof::<E, T>(pe2, yc, s, &setup, transcript)?;
         }
-        if let Some(ref sigma2) = proof.sigma2_proof {
-            verify_sigma2_proof::<E, T>(
-                &vmv_message.e1,
-                &vmv_message.d2,
-                sigma2,
-                &setup,
-                transcript,
-            )?;
+        if let Some(ref s) = proof.sigma2_proof {
+            verify_sigma2_proof::<E, T>(&vmv_message.e1, &vmv_message.d2, s, &setup, transcript)?;
         }
-
-        (*proof_e2, true)
+        (*pe2, true)
     } else {
         (setup.g2_0.scale(&evaluation), false)
     };
-
     #[cfg(not(feature = "zk"))]
     let (e2, _is_zk) = (setup.g2_0.scale(&evaluation), false);
 
@@ -422,27 +404,28 @@ where
 
     let gamma = transcript.challenge_scalar(b"gamma");
 
-    // ZK mode: verify with scalar product proof
     #[cfg(feature = "zk")]
     if is_zk {
         if let Some(ref sp) = proof.scalar_product_proof {
-            transcript.append_serde(b"sigma_p1", &sp.p1);
-            transcript.append_serde(b"sigma_p2", &sp.p2);
-            transcript.append_serde(b"sigma_q", &sp.q);
-            transcript.append_serde(b"sigma_r", &sp.r);
+            for (l, v) in [
+                (b"sigma_p1" as &[u8], &sp.p1),
+                (b"sigma_p2", &sp.p2),
+                (b"sigma_q", &sp.q),
+                (b"sigma_r", &sp.r),
+            ] {
+                transcript.append_serde(l, v);
+            }
             let c = transcript.challenge_scalar(b"sigma_c");
-
             transcript.append_serde(b"final_e1", &proof.final_message.e1);
             transcript.append_serde(b"final_e2", &proof.final_message.e2);
-            let d = transcript.challenge_scalar(b"d");
-
-            return verifier_state.verify_final_zk(sp, &c, &d);
+            return verifier_state.verify_final_zk(sp, &c, &transcript.challenge_scalar(b"d"));
         }
     }
-
     transcript.append_serde(b"final_e1", &proof.final_message.e1);
     transcript.append_serde(b"final_e2", &proof.final_message.e2);
-
-    let d = transcript.challenge_scalar(b"d");
-    verifier_state.verify_final(&proof.final_message, &gamma, &d)
+    verifier_state.verify_final(
+        &proof.final_message,
+        &gamma,
+        &transcript.challenge_scalar(b"d"),
+    )
 }

@@ -1,5 +1,4 @@
 //! Mode trait for transparent vs zero-knowledge proofs.
-
 use crate::primitives::arithmetic::{Field, Group};
 
 /// Determines whether protocol messages are blinded (ZK) or unblinded (transparent).
@@ -12,7 +11,6 @@ pub trait Mode: 'static {
 
 /// Transparent mode: no blinding, non-hiding proofs.
 pub struct Transparent;
-
 impl Mode for Transparent {
     fn sample<F: Field, R: rand_core::RngCore>(_rng: &mut R) -> F {
         F::zero()
@@ -25,7 +23,6 @@ impl Mode for Transparent {
 /// Zero-knowledge mode: samples blinds from RNG for hiding proofs.
 #[cfg(feature = "zk")]
 pub struct ZK;
-
 #[cfg(feature = "zk")]
 impl Mode for ZK {
     fn sample<F: Field, R: rand_core::RngCore>(rng: &mut R) -> F {
