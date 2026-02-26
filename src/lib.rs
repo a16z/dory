@@ -292,7 +292,6 @@ where
     Mo: Mode,
     R: rand_core::RngCore,
 {
-    // Create evaluation proof using row_commitments
     evaluation_proof::create_evaluation_proof::<F, E, M1, M2, T, P, Mo, R>(
         polynomial,
         point,

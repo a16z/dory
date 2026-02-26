@@ -95,7 +95,7 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
     }
 
     #[cfg(feature = "zk")]
-    #[tracing::instrument(skip_all, name = "ArkworksPolynomial::commit_zk", fields(nu, sigma, num_rows = 1 << nu, num_cols = 1 << sigma))]
+    #[tracing::instrument(skip_all, name = "ArkworksPolynomial::commit_zk", fields(nu, sigma))]
     #[allow(clippy::type_complexity)]
     fn commit_zk<E, M1, R>(
         &self,
@@ -117,39 +117,17 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
                 actual: self.coefficients.len(),
             });
         }
-
-        let num_rows = 1 << nu;
-        let num_cols = 1 << sigma;
-
-        // Tier 1: Compute blinded row commitments
-        // T_i = ⟨row_i, Γ1⟩ + r_i·H1
-        let mut row_commitments = Vec::with_capacity(num_rows);
-        let mut row_blinds = Vec::with_capacity(num_rows);
-
-        for _ in 0..num_rows {
-            // Sample blind for this row from private randomness
-            let r_i = ArkFr::random(rng);
-            row_blinds.push(r_i);
-        }
-
-        for (i, r_i) in row_blinds.iter().enumerate() {
-            let row_start = i * num_cols;
-            let row_end = row_start + num_cols;
-            let row = &self.coefficients[row_start..row_end];
-
-            // Compute blinded row commitment: T_i = MSM(Γ1, row) + r_i·H1
-            let g1_bases = &setup.g1_vec[..num_cols];
-            let row_commit_raw = M1::msm(g1_bases, row);
-            let row_commit = row_commit_raw + setup.h1.scale(r_i);
-            row_commitments.push(row_commit);
-        }
-
-        // Tier 2: Compute final commitment via multi-pairing
-        // The commitment is derived from blinded row commitments
-        let g2_bases = &setup.g2_vec[..num_rows];
-        let commitment = E::multi_pair_g2_setup(&row_commitments, g2_bases);
-
-        Ok((commitment, row_commitments, row_blinds))
+        let (num_rows, num_cols) = (1 << nu, 1 << sigma);
+        let g1_bases = &setup.g1_vec[..num_cols];
+        let blinds: Vec<ArkFr> = (0..num_rows).map(|_| ArkFr::random(rng)).collect();
+        let row_commitments: Vec<E::G1> = (0..num_rows)
+            .map(|i| {
+                let row = &self.coefficients[i * num_cols..(i + 1) * num_cols];
+                M1::msm(g1_bases, row) + setup.h1.scale(&blinds[i])
+            })
+            .collect();
+        let commitment = E::multi_pair_g2_setup(&row_commitments, &setup.g2_vec[..num_rows]);
+        Ok((commitment, row_commitments, blinds))
     }
 }
 

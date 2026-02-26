@@ -89,21 +89,10 @@ pub trait Polynomial<F: Field> {
         M1: DoryRoutines<E::G1>,
         E::G1: Group<Scalar = F>;
 
-    /// Commit to polynomial with ZK blinds
-    ///
-    /// Same as `commit`, but adds blinds to each row commitment for zero-knowledge:
-    /// `row_commit[i] = MSM(g1_generators, row_coefficients[i]) + r_i·H1`
-    ///
-    /// # Returns
-    /// `(commitment, row_commitments, row_blinds)` where:
-    /// - `commitment`: Final commitment in GT (derived from blinded row commitments)
-    /// - `row_commitments`: Blinded row commitments in G1
-    /// - `row_blinds`: The blinds used for each row (needed for proof generation)
-    ///
-    /// The sum of row_blinds weighted by the left vector gives `r_v` used in Sigma2.
+    /// Commit with per-row ZK blinds. Returns `(commitment, row_commitments, blinds)`.
     ///
     /// # Errors
-    /// Returns error if coefficient length doesn't match 2^(nu + sigma) or if setup is insufficient.
+    /// Returns error if coefficient length doesn't match 2^(nu + sigma).
     #[cfg(feature = "zk")]
     #[allow(clippy::type_complexity)]
     fn commit_zk<E, M1, R>(
