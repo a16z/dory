@@ -15,7 +15,7 @@ fn test_evaluation_proof_small() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
@@ -24,6 +24,7 @@ fn test_evaluation_proof_small() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &setup,
@@ -58,7 +59,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
@@ -67,6 +68,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &setup,
@@ -104,7 +106,7 @@ fn test_evaluation_proof_constant_polynomial() {
     let expected_eval = poly.evaluate(&point);
     assert_eq!(expected_eval, ArkFr::from_u64(7));
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
@@ -113,6 +115,7 @@ fn test_evaluation_proof_constant_polynomial() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &setup,
@@ -147,7 +150,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
@@ -156,6 +159,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &setup,
@@ -188,7 +192,7 @@ fn test_evaluation_proof_different_sizes() {
         let poly = random_polynomial(4);
         let point = random_point(2);
 
-        let (tier_2, tier_1, _) = poly
+        let (tier_2, tier_1, commit_blind) = poly
             .commit::<BN254, Transparent, TestG1Routines>(1, 1, &setup)
             .unwrap();
 
@@ -197,6 +201,7 @@ fn test_evaluation_proof_different_sizes() {
             &poly,
             &point,
             tier_1,
+            commit_blind,
             1,
             1,
             &setup,
@@ -224,7 +229,7 @@ fn test_evaluation_proof_different_sizes() {
         let poly = random_polynomial(64);
         let point = random_point(6);
 
-        let (tier_2, tier_1, _) = poly
+        let (tier_2, tier_1, commit_blind) = poly
             .commit::<BN254, Transparent, TestG1Routines>(3, 3, &setup)
             .unwrap();
 
@@ -233,6 +238,7 @@ fn test_evaluation_proof_different_sizes() {
             &poly,
             &point,
             tier_1,
+            commit_blind,
             3,
             3,
             &setup,
@@ -263,7 +269,7 @@ fn test_multiple_evaluations_same_commitment() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
@@ -275,6 +281,7 @@ fn test_multiple_evaluations_same_commitment() {
             &poly,
             &point,
             tier_1.clone(),
+            commit_blind,
             nu,
             sigma,
             &setup,

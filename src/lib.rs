@@ -46,13 +46,13 @@
 //! let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 //!
 //! // 2. Commit to polynomial
-//! let (tier_2_commitment, tier_1_commitments, _blinds) = polynomial
+//! let (tier_2_commitment, tier_1_commitments, commit_blind) = polynomial
 //!     .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
 //!
 //! // 3. Generate evaluation proof
 //! let mut prover_transcript = Blake2bTranscript::new(b"domain-separation");
 //! let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
-//!     &polynomial, &point, tier_1_commitments, nu, sigma,
+//!     &polynomial, &point, tier_1_commitments, commit_blind, nu, sigma,
 //!     &prover_setup, &mut prover_transcript
 //! )?;
 //!
@@ -230,14 +230,15 @@ where
 /// tier-1 commitments (row commitments).
 ///
 /// # Workflow
-/// 1. Call `polynomial.commit(nu, sigma, setup)` to get `(tier_2, row_commitments)`
-/// 2. Call this function with the `row_commitments` to create the proof
+/// 1. Call `polynomial.commit(nu, sigma, setup)` to get `(tier_2, row_commitments, commit_blind)`
+/// 2. Call this function with the `row_commitments` and `commit_blind` to create the proof
 /// 3. Use `tier_2` for verification via the `verify()` function
 ///
 /// # Parameters
 /// - `polynomial`: Polynomial implementing MultilinearLagrange trait
 /// - `point`: Evaluation point (length must equal nu + sigma)
 /// - `row_commitments`: Tier-1 commitments (row commitments in G1) from `polynomial.commit()`
+/// - `commit_blind`: GT-level blinding scalar from `polynomial.commit()` (zero in Transparent mode)
 /// - `nu`: Log₂ of number of rows (constraint: nu ≤ sigma for non-square matrices)
 /// - `sigma`: Log₂ of number of columns
 /// - `setup`: Prover setup
@@ -268,6 +269,7 @@ pub fn prove<F, E, M1, M2, P, T, Mo>(
     polynomial: &P,
     point: &[F],
     row_commitments: Vec<E::G1>,
+    commit_blind: F,
     nu: usize,
     sigma: usize,
     setup: &ProverSetup<E>,
@@ -289,6 +291,7 @@ where
         polynomial,
         point,
         Some(row_commitments),
+        commit_blind,
         nu,
         sigma,
         setup,

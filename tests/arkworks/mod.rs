@@ -20,8 +20,6 @@ pub mod setup;
 pub mod soundness;
 #[cfg(feature = "zk")]
 pub mod zk;
-#[cfg(feature = "zk")]
-pub mod zk_statistical;
 
 pub fn random_polynomial(size: usize) -> ArkworksPolynomial {
     let coefficients: Vec<ArkFr> = (0..size).map(|_| ArkFr::random()).collect();

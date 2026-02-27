@@ -15,7 +15,7 @@ fn make_transparent_proof() -> (
 
     let poly = random_polynomial(16);
     let point = random_point(4);
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup)
         .unwrap();
     let mut transcript = fresh_transcript();
@@ -23,6 +23,7 @@ fn make_transparent_proof() -> (
         &poly,
         &point,
         tier_1,
+        commit_blind,
         2,
         2,
         &setup,
@@ -81,7 +82,7 @@ fn test_transparent_proof_roundtrip_verifies() {
 
     let poly = random_polynomial(16);
     let point = random_point(4);
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup)
         .unwrap();
 
@@ -90,6 +91,7 @@ fn test_transparent_proof_roundtrip_verifies() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         2,
         2,
         &setup,
@@ -130,7 +132,7 @@ mod zk_roundtrip {
 
         let poly = random_polynomial(16);
         let point = random_point(4);
-        let (tier_2, tier_1, _) = poly
+        let (tier_2, tier_1, commit_blind) = poly
             .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup)
             .unwrap();
 
@@ -139,6 +141,7 @@ mod zk_roundtrip {
             &poly,
             &point,
             tier_1,
+            commit_blind,
             2,
             2,
             &setup,
@@ -192,7 +195,7 @@ mod zk_roundtrip {
 
         let poly = random_polynomial(16);
         let point = random_point(4);
-        let (tier_2, tier_1, _) = poly
+        let (tier_2, tier_1, commit_blind) = poly
             .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup)
             .unwrap();
 
@@ -201,6 +204,7 @@ mod zk_roundtrip {
             &poly,
             &point,
             tier_1,
+            commit_blind,
             2,
             2,
             &setup,

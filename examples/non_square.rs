@@ -1,10 +1,8 @@
 //! Non-square matrix example for Dory commitments
 //!
-//! This example demonstrates that Dory supports non-square matrix layouts
-//! where the number of rows differs from the number of columns.
+//! Demonstrates that Dory supports non-square matrix layouts where nu < sigma.
 //!
-//! Constraint: nu ≤ sigma (rows ≤ columns)
-//! Matrix dimensions: 8×16 (nu=3, sigma=4, total 128 coefficients)
+//! Matrix dimensions: 8x16 (nu=3, sigma=4, total 128 coefficients)
 
 use dory_pcs::backends::arkworks::{
     ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
@@ -12,70 +10,36 @@ use dory_pcs::backends::arkworks::{
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify, Transparent};
-use tracing::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Dory PCS - Non-Square Matrix Example");
-    info!("=====================================\n");
+    let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
-    // Step 1: Setup
-    let max_log_n = 10;
-    info!(
-        "1. Generating transparent setup (max_log_n = {})...",
-        max_log_n
-    );
-    let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
-    info!("   ✓ Setup complete\n");
-
-    // Step 2: Create polynomial with non-square matrix layout
-    // Non-square: nu = 3, sigma = 4 → 8 rows × 16 columns = 128 coefficients
     let nu = 3;
     let sigma = 4;
-    let poly_size = 1 << (nu + sigma); // 2^7 = 128
-    let num_vars = nu + sigma; // 7
-
-    info!("2. Creating random polynomial...");
-    info!("   Matrix layout: {}×{} (NON-SQUARE)", 1 << nu, 1 << sigma);
-    info!("   Total coefficients: {}", poly_size);
-    info!("   Number of variables: {}", num_vars);
-    info!("   Constraint: nu ({}) ≤ sigma ({})", nu, sigma);
+    let poly_size = 1 << (nu + sigma);
+    let num_vars = nu + sigma;
 
     let coefficients: Vec<ArkFr> = (0..poly_size).map(|_| ArkFr::random()).collect();
     let poly = ArkworksPolynomial::new(coefficients);
-    info!("   ✓ Polynomial created\n");
 
-    // Step 3: Commit
-    info!("3. Computing polynomial commitment...");
-    let (tier_2, tier_1, _) =
+    let (tier_2, tier_1, commit_blind) =
         poly.commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
-    info!(
-        "   ✓ Tier-1 commitment: {} row commitments (G1)",
-        tier_1.len()
-    );
-    info!("   ✓ Tier-2 commitment: final commitment (GT)\n");
 
-    // Step 4: Evaluation
     let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
     let evaluation = poly.evaluate(&point);
-    info!("4. Evaluating polynomial at random point...");
-    info!("   ✓ Evaluation result computed\n");
 
-    // Step 5: Prove
-    info!("5. Generating evaluation proof...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-non-square-example");
     let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
         &mut prover_transcript,
     )?;
-    info!("   ✓ Proof generated (logarithmic size)\n");
 
-    // Step 6: Verify
-    info!("6. Verifying proof...");
     let mut verifier_transcript = Blake2bTranscript::new(b"dory-non-square-example");
     verify::<_, BN254, G1Routines, G2Routines, _>(
         tier_2,
@@ -85,18 +49,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         verifier_setup,
         &mut verifier_transcript,
     )?;
-    info!("   ✓ Proof verified successfully!\n");
-
-    info!("=====================================");
-    info!("Non-square matrix example completed!");
-    info!(
-        "Matrix: {}×{} ({}×{} = {} coefficients)",
-        1 << nu,
-        1 << sigma,
-        1 << nu,
-        1 << sigma,
-        poly_size
-    );
 
     Ok(())
 }

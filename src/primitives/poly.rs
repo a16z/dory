@@ -64,11 +64,13 @@ pub trait Polynomial<F: Field> {
     /// # Tier 1 (Row Commitments)
     /// For each row i: `row_commit[i] = MSM(g1_generators[0..2^sigma], row_coefficients[i])`
     ///
-    /// In ZK mode (`Mo = ZK`), each row commitment is additionally blinded:
-    /// `row_commit[i] += H₁ · blind[i]` where `blind[i]` is a fresh random scalar.
+    /// Row commitments are always unblinded (internal to the prover, never exposed).
     ///
     /// # Tier 2 (Final Commitment)
     /// `commitment = Σ e(row_commit[i], g2_generators[i])` for i in 0..2^nu
+    ///
+    /// In ZK mode (`Mo = ZK`), the tier-2 commitment is blinded with a single GT-level blind:
+    /// `commitment += r_d1 * HT` where `r_d1` is a fresh random scalar and `HT = e(H₁, H₂)`.
     ///
     /// # Parameters
     /// - `nu`: Log₂ of number of rows
@@ -76,10 +78,10 @@ pub trait Polynomial<F: Field> {
     /// - `setup`: Prover setup containing generators
     ///
     /// # Returns
-    /// `(commitment, row_commitments, blinds)` where:
-    /// - `commitment`: Final commitment in GT
-    /// - `row_commitments`: Intermediate row commitments in G1 (used in opening proof)
-    /// - `blinds`: Per-row blinding scalars in ZK mode (`Some`), or `None` in Transparent mode
+    /// `(commitment, row_commitments, commit_blind)` where:
+    /// - `commitment`: Final commitment in GT (blinded in ZK mode)
+    /// - `row_commitments`: Intermediate unblinded row commitments in G1 (used in opening proof)
+    /// - `commit_blind`: GT-level blinding scalar (`r_d1`); zero in Transparent mode
     ///
     /// # Errors
     /// Returns error if coefficient length doesn't match 2^(nu + sigma) or if setup is insufficient.
@@ -89,12 +91,13 @@ pub trait Polynomial<F: Field> {
         nu: usize,
         sigma: usize,
         setup: &ProverSetup<E>,
-    ) -> Result<(E::GT, Vec<E::G1>, Option<Vec<F>>), DoryError>
+    ) -> Result<(E::GT, Vec<E::G1>, F), DoryError>
     where
         E: PairingCurve,
         Mo: Mode,
         M1: DoryRoutines<E::G1>,
-        E::G1: Group<Scalar = F>;
+        E::G1: Group<Scalar = F>,
+        E::GT: Group<Scalar = F>;
 }
 
 /// Compute multilinear Lagrange basis evaluations at a point

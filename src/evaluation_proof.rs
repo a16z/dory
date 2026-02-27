@@ -56,6 +56,8 @@ use crate::setup::{ProverSetup, VerifierSetup};
 /// - `polynomial`: Polynomial to prove evaluation for
 /// - `point`: Evaluation point (length nu + sigma)
 /// - `row_commitments`: Optional precomputed row commitments from polynomial.commit()
+/// - `commit_blind`: GT-level blinding scalar from `commit()`. Ignored when
+///   `row_commitments` is `None` (the blind is computed internally in that case).
 /// - `nu`: Log₂ of number of rows (constraint: nu ≤ sigma)
 /// - `sigma`: Log₂ of number of columns
 /// - `setup`: Prover setup
@@ -77,6 +79,7 @@ pub fn create_evaluation_proof<F, E, M1, M2, T, P, Mo>(
     polynomial: &P,
     point: &[F],
     row_commitments: Option<Vec<E::G1>>,
+    commit_blind: F,
     nu: usize,
     sigma: usize,
     setup: &ProverSetup<E>,
@@ -109,9 +112,12 @@ where
         });
     }
 
-    let row_commitments = match row_commitments {
-        Some(rc) => rc,
-        None => polynomial.commit::<E, Mo, M1>(nu, sigma, setup)?.1,
+    let (row_commitments, commit_blind) = match row_commitments {
+        Some(rc) => (rc, commit_blind),
+        None => {
+            let (_, rc, blind) = polynomial.commit::<E, Mo, M1>(nu, sigma, setup)?;
+            (rc, blind)
+        }
     };
 
     let (left_vec, right_vec) = polynomial.compute_evaluation_vectors(point, nu, sigma);
@@ -182,7 +188,7 @@ where
         padded_left_vec,        // s2 = left_vec (padded)
         setup,
     );
-    prover_state.set_initial_blinds(r_c, r_d2, r_e1, r_e2);
+    prover_state.set_initial_blinds(commit_blind, r_c, r_d2, r_e1, r_e2);
 
     let num_rounds = nu.max(sigma);
     let mut first_messages = Vec::with_capacity(num_rounds);

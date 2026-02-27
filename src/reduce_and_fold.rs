@@ -168,15 +168,16 @@ where
         }
     }
 
-    /// Set initial VMV blinds (r_c, r_d2, r_e1, r_e2).
+    /// Set initial VMV blinds (r_d1, r_c, r_d2, r_e1, r_e2).
     pub fn set_initial_blinds(
         &mut self,
+        r_d1: Scalar<E>,
         r_c: Scalar<E>,
         r_d2: Scalar<E>,
         r_e1: Scalar<E>,
         r_e2: Scalar<E>,
     ) {
-        (self.r_c, self.r_d2, self.r_e1, self.r_e2) = (r_c, r_d2, r_e1, r_e2);
+        (self.r_d1, self.r_c, self.r_d2, self.r_e1, self.r_e2) = (r_d1, r_c, r_d2, r_e1, r_e2);
     }
 
     /// Compute first reduce message for current round
@@ -363,9 +364,7 @@ where
     ///
     /// In ZK mode, E₁ and E₂ are additionally blinded with fresh randomness so
     /// that the folded vectors `v₁[0]`, `v₂[0]` cannot be recovered from the
-    /// proof. These blinds do not affect the scalar product proof or the
-    /// accumulated `r_c` — they only add entropy to the Fiat-Shamir transcript
-    /// from which the `d` challenge is derived.
+    /// proof.
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
     pub fn compute_final_message<M1, M2>(
         &mut self,

@@ -60,12 +60,13 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
         nu: usize,
         sigma: usize,
         setup: &ProverSetup<E>,
-    ) -> Result<(E::GT, Vec<E::G1>, Option<Vec<ArkFr>>), DoryError>
+    ) -> Result<(E::GT, Vec<E::G1>, ArkFr), DoryError>
     where
         E: PairingCurve,
         Mo: Mode,
         M1: DoryRoutines<E::G1>,
         E::G1: Group<Scalar = ArkFr>,
+        E::GT: Group<Scalar = ArkFr>,
     {
         let expected_len = 1 << (nu + sigma);
         if self.coefficients.len() != expected_len {
@@ -79,20 +80,21 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
         let num_cols = 1 << sigma;
         let g1 = &setup.g1_vec[..num_cols];
 
-        let blinds: Vec<ArkFr> = (0..num_rows).map(|_| Mo::sample()).collect();
-
+        // Row commitments are always unblinded (internal to prover)
         let row_commitments: Vec<E::G1> = (0..num_rows)
             .map(|i| {
                 let row = &self.coefficients[i * num_cols..(i + 1) * num_cols];
-                Mo::mask(M1::msm(g1, row), &setup.h1, &blinds[i])
+                M1::msm(g1, row)
             })
             .collect();
 
-        let commitment = E::multi_pair_g2_setup(&row_commitments, &setup.g2_vec[..num_rows]);
+        let tier_2 = E::multi_pair_g2_setup(&row_commitments, &setup.g2_vec[..num_rows]);
 
-        let opt_blinds = if Mo::BLINDING { Some(blinds) } else { None };
+        // Single GT-level blind: commitment += r_d1 * HT
+        let r_d1: ArkFr = Mo::sample();
+        let commitment = Mo::mask(tier_2, &setup.ht, &r_d1);
 
-        Ok((commitment, row_commitments, opt_blinds))
+        Ok((commitment, row_commitments, r_d1))
     }
 }
 

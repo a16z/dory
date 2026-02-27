@@ -17,7 +17,7 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
     let poly = random_polynomial(poly_size);
     let point = random_point(num_vars);
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
@@ -26,6 +26,7 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
@@ -61,7 +62,7 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
     let poly = random_polynomial(poly_size);
     let point = random_point(num_vars);
 
-    let (_, tier_1, _) = poly
+    let (_, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
@@ -70,6 +71,7 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
@@ -95,7 +97,7 @@ fn test_non_square_matrix_small() {
     let poly = random_polynomial(poly_size);
     let point = random_point(num_vars);
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
@@ -104,6 +106,7 @@ fn test_non_square_matrix_small() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
@@ -143,7 +146,7 @@ fn test_non_square_matrix_very_rectangular() {
     let poly = random_polynomial(poly_size);
     let point = random_point(num_vars);
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
@@ -152,6 +155,7 @@ fn test_non_square_matrix_very_rectangular() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,

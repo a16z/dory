@@ -15,7 +15,7 @@ fn test_full_workflow() {
     let nu = 4;
     let sigma = 4;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
@@ -27,6 +27,7 @@ fn test_full_workflow() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
@@ -60,7 +61,7 @@ fn test_workflow_without_precommitment() {
     let nu = 4;
     let sigma = 4;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
@@ -69,6 +70,7 @@ fn test_workflow_without_precommitment() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
@@ -98,7 +100,7 @@ fn test_batched_proofs() {
     let nu = 4;
     let sigma = 4;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
@@ -110,6 +112,7 @@ fn test_batched_proofs() {
             &poly,
             &point,
             tier_1.clone(),
+            commit_blind,
             nu,
             sigma,
             &prover_setup,
@@ -153,7 +156,7 @@ fn test_linear_polynomial() {
     let nu = 4;
     let sigma = 4;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
@@ -162,6 +165,7 @@ fn test_linear_polynomial() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
@@ -196,7 +200,7 @@ fn test_zero_polynomial() {
     let nu = 4;
     let sigma = 4;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
@@ -205,6 +209,7 @@ fn test_zero_polynomial() {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
@@ -239,11 +244,11 @@ fn test_soundness_wrong_commitment() {
     let nu = 4;
     let sigma = 4;
 
-    let (commitment1, _, _) = poly1
+    let (commitment1, _, _commit_blind) = poly1
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let (_, tier_1_poly2, _) = poly2
+    let (_, tier_1_poly2, commit_blind) = poly2
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
@@ -252,6 +257,7 @@ fn test_soundness_wrong_commitment() {
         &poly2,
         &point,
         tier_1_poly2,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,

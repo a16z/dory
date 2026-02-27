@@ -27,7 +27,7 @@ fn create_valid_proof_components(
     let poly = random_polynomial(size);
     let point = random_point(nu + sigma);
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
     let mut prover_transcript = fresh_transcript();
@@ -35,6 +35,7 @@ fn create_valid_proof_components(
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,

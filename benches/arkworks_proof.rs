@@ -74,7 +74,7 @@ fn bench_prove(c: &mut Criterion) {
     let nu = 13;
     let sigma = 13;
 
-    let (_, tier_1, _) = poly
+    let (_, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
@@ -85,6 +85,7 @@ fn bench_prove(c: &mut Criterion) {
                 black_box(&poly),
                 black_box(&point),
                 black_box(tier_1.clone()),
+                black_box(commit_blind),
                 black_box(nu),
                 black_box(sigma),
                 black_box(&prover_setup),
@@ -100,7 +101,7 @@ fn bench_verify(c: &mut Criterion) {
     let nu = 13;
     let sigma = 13;
 
-    let (tier_2, tier_1, _) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
@@ -109,6 +110,7 @@ fn bench_verify(c: &mut Criterion) {
         &poly,
         &point,
         tier_1,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
@@ -158,7 +160,7 @@ fn bench_end_to_end(c: &mut Criterion) {
             let poly = ArkworksPolynomial::new(coefficients);
 
             // Commit
-            let (tier_2, tier_1, _) = poly
+            let (tier_2, tier_1, commit_blind) = poly
                 .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
@@ -172,6 +174,7 @@ fn bench_end_to_end(c: &mut Criterion) {
                 &poly,
                 &point,
                 tier_1,
+                commit_blind,
                 nu,
                 sigma,
                 &prover_setup,

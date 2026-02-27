@@ -75,9 +75,6 @@ pub struct VerifierSetup<E: PairingCurve> {
     /// h_t = e(h₁, h₂)
     pub ht: E::GT,
 
-    /// e(H1, Γ2,fin) - precomputed for ZK verification
-    #[cfg(feature = "zk")]
-    pub h1_g2_fin: E::GT,
     /// Maximum log₂ of polynomial size supported
     pub max_log_n: usize,
 }
@@ -170,8 +167,6 @@ impl<E: PairingCurve> ProverSetup<E> {
             h1: self.h1,
             h2: self.h2,
             ht: self.ht,
-            #[cfg(feature = "zk")]
-            h1_g2_fin: E::pair(&self.h1, &self.g2_vec[0]),
             max_log_n: max_num_rounds * 2, // Since square matrices: max_log_n = 2 * max_nu
         }
     }
@@ -239,14 +234,7 @@ fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
 
     cache_directory.map(|mut path| {
         path.push("dory");
-        #[cfg(feature = "zk")]
-        {
-            path.push(format!("dory_{max_log_n}_zk.urs"));
-        }
-        #[cfg(not(feature = "zk"))]
-        {
-            path.push(format!("dory_{max_log_n}.urs"));
-        }
+        path.push(format!("dory_{max_log_n}.urs"));
         path
     })
 }
