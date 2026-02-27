@@ -98,33 +98,33 @@ This property enables efficient proof aggregation and batch verification. See `e
 ```rust
 use dory_pcs::{setup, prove, verify, Transparent};
 use dory_pcs::backends::arkworks::{
-    BN254, G1Routines, G2Routines, ArkworksPolynomial, Blake2bTranscript
+    BN254, G1Routines, G2Routines, ArkworksPolynomial, ArkFr, Blake2bTranscript
 };
+use dory_pcs::primitives::arithmetic::Field;
+use dory_pcs::primitives::poly::Polynomial;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut rng = rand::thread_rng();
-
     // 1. Generate setup for polynomials up to 2^10 coefficients
     let max_log_n = 10;
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+    let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
     // 2. Create a polynomial with 256 coefficients (nu=4, sigma=4)
-    let coefficients: Vec<_> = (0..256).map(|_| rand::random()).collect();
+    let coefficients: Vec<ArkFr> = (0..256).map(|_| ArkFr::random()).collect();
     let polynomial = ArkworksPolynomial::new(coefficients);
 
     // 3. Define evaluation point (length = nu + sigma = 8)
-    let point: Vec<_> = (0..8).map(|_| rand::random()).collect();
+    let point: Vec<ArkFr> = (0..8).map(|_| ArkFr::random()).collect();
 
     let nu = 4;     // log₂(rows) = 4 → 16 rows
     let sigma = 4;  // log₂(cols) = 4 → 16 columns
 
     // 4. Commit to polynomial to get tier-2 commitment and row commitments
     let (tier_2, row_commitments, _) = polynomial
-        .commit::<BN254, Transparent, G1Routines, _>(nu, sigma, &prover_setup, &mut rng)?;
+        .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
 
     // 5. Create evaluation proof using row commitments
     let mut prover_transcript = Blake2bTranscript::new(b"dory-example");
-    let proof = prove::<_, BN254, G1Routines, G2Routines, _, _>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &polynomial,
         &point,
         row_commitments,

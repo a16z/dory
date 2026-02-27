@@ -6,8 +6,7 @@ use dory_pcs::{prove, setup, verify, Transparent};
 
 #[test]
 fn test_non_square_matrix_nu_eq_sigma_minus_1() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 10);
+    let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     // nu = 3, sigma = 4 => 2^3 x 2^4 = 8 rows x 16 columns = 128 coefficients
     let nu = 3;
@@ -19,11 +18,11 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
     let point = random_point(num_vars);
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -31,7 +30,6 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .expect("Proof generation should succeed");
 
@@ -52,8 +50,7 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
 
 #[test]
 fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, _verifier_setup) = setup::<BN254, _>(&mut rng, 10);
+    let (prover_setup, _verifier_setup) = setup::<BN254>(10);
 
     // nu = 4, sigma = 3 => This should be rejected
     let nu = 4;
@@ -65,11 +62,11 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
     let point = random_point(num_vars);
 
     let (_, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let proof_result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let proof_result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -77,7 +74,6 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     );
 
     assert!(
@@ -88,8 +84,7 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
 
 #[test]
 fn test_non_square_matrix_small() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 6);
+    let (prover_setup, verifier_setup) = setup::<BN254>(6);
 
     // nu = 2, sigma = 3 => 2^2 x 2^3 = 4 rows x 8 columns = 32 coefficients
     let nu = 2;
@@ -101,11 +96,11 @@ fn test_non_square_matrix_small() {
     let point = random_point(num_vars);
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -113,7 +108,6 @@ fn test_non_square_matrix_small() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .expect("Proof generation should succeed");
 
@@ -137,8 +131,7 @@ fn test_non_square_matrix_small() {
 
 #[test]
 fn test_non_square_matrix_very_rectangular() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 10);
+    let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     // nu = 2, sigma = 5 => 2^2 x 2^5 = 4 rows x 32 columns = 128 coefficients
     // This is much "less square" than nu = sigma - 1
@@ -151,11 +144,11 @@ fn test_non_square_matrix_very_rectangular() {
     let point = random_point(num_vars);
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -163,7 +156,6 @@ fn test_non_square_matrix_very_rectangular() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .expect("Proof generation should succeed");
 

@@ -8,7 +8,6 @@ use dory_pcs::backends::arkworks::{
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::proof::DoryProof;
 use dory_pcs::setup::{ProverSetup, VerifierSetup};
-use rand::thread_rng;
 
 pub mod cache;
 pub mod commitment;
@@ -25,8 +24,7 @@ pub mod zk;
 pub mod zk_statistical;
 
 pub fn random_polynomial(size: usize) -> ArkworksPolynomial {
-    let mut rng = thread_rng();
-    let coefficients: Vec<ArkFr> = (0..size).map(|_| ArkFr::random(&mut rng)).collect();
+    let coefficients: Vec<ArkFr> = (0..size).map(|_| ArkFr::random()).collect();
     ArkworksPolynomial::new(coefficients)
 }
 
@@ -38,13 +36,11 @@ pub fn constant_polynomial(value: u64, num_vars: usize) -> ArkworksPolynomial {
 }
 
 pub fn random_point(num_vars: usize) -> Vec<ArkFr> {
-    let mut rng = thread_rng();
-    (0..num_vars).map(|_| ArkFr::random(&mut rng)).collect()
+    (0..num_vars).map(|_| ArkFr::random()).collect()
 }
 
 pub fn test_setup(max_log_n: usize) -> ProverSetup<BN254> {
-    let mut rng = thread_rng();
-    ProverSetup::new(&mut rng, max_log_n)
+    ProverSetup::new(max_log_n)
 }
 
 pub fn test_setup_pair(max_log_n: usize) -> (ProverSetup<BN254>, VerifierSetup<BN254>) {

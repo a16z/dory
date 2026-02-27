@@ -183,14 +183,10 @@ where
     ///
     /// Computes D1L, D1R, D2L, D2R, E1β, E2β based on current state.
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_first_message")]
-    pub fn compute_first_message<M1, M2, R>(
-        &mut self,
-        rng: &mut R,
-    ) -> FirstReduceMessage<E::G1, E::G2, E::GT>
+    pub fn compute_first_message<M1, M2>(&mut self) -> FirstReduceMessage<E::G1, E::G2, E::GT>
     where
         M1: DoryRoutines<E::G1>,
         M2: DoryRoutines<E::G2>,
-        R: rand_core::RngCore,
     {
         assert!(
             self.num_rounds > 0,
@@ -208,8 +204,8 @@ where
         let g2_prime = &self.setup.g2_vec[..n2];
 
         // Sample round blinds (zero in Transparent mode)
-        self.round_d1 = [M::sample(rng), M::sample(rng)];
-        self.round_d2 = [M::sample(rng), M::sample(rng)];
+        self.round_d1 = [M::sample(), M::sample()];
+        self.round_d2 = [M::sample(), M::sample()];
 
         // D₁L = ⟨v₁L, Γ₂'⟩, D₁R = ⟨v₁R, Γ₂'⟩
         let ht = &self.setup.ht;
@@ -288,14 +284,10 @@ where
     ///
     /// Computes C+, C-, E1+, E1-, E2+, E2- based on current state.
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_second_message")]
-    pub fn compute_second_message<M1, M2, R>(
-        &mut self,
-        rng: &mut R,
-    ) -> SecondReduceMessage<E::G1, E::G2, E::GT>
+    pub fn compute_second_message<M1, M2>(&mut self) -> SecondReduceMessage<E::G1, E::G2, E::GT>
     where
         M1: DoryRoutines<E::G1>,
         M2: DoryRoutines<E::G2>,
-        R: rand_core::RngCore,
     {
         let n2 = 1 << (self.num_rounds - 1); // n/2
 
@@ -306,9 +298,9 @@ where
         let (s2_l, s2_r) = self.s2.split_at(n2);
 
         // Sample round blinds (zero in Transparent mode)
-        self.round_c = [M::sample(rng), M::sample(rng)];
-        self.round_e1 = [M::sample(rng), M::sample(rng)];
-        self.round_e2 = [M::sample(rng), M::sample(rng)];
+        self.round_c = [M::sample(), M::sample()];
+        self.round_e1 = [M::sample(), M::sample()];
+        self.round_e2 = [M::sample(), M::sample()];
 
         // C₊ = ⟨v₁L, v₂R⟩, C₋ = ⟨v₁R, v₂L⟩
         let ht = &self.setup.ht;
@@ -384,15 +376,13 @@ where
     /// accumulated `r_c` — they only add entropy to the Fiat-Shamir transcript
     /// from which the `d` challenge is derived.
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
-    pub fn compute_final_message<M1, M2, R>(
+    pub fn compute_final_message<M1, M2>(
         &mut self,
         gamma: &<E::G1 as Group>::Scalar,
-        rng: &mut R,
     ) -> ScalarProductMessage<E::G1, E::G2>
     where
         M1: DoryRoutines<E::G1>,
         M2: DoryRoutines<E::G2>,
-        R: rand_core::RngCore,
     {
         debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for final message");
         debug_assert_eq!(self.v1.len(), 1, "v1 must have length 1");
@@ -401,8 +391,8 @@ where
         let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
 
         // Sample independent blinds for the final message (zero in Transparent mode).
-        let r_final1: <E::G1 as Group>::Scalar = M::sample(rng);
-        let r_final2: <E::G1 as Group>::Scalar = M::sample(rng);
+        let r_final1: <E::G1 as Group>::Scalar = M::sample();
+        let r_final2: <E::G1 as Group>::Scalar = M::sample();
 
         // Apply fold-scalars transform with blinding:
         // E₁ = v₁ + (γ·s₁ + r_final1)·H₁
@@ -421,15 +411,14 @@ where
 
     /// Generate ZK scalar product proof. Must be called BEFORE `compute_final_message`.
     #[cfg(feature = "zk")]
-    pub fn scalar_product_proof<T: Transcript<Curve = E>, R: rand_core::RngCore>(
+    pub fn scalar_product_proof<T: Transcript<Curve = E>>(
         &self,
         transcript: &mut T,
-        rng: &mut R,
     ) -> ScalarProductProof<E::G1, E::G2, Scalar<E>, E::GT> {
         let (v1, v2) = (self.v1[0], self.v2[0]);
         let (g1, g2) = (self.setup.g1_vec[0], self.setup.g2_vec[0]);
         let ht = &self.setup.ht;
-        let mut r = || -> Scalar<E> { Field::random(rng) };
+        let r = || -> Scalar<E> { Field::random() };
         let (sd1, sd2) = (r(), r());
         let (d1, d2) = (g1.scale(&sd1), g2.scale(&sd2));
         let (rp1, rp2, rq, rr) = (r(), r(), r(), r());
@@ -462,26 +451,24 @@ where
 
 /// Generate Sigma1 proof: proves knowledge of (y, rE2, ry).
 #[cfg(feature = "zk")]
-pub fn generate_sigma1_proof<E, T, R>(
+pub fn generate_sigma1_proof<E, T>(
     y: &Scalar<E>,
     r_e2: &Scalar<E>,
     r_y: &Scalar<E>,
     setup: &ProverSetup<E>,
     transcript: &mut T,
-    rng: &mut R,
 ) -> Sigma1Proof<E::G1, E::G2, Scalar<E>>
 where
     E: PairingCurve,
     T: Transcript<Curve = E>,
-    R: rand_core::RngCore,
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
 {
     let (g2_fin, g1_fin) = (&setup.g2_vec[0], &setup.g1_vec[0]);
     let (k1, k2, k3) = (
-        Scalar::<E>::random(rng),
-        Scalar::<E>::random(rng),
-        Scalar::<E>::random(rng),
+        Scalar::<E>::random(),
+        Scalar::<E>::random(),
+        Scalar::<E>::random(),
     );
     let a1 = g2_fin.scale(&k1) + setup.h2.scale(&k2);
     let a2 = g1_fin.scale(&k1) + setup.h1.scale(&k3);
@@ -524,22 +511,20 @@ where
 
 /// Generate Sigma2 proof: proves e(E1, Γ2,fin) - D2 = e(H1, t1·Γ2,fin + t2·H2).
 #[cfg(feature = "zk")]
-pub fn generate_sigma2_proof<E, T, R>(
+pub fn generate_sigma2_proof<E, T>(
     t1: &Scalar<E>,
     t2: &Scalar<E>,
     setup: &ProverSetup<E>,
     transcript: &mut T,
-    rng: &mut R,
 ) -> Sigma2Proof<Scalar<E>, E::GT>
 where
     E: PairingCurve,
     T: Transcript<Curve = E>,
-    R: rand_core::RngCore,
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
     E::GT: Group<Scalar = Scalar<E>>,
 {
-    let (k1, k2) = (Scalar::<E>::random(rng), Scalar::<E>::random(rng));
+    let (k1, k2) = (Scalar::<E>::random(), Scalar::<E>::random());
     let a = E::pair(
         &setup.h1,
         &(setup.g2_vec[0].scale(&k1) + setup.h2.scale(&k2)),

@@ -17,19 +17,16 @@ use dory_pcs::backends::arkworks::{
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify, Transparent, ZK};
-use rand::thread_rng;
 use tracing::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Dory PCS - Zero-Knowledge End-to-End Example");
     info!("==============================================\n");
 
-    let mut rng = thread_rng();
-
     // Step 1: Setup (identical to transparent mode)
     let max_log_n = 10;
     info!("1. Generating setup (max_log_n = {})...", max_log_n);
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+    let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
     info!("   Setup complete\n");
 
     // Step 2: Create polynomial
@@ -42,19 +39,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("   Matrix layout: {}x{} (square)", 1 << nu, 1 << sigma);
     info!("   Total coefficients: {}", poly_size);
 
-    let coefficients: Vec<ArkFr> = (0..poly_size).map(|_| ArkFr::random(&mut rng)).collect();
+    let coefficients: Vec<ArkFr> = (0..poly_size).map(|_| ArkFr::random()).collect();
     let poly = ArkworksPolynomial::new(coefficients);
     info!("   Polynomial created\n");
 
     // Step 3: Commit (identical to transparent mode)
     info!("3. Computing polynomial commitment...");
     let (tier_2, tier_1, _) =
-        poly.commit::<BN254, Transparent, G1Routines, _>(nu, sigma, &prover_setup, &mut rng)?;
+        poly.commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
     info!("   Tier-1: {} row commitments", tier_1.len());
     info!("   Tier-2: final GT commitment\n");
 
     // Step 4: Evaluate
-    let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random(&mut rng)).collect();
+    let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
     let evaluation = poly.evaluate(&point);
     info!("4. Evaluated polynomial at random point\n");
 
@@ -64,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // generates additional sigma1, sigma2, and scalar-product sub-proofs.
     info!("5. Generating ZK evaluation proof...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-zk-example");
-    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, ZK, _>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, ZK>(
         &poly,
         &point,
         tier_1,
@@ -72,7 +69,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )?;
     info!("   Proof generated");
     info!(

@@ -43,15 +43,15 @@
 //! use dory_pcs::backends::arkworks::{BN254, G1Routines, G2Routines, Blake2bTranscript};
 //!
 //! // 1. Generate setup (automatically loads from/saves to disk)
-//! let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+//! let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 //!
 //! // 2. Commit to polynomial
 //! let (tier_2_commitment, tier_1_commitments, _blinds) = polynomial
-//!     .commit::<BN254, Transparent, G1Routines, _>(nu, sigma, &prover_setup, &mut rng)?;
+//!     .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
 //!
 //! // 3. Generate evaluation proof
 //! let mut prover_transcript = Blake2bTranscript::new(b"domain-separation");
-//! let proof = prove::<_, BN254, G1Routines, G2Routines, _, _>(
+//! let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
 //!     &polynomial, &point, tier_1_commitments, nu, sigma,
 //!     &prover_setup, &mut prover_transcript
 //! )?;
@@ -70,7 +70,7 @@
 //! ```ignore
 //! use dory_pcs::backends::arkworks::init_cache;
 //!
-//! let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+//! let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 //! init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
 //! // Subsequent operations will automatically use cached prepared points
 //! ```
@@ -132,7 +132,6 @@ pub use setup::{ProverSetup, VerifierSetup};
 /// - Windows: `{FOLDERID_LocalAppData}\dory\dory_{max_log_n}.urs`
 ///
 /// # Parameters
-/// - `rng`: Random number generator for setup generation (used only if not found on disk)
 /// - `max_log_n`: Maximum log₂ of polynomial size
 ///
 /// # Returns
@@ -144,10 +143,7 @@ pub use setup::{ProverSetup, VerifierSetup};
 ///
 /// # Panics
 /// Panics if the setup file exists on disk but is corrupted or cannot be deserialized.
-pub fn setup<E: PairingCurve, R: rand_core::RngCore>(
-    rng: &mut R,
-    max_log_n: usize,
-) -> (ProverSetup<E>, VerifierSetup<E>)
+pub fn setup<E: PairingCurve>(max_log_n: usize) -> (ProverSetup<E>, VerifierSetup<E>)
 where
     ProverSetup<E>: DorySerialize + DoryDeserialize,
     VerifierSetup<E>: DorySerialize + DoryDeserialize,
@@ -172,7 +168,7 @@ where
             "Setup not found on disk, generating new setup for max_log_n={}",
             max_log_n
         );
-        let prover_setup = ProverSetup::new(rng, max_log_n);
+        let prover_setup = ProverSetup::new(max_log_n);
         let verifier_setup = prover_setup.to_verifier_setup();
 
         // Save to disk
@@ -185,7 +181,7 @@ where
     {
         tracing::info!("Generating new setup for max_log_n={}", max_log_n);
 
-        let prover_setup = ProverSetup::new(rng, max_log_n);
+        let prover_setup = ProverSetup::new(max_log_n);
         let verifier_setup = prover_setup.to_verifier_setup();
 
         (prover_setup, verifier_setup)
@@ -202,7 +198,6 @@ where
 /// or when you suspect the saved setup file is corrupted).
 ///
 /// # Parameters
-/// - `rng`: Random number generator for setup generation
 /// - `max_log_n`: Maximum log₂ of polynomial size
 ///
 /// # Returns
@@ -211,17 +206,14 @@ where
 /// # Availability
 /// This function is only available when the `disk-persistence` feature is enabled.
 #[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
-pub fn generate_urs<E: PairingCurve, R: rand_core::RngCore>(
-    rng: &mut R,
-    max_log_n: usize,
-) -> (ProverSetup<E>, VerifierSetup<E>)
+pub fn generate_urs<E: PairingCurve>(max_log_n: usize) -> (ProverSetup<E>, VerifierSetup<E>)
 where
     ProverSetup<E>: DorySerialize + DoryDeserialize,
     VerifierSetup<E>: DorySerialize + DoryDeserialize,
 {
     tracing::info!("Force-generating new setup for max_log_n={}", max_log_n);
 
-    let prover_setup = ProverSetup::new(rng, max_log_n);
+    let prover_setup = ProverSetup::new(max_log_n);
     let verifier_setup = prover_setup.to_verifier_setup();
 
     // Overwrites existing
@@ -270,7 +262,7 @@ where
 #[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
 #[tracing::instrument(skip_all, name = "prove")]
-pub fn prove<F, E, M1, M2, P, T, Mo, R>(
+pub fn prove<F, E, M1, M2, P, T, Mo>(
     polynomial: &P,
     point: &[F],
     row_commitments: Vec<E::G1>,
@@ -278,7 +270,6 @@ pub fn prove<F, E, M1, M2, P, T, Mo, R>(
     sigma: usize,
     setup: &ProverSetup<E>,
     transcript: &mut T,
-    rng: &mut R,
 ) -> Result<(DoryProof<E::G1, E::G2, E::GT>, Option<F>), DoryError>
 where
     F: Field,
@@ -291,9 +282,8 @@ where
     P: MultilinearLagrange<F>,
     T: primitives::transcript::Transcript<Curve = E>,
     Mo: Mode,
-    R: rand_core::RngCore,
 {
-    evaluation_proof::create_evaluation_proof::<F, E, M1, M2, T, P, Mo, R>(
+    evaluation_proof::create_evaluation_proof::<F, E, M1, M2, T, P, Mo>(
         polynomial,
         point,
         Some(row_commitments),
@@ -301,7 +291,6 @@ where
         sigma,
         setup,
         transcript,
-        rng,
     )
 }
 

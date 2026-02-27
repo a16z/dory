@@ -44,7 +44,7 @@ static CACHE: RwLock<Option<Arc<PreparedCache>>> = RwLock::new(None);
 /// use dory_pcs::backends::arkworks::{init_cache, BN254};
 /// use dory_pcs::setup::ProverSetup;
 ///
-/// let setup = ProverSetup::<BN254>::new(&mut rng, max_log_n);
+/// let setup = ProverSetup::<BN254>::new(max_log_n);
 /// init_cache(&setup.g1_vec, &setup.g2_vec);
 /// ```
 pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {

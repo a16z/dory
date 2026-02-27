@@ -11,7 +11,6 @@ use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::{Field as ArkField, One, PrimeField, UniformRand, Zero as ArkZero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::{Add, Mul, Neg, Sub};
-use rand_core::RngCore;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ArkG1(pub G1Projective);
@@ -41,8 +40,8 @@ impl Group for ArkG1 {
         ArkG1(self.0 * k.0)
     }
 
-    fn random<R: RngCore>(rng: &mut R) -> Self {
-        ArkG1(G1Projective::rand(rng))
+    fn random() -> Self {
+        ArkG1(G1Projective::rand(&mut rand_core::OsRng))
     }
 }
 
@@ -114,8 +113,8 @@ impl Group for ArkG2 {
         ArkG2(self.0 * k.0)
     }
 
-    fn random<R: RngCore>(rng: &mut R) -> Self {
-        ArkG2(G2Projective::rand(rng))
+    fn random() -> Self {
+        ArkG2(G2Projective::rand(&mut rand_core::OsRng))
     }
 }
 
@@ -187,8 +186,8 @@ impl Group for ArkGT {
         ArkGT(self.0.pow(k.0.into_bigint()))
     }
 
-    fn random<R: RngCore>(rng: &mut R) -> Self {
-        ArkGT(Fq12::rand(rng))
+    fn random() -> Self {
+        ArkGT(Fq12::rand(&mut rand_core::OsRng))
     }
 }
 

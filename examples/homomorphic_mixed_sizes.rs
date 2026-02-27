@@ -10,23 +10,21 @@ use dory_pcs::backends::arkworks::{
 use dory_pcs::primitives::arithmetic::{Field, Group};
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify, Transparent};
-use rand::thread_rng;
 use tracing::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Dory PCS - Mixed-size Homomorphic Combination Example");
-    let mut rng = thread_rng();
 
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 4);
+    let (prover_setup, verifier_setup) = setup::<BN254>(4);
 
     info!("Creating two polynomials with logical sizes 16 and 4...");
     let mut coeffs_poly1 = vec![ArkFr::zero(); 16];
     let mut coeffs_poly2 = vec![ArkFr::zero(); 4];
     for coeff in coeffs_poly1.iter_mut() {
-        *coeff = ArkFr::random(&mut rng);
+        *coeff = ArkFr::random();
     }
     for coeff in coeffs_poly2.iter_mut() {
-        *coeff = ArkFr::random(&mut rng);
+        *coeff = ArkFr::random();
     }
     let poly1 = ArkworksPolynomial::new(coeffs_poly1.clone());
     let poly2 = ArkworksPolynomial::new(coeffs_poly2.clone());
@@ -35,15 +33,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Poly2: {:?}", poly2);
 
     let commitment1 = poly1
-        .commit::<BN254, Transparent, G1Routines, _>(2, 2, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, G1Routines>(2, 2, &prover_setup)
         .unwrap();
     let commitment2 = poly2
-        .commit::<BN254, Transparent, G1Routines, _>(1, 1, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, G1Routines>(1, 1, &prover_setup)
         .unwrap();
     info!("✓ Commitments ready\n");
 
     info!("Sampling random combination scalars r1, r2...");
-    let coeff_scalars = [ArkFr::random(&mut rng), ArkFr::random(&mut rng)];
+    let coeff_scalars = [ArkFr::random(), ArkFr::random()];
 
     info!("Combining tier-2 commitments (GT)...");
     let combined_tier2 = coeff_scalars[0] * commitment1.0 + coeff_scalars[1] * commitment2.0;
@@ -84,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let padded_poly2 = ArkworksPolynomial::new(padded_poly2_coefficients);
 
     info!("Evaluating combined polynomial at a random point...");
-    let point: Vec<ArkFr> = (0..4).map(|_| ArkFr::random(&mut rng)).collect();
+    let point: Vec<ArkFr> = (0..4).map(|_| ArkFr::random()).collect();
     let evaluation = combined_poly.evaluate(&point);
 
     info!("Checking that evaluation matches r1·P1(x) + r2·P2(x)...");
@@ -102,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Generating evaluation proof with combined commitment...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-homomorphic-mixed");
-    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -110,7 +108,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         2,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )?;
     info!("✓ Proof generated\n");
 
@@ -128,7 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("===========================================");
     let padded_poly_commitment = padded_poly2
-        .commit::<BN254, Transparent, G1Routines, _>(2, 2, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, G1Routines>(2, 2, &prover_setup)
         .unwrap();
     assert_eq!(padded_poly_commitment.0, commitment2.0);
     info!("✓ Padded poly commitment matches original poly2 commitment");

@@ -6,24 +6,23 @@ use dory_pcs::{create_evaluation_proof, prove, setup, verify, Transparent, ZK};
 
 #[test]
 fn test_zk_full_workflow() {
-    let mut rng = rand::thread_rng();
     let max_log_n = 10;
 
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+    let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
     let poly = random_polynomial(256);
     let nu = 4;
     let sigma = 4;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let point = random_point(8);
     let expected_evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
         tier_1,
@@ -31,7 +30,6 @@ fn test_zk_full_workflow() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
@@ -52,7 +50,6 @@ fn test_zk_full_workflow() {
 
 #[test]
 fn test_zk_small_polynomial() {
-    let mut rng = rand::thread_rng();
     let (prover_setup, verifier_setup) = test_setup_pair(4);
 
     let poly = random_polynomial(4);
@@ -60,14 +57,14 @@ fn test_zk_small_polynomial() {
     let sigma = 1;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let point = random_point(2);
     let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
         tier_1,
@@ -75,7 +72,6 @@ fn test_zk_small_polynomial() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
 
@@ -98,22 +94,21 @@ fn test_zk_small_polynomial() {
 
 #[test]
 fn test_zk_larger_polynomial() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 12);
+    let (prover_setup, verifier_setup) = setup::<BN254>(12);
 
     let poly = random_polynomial(1024);
     let nu = 5;
     let sigma = 5;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let point = random_point(10);
     let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
         tier_1,
@@ -121,7 +116,6 @@ fn test_zk_larger_polynomial() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
 
@@ -144,8 +138,7 @@ fn test_zk_larger_polynomial() {
 
 #[test]
 fn test_zk_non_square_matrix() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 10);
+    let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     // Non-square: nu=3, sigma=4 (8 rows, 16 columns = 128 coefficients)
     let poly = random_polynomial(128);
@@ -153,14 +146,14 @@ fn test_zk_non_square_matrix() {
     let sigma = 4;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let point = random_point(7); // nu + sigma = 7
     let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
         tier_1,
@@ -168,7 +161,6 @@ fn test_zk_non_square_matrix() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
 
@@ -189,11 +181,8 @@ fn test_zk_non_square_matrix() {
     );
 }
 
-/// Test the full ZK API where y is hidden from the verifier
-/// With unified API, verifier extracts y_com from proof.y_com
 #[test]
 fn test_zk_hidden_evaluation() {
-    let mut rng = rand::thread_rng();
     let (prover_setup, verifier_setup) = test_setup_pair(6);
 
     let poly = random_polynomial(16);
@@ -201,7 +190,7 @@ fn test_zk_hidden_evaluation() {
     let sigma = 2;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let point = random_point(4);
@@ -209,24 +198,20 @@ fn test_zk_hidden_evaluation() {
 
     // Create ZK proof using unified API with ZK mode
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) =
-        create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
-            &poly,
-            &point,
-            Some(tier_1),
-            nu,
-            sigma,
-            &prover_setup,
-            &mut prover_transcript,
-            &mut rng,
-        )
-        .unwrap();
+    let (proof, _) = create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
+        &poly,
+        &point,
+        Some(tier_1),
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
 
-    // Verify y_com is present in proof
     assert!(proof.y_com.is_some(), "ZK proof should contain y_com");
     assert!(proof.e2.is_some(), "ZK proof should contain e2");
 
-    // Verify ZK proof - for ZK proofs, evaluation is ignored (e2 from proof is used)
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
         tier_2,
@@ -249,7 +234,6 @@ fn test_zk_hidden_evaluation() {
 fn test_zk_tampered_e2_rejected() {
     use dory_pcs::primitives::arithmetic::Group;
 
-    let mut rng = rand::thread_rng();
     let (prover_setup, verifier_setup) = test_setup_pair(6);
 
     let poly = random_polynomial(16);
@@ -257,7 +241,7 @@ fn test_zk_tampered_e2_rejected() {
     let sigma = 2;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let point = random_point(4);
@@ -265,7 +249,7 @@ fn test_zk_tampered_e2_rejected() {
 
     let mut prover_transcript = fresh_transcript();
     let (mut proof, _) =
-        create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+        create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
             &poly,
             &point,
             Some(tier_1),
@@ -273,7 +257,6 @@ fn test_zk_tampered_e2_rejected() {
             sigma,
             &prover_setup,
             &mut prover_transcript,
-            &mut rng,
         )
         .unwrap();
 
@@ -298,33 +281,30 @@ fn test_zk_tampered_e2_rejected() {
 /// Test full ZK with larger polynomial
 #[test]
 fn test_zk_hidden_evaluation_larger() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 10);
+    let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     let poly = random_polynomial(256);
     let nu = 4;
     let sigma = 4;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let point = random_point(8);
     let evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) =
-        create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
-            &poly,
-            &point,
-            Some(tier_1),
-            nu,
-            sigma,
-            &prover_setup,
-            &mut prover_transcript,
-            &mut rng,
-        )
-        .unwrap();
+    let (proof, _) = create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
+        &poly,
+        &point,
+        Some(tier_1),
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover_transcript,
+    )
+    .unwrap();
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(

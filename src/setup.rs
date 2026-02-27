@@ -6,7 +6,6 @@
 
 use crate::primitives::arithmetic::{Group, PairingCurve};
 use crate::primitives::serialization::{DoryDeserialize, DorySerialize};
-use rand_core::RngCore;
 
 #[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
 use std::fs::{self, File};
@@ -90,22 +89,21 @@ impl<E: PairingCurve> ProverSetup<E> {
     /// supporting polynomials up to 2^max_log_n coefficients arranged as n×n matrices.
     ///
     /// # Parameters
-    /// - `rng`: Random number generator
     /// - `max_log_n`: Maximum log₂ of polynomial size (for n×n matrix with n² = 2^max_log_n)
     ///
     /// # Returns
     /// A new `ProverSetup` with randomly generated parameters
-    pub fn new<R: RngCore>(rng: &mut R, max_log_n: usize) -> Self {
+    pub fn new(max_log_n: usize) -> Self {
         // For square matrices: n = 2^((max_log_n+1)/2)
         let n = 1 << max_log_n.div_ceil(2);
         // Generate n random G1 generators (Γ₁)
-        let g1_vec: Vec<E::G1> = (0..n).map(|_| E::G1::random(rng)).collect();
+        let g1_vec: Vec<E::G1> = (0..n).map(|_| E::G1::random()).collect();
         // Generate n random G2 generators (Γ₂)
-        let g2_vec: Vec<E::G2> = (0..n).map(|_| E::G2::random(rng)).collect();
+        let g2_vec: Vec<E::G2> = (0..n).map(|_| E::G2::random()).collect();
 
         // Generate blinding generators
-        let h1 = E::G1::random(rng);
-        let h2 = E::G2::random(rng);
+        let h1 = E::G1::random();
+        let h2 = E::G2::random();
 
         // Precompute e(h₁, h₂)
         let ht = E::pair(&h1, &h2);

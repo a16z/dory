@@ -12,14 +12,11 @@ use dory_pcs::backends::arkworks::{
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify, Transparent};
-use rand::thread_rng;
 use tracing::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Dory PCS - Non-Square Matrix Example");
     info!("=====================================\n");
-
-    let mut rng = thread_rng();
 
     // Step 1: Setup
     let max_log_n = 10;
@@ -27,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "1. Generating transparent setup (max_log_n = {})...",
         max_log_n
     );
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+    let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
     info!("   ✓ Setup complete\n");
 
     // Step 2: Create polynomial with non-square matrix layout
@@ -43,14 +40,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("   Number of variables: {}", num_vars);
     info!("   Constraint: nu ({}) ≤ sigma ({})", nu, sigma);
 
-    let coefficients: Vec<ArkFr> = (0..poly_size).map(|_| ArkFr::random(&mut rng)).collect();
+    let coefficients: Vec<ArkFr> = (0..poly_size).map(|_| ArkFr::random()).collect();
     let poly = ArkworksPolynomial::new(coefficients);
     info!("   ✓ Polynomial created\n");
 
     // Step 3: Commit
     info!("3. Computing polynomial commitment...");
     let (tier_2, tier_1, _) =
-        poly.commit::<BN254, Transparent, G1Routines, _>(nu, sigma, &prover_setup, &mut rng)?;
+        poly.commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
     info!(
         "   ✓ Tier-1 commitment: {} row commitments (G1)",
         tier_1.len()
@@ -58,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("   ✓ Tier-2 commitment: final commitment (GT)\n");
 
     // Step 4: Evaluation
-    let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random(&mut rng)).collect();
+    let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
     let evaluation = poly.evaluate(&point);
     info!("4. Evaluating polynomial at random point...");
     info!("   ✓ Evaluation result computed\n");
@@ -66,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 5: Prove
     info!("5. Generating evaluation proof...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-non-square-example");
-    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -74,7 +71,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )?;
     info!("   ✓ Proof generated (logarithmic size)\n");
 

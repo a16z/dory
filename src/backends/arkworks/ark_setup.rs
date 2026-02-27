@@ -5,7 +5,6 @@
 //! are in the `ark_serde` module.
 
 use crate::setup::{ProverSetup, VerifierSetup};
-use rand_core::RngCore;
 use std::ops::{Deref, DerefMut};
 
 use super::BN254;
@@ -33,16 +32,15 @@ impl ArkworksProverSetup {
     /// supporting polynomials up to 2^max_log_n coefficients arranged as n×n matrices.
     ///
     /// # Parameters
-    /// - `rng`: Random number generator
     /// - `max_log_n`: Maximum log₂ of polynomial size (for n×n matrix with n² = 2^max_log_n)
-    pub fn new<R: RngCore>(rng: &mut R, max_log_n: usize) -> Self {
-        Self(ProverSetup::new(rng, max_log_n))
+    pub fn new(max_log_n: usize) -> Self {
+        Self(ProverSetup::new(max_log_n))
     }
 
     /// Load prover setup from disk cache, or generate and cache if not available
     #[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
-    pub fn new_from_urs<R: RngCore>(rng: &mut R, max_log_n: usize) -> Self {
-        let (prover_setup, _) = crate::setup::<BN254, _>(rng, max_log_n);
+    pub fn new_from_urs(max_log_n: usize) -> Self {
+        let (prover_setup, _) = crate::setup::<BN254>(max_log_n);
         Self(prover_setup)
     }
 

@@ -1,17 +1,15 @@
 use dory_pcs::backends::arkworks::{ArkG1, ArkG2, ArkGT, BN254};
 use dory_pcs::primitives::arithmetic::{Group, PairingCurve};
-use rand::thread_rng;
 
 #[cfg(feature = "cache")]
 use dory_pcs::backends::arkworks::ark_cache;
 
 #[test]
 fn multi_pair_correctness() {
-    let mut rng = thread_rng();
     let n = 10;
 
-    let ps: Vec<ArkG1> = (0..n).map(|_| ArkG1::random(&mut rng)).collect();
-    let qs: Vec<ArkG2> = (0..n).map(|_| ArkG2::random(&mut rng)).collect();
+    let ps: Vec<ArkG1> = (0..n).map(|_| ArkG1::random()).collect();
+    let qs: Vec<ArkG2> = (0..n).map(|_| ArkG2::random()).collect();
 
     let result = BN254::multi_pair(&ps, &qs);
 
@@ -35,10 +33,8 @@ fn multi_pair_empty() {
 #[test]
 #[should_panic(expected = "multi_pair requires equal length vectors")]
 fn multi_pair_length_mismatch() {
-    let mut rng = thread_rng();
-
-    let ps: Vec<ArkG1> = (0..5).map(|_| ArkG1::random(&mut rng)).collect();
-    let qs: Vec<ArkG2> = (0..3).map(|_| ArkG2::random(&mut rng)).collect();
+    let ps: Vec<ArkG1> = (0..5).map(|_| ArkG1::random()).collect();
+    let qs: Vec<ArkG2> = (0..3).map(|_| ArkG2::random()).collect();
 
     BN254::multi_pair(&ps, &qs);
 }
@@ -46,9 +42,8 @@ fn multi_pair_length_mismatch() {
 #[cfg(feature = "cache")]
 #[test]
 fn cache_initialization() {
-    let mut rng = thread_rng();
-    let g1_vec: Vec<ArkG1> = (0..10).map(|_| ArkG1::random(&mut rng)).collect();
-    let g2_vec: Vec<ArkG2> = (0..10).map(|_| ArkG2::random(&mut rng)).collect();
+    let g1_vec: Vec<ArkG1> = (0..10).map(|_| ArkG1::random()).collect();
+    let g2_vec: Vec<ArkG2> = (0..10).map(|_| ArkG2::random()).collect();
 
     ark_cache::init_cache(&g1_vec, &g2_vec);
 
@@ -61,11 +56,9 @@ fn cache_initialization() {
 #[cfg(feature = "cache")]
 #[test]
 fn cache_smart_reinit() {
-    let mut rng = thread_rng();
-
     // Initialize with small size
-    let g1_small: Vec<ArkG1> = (0..5).map(|_| ArkG1::random(&mut rng)).collect();
-    let g2_small: Vec<ArkG2> = (0..5).map(|_| ArkG2::random(&mut rng)).collect();
+    let g1_small: Vec<ArkG1> = (0..5).map(|_| ArkG1::random()).collect();
+    let g2_small: Vec<ArkG2> = (0..5).map(|_| ArkG2::random()).collect();
     ark_cache::init_cache(&g1_small, &g2_small);
 
     let cache = ark_cache::get_prepared_cache().unwrap();
@@ -77,8 +70,8 @@ fn cache_smart_reinit() {
     assert_eq!(cache.g1_prepared.len(), small_len);
 
     // Re-init with larger size — should replace cache
-    let g1_large: Vec<ArkG1> = (0..20).map(|_| ArkG1::random(&mut rng)).collect();
-    let g2_large: Vec<ArkG2> = (0..20).map(|_| ArkG2::random(&mut rng)).collect();
+    let g1_large: Vec<ArkG1> = (0..20).map(|_| ArkG1::random()).collect();
+    let g2_large: Vec<ArkG2> = (0..20).map(|_| ArkG2::random()).collect();
     ark_cache::init_cache(&g1_large, &g2_large);
 
     let cache = ark_cache::get_prepared_cache().unwrap();
@@ -89,11 +82,10 @@ fn cache_smart_reinit() {
 #[cfg(feature = "cache")]
 #[test]
 fn multi_pair_with_cache_optimization() {
-    let mut rng = thread_rng();
     let n = 20;
 
-    let g1_vec: Vec<ArkG1> = (0..n).map(|_| ArkG1::random(&mut rng)).collect();
-    let g2_vec: Vec<ArkG2> = (0..n).map(|_| ArkG2::random(&mut rng)).collect();
+    let g1_vec: Vec<ArkG1> = (0..n).map(|_| ArkG1::random()).collect();
+    let g2_vec: Vec<ArkG2> = (0..n).map(|_| ArkG2::random()).collect();
 
     if !ark_cache::is_cached() {
         ark_cache::init_cache(&g1_vec, &g2_vec);

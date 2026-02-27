@@ -14,14 +14,11 @@ use dory_pcs::backends::arkworks::{
 use dory_pcs::primitives::arithmetic::{Field, Group};
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify, Transparent};
-use rand::thread_rng;
 use tracing::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Dory PCS - Homomorphic Combination Example");
     info!("===========================================\n");
-
-    let mut rng = thread_rng();
 
     // Step 1: Setup
     let max_log_n = 10;
@@ -29,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "1. Generating transparent setup (max_log_n = {})...",
         max_log_n
     );
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+    let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
     info!("   ✓ Setup complete\n");
 
     // Parameters
@@ -43,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("   Each polynomial: {} coefficients", poly_size);
     let polys: Vec<ArkworksPolynomial> = (0..num_polys)
         .map(|_| {
-            let coeffs: Vec<ArkFr> = (0..poly_size).map(|_| ArkFr::random(&mut rng)).collect();
+            let coeffs: Vec<ArkFr> = (0..poly_size).map(|_| ArkFr::random()).collect();
             ArkworksPolynomial::new(coeffs)
         })
         .collect();
@@ -54,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let commitments: Vec<_> = polys
         .iter()
         .map(|poly| {
-            poly.commit::<BN254, Transparent, G1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+            poly.commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
                 .unwrap()
         })
         .collect();
@@ -62,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 4: Generate random coefficients for linear combination
     info!("4. Generating random combination coefficients...");
-    let coeffs: Vec<ArkFr> = (0..num_polys).map(|_| ArkFr::random(&mut rng)).collect();
+    let coeffs: Vec<ArkFr> = (0..num_polys).map(|_| ArkFr::random()).collect();
     info!("   ✓ Coefficients: r₁, r₂, ..., r{}\n", num_polys);
 
     // Step 5: Homomorphically combine commitments
@@ -121,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 7: Evaluate and verify consistency
     info!("7. Verifying homomorphic property...");
-    let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random(&mut rng)).collect();
+    let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
     let evaluation = combined_poly.evaluate(&point);
 
     // Check that combined polynomial evaluation matches linear combination
@@ -139,7 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 8: Generate proof
     info!("8. Generating evaluation proof for combined polynomial...");
     let mut prover_transcript = Blake2bTranscript::new(b"dory-homomorphic-example");
-    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -147,7 +144,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )?;
     info!("   ✓ Proof generated\n");
 

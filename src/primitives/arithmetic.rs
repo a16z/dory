@@ -1,7 +1,6 @@
 #![allow(missing_docs)]
 
 use super::{DoryDeserialize, DorySerialize};
-use rand_core::RngCore;
 
 pub trait Field:
     Sized
@@ -30,7 +29,7 @@ pub trait Field:
 
     fn inv(self) -> Option<Self>;
 
-    fn random<R: RngCore>(rng: &mut R) -> Self;
+    fn random() -> Self;
 
     fn from_u64(val: u64) -> Self;
     fn from_i64(val: i64) -> Self;
@@ -60,7 +59,7 @@ pub trait Group:
     fn neg(&self) -> Self;
     fn scale(&self, k: &Self::Scalar) -> Self;
 
-    fn random<R: RngCore>(rng: &mut R) -> Self;
+    fn random() -> Self;
 }
 
 pub trait PairingCurve: Clone {

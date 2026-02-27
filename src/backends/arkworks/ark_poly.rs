@@ -55,19 +55,17 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
 
     #[tracing::instrument(skip_all, name = "ArkworksPolynomial::commit", fields(nu, sigma, num_rows = 1 << nu, num_cols = 1 << sigma))]
     #[allow(clippy::type_complexity)]
-    fn commit<E, Mo, M1, R>(
+    fn commit<E, Mo, M1>(
         &self,
         nu: usize,
         sigma: usize,
         setup: &ProverSetup<E>,
-        rng: &mut R,
     ) -> Result<(E::GT, Vec<E::G1>, Option<Vec<ArkFr>>), DoryError>
     where
         E: PairingCurve,
         Mo: Mode,
         M1: DoryRoutines<E::G1>,
         E::G1: Group<Scalar = ArkFr>,
-        R: rand_core::RngCore,
     {
         let expected_len = 1 << (nu + sigma);
         if self.coefficients.len() != expected_len {
@@ -81,7 +79,7 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
         let num_cols = 1 << sigma;
         let g1 = &setup.g1_vec[..num_cols];
 
-        let blinds: Vec<ArkFr> = (0..num_rows).map(|_| Mo::sample(rng)).collect();
+        let blinds: Vec<ArkFr> = (0..num_rows).map(|_| Mo::sample()).collect();
 
         let row_commitments: Vec<E::G1> = (0..num_rows)
             .map(|i| {

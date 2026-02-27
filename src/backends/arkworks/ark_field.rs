@@ -7,7 +7,6 @@ use ark_bn254::Fr;
 use ark_ff::{Field as ArkField, UniformRand, Zero as ArkZero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::{Add, Mul, Neg, Sub};
-use rand_core::RngCore;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ArkFr(pub Fr);
@@ -41,8 +40,8 @@ impl Field for ArkFr {
         ArkField::inverse(&self.0).map(ArkFr)
     }
 
-    fn random<R: RngCore>(rng: &mut R) -> Self {
-        ArkFr(Fr::rand(rng))
+    fn random() -> Self {
+        ArkFr(Fr::rand(&mut rand_core::OsRng))
     }
 
     fn from_u64(val: u64) -> Self {

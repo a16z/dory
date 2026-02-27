@@ -7,24 +7,23 @@ use dory_pcs::{prove, setup, verify, Transparent};
 
 #[test]
 fn test_full_workflow() {
-    let mut rng = rand::thread_rng();
     let max_log_n = 10;
 
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+    let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
     let poly = random_polynomial(256);
     let nu = 4;
     let sigma = 4;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let point = random_point(8);
     let expected_evaluation = poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -32,7 +31,6 @@ fn test_full_workflow() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
@@ -53,10 +51,9 @@ fn test_full_workflow() {
 
 #[test]
 fn test_workflow_without_precommitment() {
-    let mut rng = rand::thread_rng();
     let max_log_n = 10;
 
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+    let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
     let poly = random_polynomial(256);
     let point = random_point(8);
@@ -64,11 +61,11 @@ fn test_workflow_without_precommitment() {
     let sigma = 4;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -76,7 +73,6 @@ fn test_workflow_without_precommitment() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
@@ -96,22 +92,21 @@ fn test_workflow_without_precommitment() {
 
 #[test]
 fn test_batched_proofs() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 10);
+    let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     let poly = random_polynomial(256);
     let nu = 4;
     let sigma = 4;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     for i in 0..5 {
         let point = random_point(8);
 
         let mut prover_transcript = Blake2bTranscript::new(format!("test-{i}").as_bytes());
-        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
             &poly,
             &point,
             tier_1.clone(),
@@ -119,7 +114,6 @@ fn test_batched_proofs() {
             sigma,
             &prover_setup,
             &mut prover_transcript,
-            &mut rng,
         )
         .unwrap();
         let evaluation = poly.evaluate(&point);
@@ -140,8 +134,7 @@ fn test_batched_proofs() {
 
 #[test]
 fn test_linear_polynomial() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 10);
+    let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     let coefficients: Vec<ArkFr> = (0..256).map(|i| ArkFr::from_u64(i as u64)).collect();
     let poly = ArkworksPolynomial::new(coefficients);
@@ -161,11 +154,11 @@ fn test_linear_polynomial() {
     let sigma = 4;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -173,7 +166,6 @@ fn test_linear_polynomial() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
 
@@ -196,8 +188,7 @@ fn test_linear_polynomial() {
 
 #[test]
 fn test_zero_polynomial() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 10);
+    let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     let poly = constant_polynomial(0, 8);
     let point = random_point(8);
@@ -206,11 +197,11 @@ fn test_zero_polynomial() {
     let sigma = 4;
 
     let (tier_2, tier_1, _) = poly
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -218,7 +209,6 @@ fn test_zero_polynomial() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
 
@@ -240,8 +230,7 @@ fn test_zero_polynomial() {
 
 #[test]
 fn test_soundness_wrong_commitment() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 10);
+    let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     let poly1 = random_polynomial(256);
     let poly2 = random_polynomial(256);
@@ -251,15 +240,15 @@ fn test_soundness_wrong_commitment() {
     let sigma = 4;
 
     let (commitment1, _, _) = poly1
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let (_, tier_1_poly2, _) = poly2
-        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly2,
         &point,
         tier_1_poly2,
@@ -267,7 +256,6 @@ fn test_soundness_wrong_commitment() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
     let evaluation = poly2.evaluate(&point);

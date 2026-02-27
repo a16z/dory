@@ -93,15 +93,12 @@ fn test_setup_disk_persistence() {
 fn test_setup_function_uses_disk() {
     use dory_pcs::backends::arkworks::BN254;
     use dory_pcs::{generate_urs, setup};
-    use rand::thread_rng;
-
-    let mut rng = thread_rng();
 
     let max_log_n = 11;
 
-    let (prover1, verifier1) = generate_urs::<BN254, _>(&mut rng, max_log_n);
+    let (prover1, verifier1) = generate_urs::<BN254>(max_log_n);
 
-    let (prover2, verifier2) = setup::<BN254, _>(&mut rng, max_log_n);
+    let (prover2, verifier2) = setup::<BN254>(max_log_n);
 
     assert_eq!(prover1.g1_vec[0], prover2.g1_vec[0]);
     assert_eq!(prover1.g2_vec[0], prover2.g2_vec[0]);
@@ -112,12 +109,10 @@ fn test_setup_function_uses_disk() {
 fn test_arkworks_setup_canonical_serialization() {
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use dory_pcs::backends::arkworks::{ArkworksProverSetup, ArkworksVerifierSetup};
-    use rand::thread_rng;
 
-    let mut rng = thread_rng();
     let max_log_n = 6;
 
-    let prover = ArkworksProverSetup::new(&mut rng, max_log_n);
+    let prover = ArkworksProverSetup::new(max_log_n);
     let verifier = prover.to_verifier_setup();
 
     let mut prover_bytes = Vec::new();
@@ -152,9 +147,7 @@ fn test_arkworks_setup_canonical_serialization() {
 fn test_arkworks_setup_new_from_urs() {
     use dory_pcs::backends::arkworks::ArkworksProverSetup;
     use dory_pcs::{backends::arkworks::BN254, generate_urs};
-    use rand::thread_rng;
 
-    let mut rng = thread_rng();
     let max_log_n = 14;
 
     // Clean up any existing cache file first
@@ -196,9 +189,9 @@ fn test_arkworks_setup_new_from_urs() {
         let _ = std::fs::remove_file(&cache_file);
     }
 
-    let (prover1, _) = generate_urs::<BN254, _>(&mut rng, max_log_n);
+    let (prover1, _) = generate_urs::<BN254>(max_log_n);
 
-    let prover2 = ArkworksProverSetup::new_from_urs(&mut rng, max_log_n);
+    let prover2 = ArkworksProverSetup::new_from_urs(max_log_n);
 
     // Verify they match (proving it loaded from disk)
     assert_eq!(

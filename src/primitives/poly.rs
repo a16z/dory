@@ -74,7 +74,6 @@ pub trait Polynomial<F: Field> {
     /// - `nu`: Log₂ of number of rows
     /// - `sigma`: Log₂ of number of columns
     /// - `setup`: Prover setup containing generators
-    /// - `rng`: Random number generator (unused in Transparent mode)
     ///
     /// # Returns
     /// `(commitment, row_commitments, blinds)` where:
@@ -85,19 +84,17 @@ pub trait Polynomial<F: Field> {
     /// # Errors
     /// Returns error if coefficient length doesn't match 2^(nu + sigma) or if setup is insufficient.
     #[allow(clippy::type_complexity)]
-    fn commit<E, Mo, M1, R>(
+    fn commit<E, Mo, M1>(
         &self,
         nu: usize,
         sigma: usize,
         setup: &ProverSetup<E>,
-        rng: &mut R,
     ) -> Result<(E::GT, Vec<E::G1>, Option<Vec<F>>), DoryError>
     where
         E: PairingCurve,
         Mo: Mode,
         M1: DoryRoutines<E::G1>,
-        E::G1: Group<Scalar = F>,
-        R: rand_core::RngCore;
+        E::G1: Group<Scalar = F>;
 }
 
 /// Compute multilinear Lagrange basis evaluations at a point

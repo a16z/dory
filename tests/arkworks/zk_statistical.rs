@@ -8,13 +8,11 @@ use ark_serialize::CanonicalSerialize;
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{create_evaluation_proof, setup, verify, DoryProof, Transparent, ZK};
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use std::collections::HashMap;
 
 const NUM_BUCKETS: usize = 16;
 
-/// Bucket distribution tracker for statistical analysis
+/// Distribution tracker for statistical analysis
 struct BucketTracker {
     buckets: HashMap<String, Vec<usize>>,
 }
@@ -180,8 +178,7 @@ fn collect_full_zk_proof_stats(proof: &ArkDoryProof, tracker: &mut BucketTracker
 fn test_zk_statistical_indistinguishability() {
     const NUM_TRIALS: usize = 100;
 
-    let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 6);
+    let (prover_setup, verifier_setup) = setup::<BN254>(6);
 
     let nu = 2;
     let sigma = 2;
@@ -193,28 +190,20 @@ fn test_zk_statistical_indistinguishability() {
     let mut tracker_ones = BucketTracker::new();
     let mut tracker_random = BucketTracker::new();
 
-    for trial in 0..NUM_TRIALS {
-        // Reseed RNG for reproducibility within each trial type
-        let mut trial_rng = StdRng::seed_from_u64(0xCAFEBABE + trial as u64);
-
+    for _trial in 0..NUM_TRIALS {
         // Distribution A: All-zeros polynomial (y=0 for all points)
         {
             let coeffs = vec![ArkFr::zero(); poly_size];
             let poly = ArkworksPolynomial::new(coeffs);
 
             let (tier_2, tier_1, _) = poly
-                .commit::<BN254, Transparent, TestG1Routines, _>(
-                    nu,
-                    sigma,
-                    &prover_setup,
-                    &mut trial_rng,
-                )
+                .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
             let (proof, _) =
-                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -222,7 +211,6 @@ fn test_zk_statistical_indistinguishability() {
                     sigma,
                     &prover_setup,
                     &mut transcript,
-                    &mut trial_rng,
                 )
                 .unwrap();
 
@@ -247,18 +235,13 @@ fn test_zk_statistical_indistinguishability() {
             let poly = ArkworksPolynomial::new(coeffs);
 
             let (tier_2, tier_1, _) = poly
-                .commit::<BN254, Transparent, TestG1Routines, _>(
-                    nu,
-                    sigma,
-                    &prover_setup,
-                    &mut trial_rng,
-                )
+                .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
             let (proof, _) =
-                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -266,7 +249,6 @@ fn test_zk_statistical_indistinguishability() {
                     sigma,
                     &prover_setup,
                     &mut transcript,
-                    &mut trial_rng,
                 )
                 .unwrap();
 
@@ -289,18 +271,13 @@ fn test_zk_statistical_indistinguishability() {
             let poly = random_polynomial(poly_size);
 
             let (tier_2, tier_1, _) = poly
-                .commit::<BN254, Transparent, TestG1Routines, _>(
-                    nu,
-                    sigma,
-                    &prover_setup,
-                    &mut trial_rng,
-                )
+                .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
             let (proof, _) =
-                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -308,7 +285,6 @@ fn test_zk_statistical_indistinguishability() {
                     sigma,
                     &prover_setup,
                     &mut transcript,
-                    &mut trial_rng,
                 )
                 .unwrap();
 
@@ -382,8 +358,7 @@ fn test_zk_statistical_indistinguishability() {
 fn test_zk_witness_independence() {
     const NUM_TRIALS: usize = 80;
 
-    let mut rng = StdRng::seed_from_u64(0xFEEDFACE);
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 6);
+    let (prover_setup, verifier_setup) = setup::<BN254>(6);
 
     let nu = 2;
     let sigma = 2;
@@ -393,9 +368,7 @@ fn test_zk_witness_independence() {
     let mut tracker_skewed = BucketTracker::new();
     let mut tracker_uniform = BucketTracker::new();
 
-    for trial in 0..NUM_TRIALS {
-        let mut trial_rng = StdRng::seed_from_u64(0xABCDEF00 + trial as u64);
-
+    for _trial in 0..NUM_TRIALS {
         // Skewed: Single non-zero coefficient at position 0 (y will be small/predictable)
         {
             let mut coeffs = vec![ArkFr::zero(); poly_size];
@@ -403,18 +376,13 @@ fn test_zk_witness_independence() {
             let poly = ArkworksPolynomial::new(coeffs);
 
             let (tier_2, tier_1, _) = poly
-                .commit::<BN254, Transparent, TestG1Routines, _>(
-                    nu,
-                    sigma,
-                    &prover_setup,
-                    &mut trial_rng,
-                )
+                .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
             let (proof, _) =
-                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -422,7 +390,6 @@ fn test_zk_witness_independence() {
                     sigma,
                     &prover_setup,
                     &mut transcript,
-                    &mut trial_rng,
                 )
                 .unwrap();
 
@@ -445,18 +412,13 @@ fn test_zk_witness_independence() {
             let poly = random_polynomial(poly_size);
 
             let (tier_2, tier_1, _) = poly
-                .commit::<BN254, Transparent, TestG1Routines, _>(
-                    nu,
-                    sigma,
-                    &prover_setup,
-                    &mut trial_rng,
-                )
+                .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);
             let mut transcript = fresh_transcript();
             let (proof, _) =
-                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
                     &poly,
                     &point,
                     Some(tier_1),
@@ -464,7 +426,6 @@ fn test_zk_witness_independence() {
                     sigma,
                     &prover_setup,
                     &mut transcript,
-                    &mut trial_rng,
                 )
                 .unwrap();
 

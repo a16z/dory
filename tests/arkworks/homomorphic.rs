@@ -8,9 +8,8 @@ use dory_pcs::{prove, setup, verify, Transparent};
 
 #[test]
 fn test_homomorphic_combination_e2e() {
-    let mut rng = rand::thread_rng();
     let max_log_n = 10;
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
+    let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
     let nu = 4;
     let sigma = 4;
@@ -22,12 +21,12 @@ fn test_homomorphic_combination_e2e() {
     let commitments: Vec<_> = polys
         .iter()
         .map(|poly| {
-            poly.commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+            poly.commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap()
         })
         .collect();
 
-    let coeffs: Vec<ArkFr> = (0..5).map(|_| ArkFr::random(&mut rng)).collect();
+    let coeffs: Vec<ArkFr> = (0..5).map(|_| ArkFr::random()).collect();
 
     // Homomorphically combine commitments
     #[allow(clippy::op_ref)]
@@ -87,7 +86,7 @@ fn test_homomorphic_combination_e2e() {
 
     // Create evaluation proof using combined commitment
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -95,7 +94,6 @@ fn test_homomorphic_combination_e2e() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
 
@@ -117,8 +115,7 @@ fn test_homomorphic_combination_e2e() {
 
 #[test]
 fn test_homomorphic_combination_small() {
-    let mut rng = rand::thread_rng();
-    let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, 6);
+    let (prover_setup, verifier_setup) = setup::<BN254>(6);
 
     let nu = 2;
     let sigma = 2;
@@ -130,12 +127,12 @@ fn test_homomorphic_combination_small() {
     let commitments: Vec<_> = polys
         .iter()
         .map(|poly| {
-            poly.commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+            poly.commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
                 .unwrap()
         })
         .collect();
 
-    let coeffs: Vec<ArkFr> = (0..5).map(|_| ArkFr::random(&mut rng)).collect();
+    let coeffs: Vec<ArkFr> = (0..5).map(|_| ArkFr::random()).collect();
     #[allow(clippy::op_ref)]
     let mut combined_tier2 = coeffs[0] * &commitments[0].0;
     for i in 1..5 {
@@ -178,7 +175,7 @@ fn test_homomorphic_combination_small() {
     let evaluation = combined_poly.evaluate(&point);
 
     let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -186,7 +183,6 @@ fn test_homomorphic_combination_small() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
-        &mut rng,
     )
     .unwrap();
 
