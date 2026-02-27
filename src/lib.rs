@@ -39,15 +39,15 @@
 //! ### Basic Example
 //!
 //! ```ignore
-//! use dory_pcs::{setup, prove, verify};
+//! use dory_pcs::{setup, prove, verify, Transparent};
 //! use dory_pcs::backends::arkworks::{BN254, G1Routines, G2Routines, Blake2bTranscript};
 //!
 //! // 1. Generate setup (automatically loads from/saves to disk)
 //! let (prover_setup, verifier_setup) = setup::<BN254, _>(&mut rng, max_log_n);
 //!
 //! // 2. Commit to polynomial
-//! let (tier_2_commitment, tier_1_commitments) = polynomial
-//!     .commit::<BN254, G1Routines>(nu, sigma, &prover_setup)?;
+//! let (tier_2_commitment, tier_1_commitments, _blinds) = polynomial
+//!     .commit::<BN254, Transparent, G1Routines, _>(nu, sigma, &prover_setup, &mut rng)?;
 //!
 //! // 3. Generate evaluation proof
 //! let mut prover_transcript = Blake2bTranscript::new(b"domain-separation");
@@ -81,6 +81,7 @@
 //! - `basic_e2e.rs` - Standard square matrix workflow
 //! - `homomorphic.rs` - Homomorphic combination of multiple polynomials
 //! - `non_square.rs` - Non-square matrix layout (nu < sigma)
+//! - `zk_e2e.rs` - Zero-knowledge proof workflow (requires `zk` feature)
 //!
 //! ## Feature Flags
 //!

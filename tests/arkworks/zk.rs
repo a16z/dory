@@ -2,7 +2,7 @@
 
 use super::*;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{create_evaluation_proof, prove, setup, verify, ZK};
+use dory_pcs::{create_evaluation_proof, prove, setup, verify, Transparent, ZK};
 
 #[test]
 fn test_zk_full_workflow() {
@@ -15,8 +15,8 @@ fn test_zk_full_workflow() {
     let nu = 4;
     let sigma = 4;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .unwrap();
 
     let point = random_point(8);
@@ -59,8 +59,8 @@ fn test_zk_small_polynomial() {
     let nu = 1;
     let sigma = 1;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .unwrap();
 
     let point = random_point(2);
@@ -105,8 +105,8 @@ fn test_zk_larger_polynomial() {
     let nu = 5;
     let sigma = 5;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .unwrap();
 
     let point = random_point(10);
@@ -152,8 +152,8 @@ fn test_zk_non_square_matrix() {
     let nu = 3;
     let sigma = 4;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .unwrap();
 
     let point = random_point(7); // nu + sigma = 7
@@ -200,8 +200,8 @@ fn test_zk_hidden_evaluation() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .unwrap();
 
     let point = random_point(4);
@@ -256,8 +256,8 @@ fn test_zk_tampered_e2_rejected() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .unwrap();
 
     let point = random_point(4);
@@ -305,8 +305,8 @@ fn test_zk_hidden_evaluation_larger() {
     let nu = 4;
     let sigma = 4;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .unwrap();
 
     let point = random_point(8);

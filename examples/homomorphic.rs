@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let commitments: Vec<_> = polys
         .iter()
         .map(|poly| {
-            poly.commit::<BN254, G1Routines>(nu, sigma, &prover_setup)
+            poly.commit::<BN254, Transparent, G1Routines, _>(nu, sigma, &prover_setup, &mut rng)
                 .unwrap()
         })
         .collect();

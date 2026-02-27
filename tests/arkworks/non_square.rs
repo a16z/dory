@@ -18,8 +18,8 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
     let poly = random_polynomial(poly_size);
     let point = random_point(num_vars);
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
@@ -64,8 +64,8 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
     let poly = random_polynomial(poly_size);
     let point = random_point(num_vars);
 
-    let (_, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (_, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
@@ -100,8 +100,8 @@ fn test_non_square_matrix_small() {
     let poly = random_polynomial(poly_size);
     let point = random_point(num_vars);
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();
@@ -150,8 +150,8 @@ fn test_non_square_matrix_very_rectangular() {
     let poly = random_polynomial(poly_size);
     let point = random_point(num_vars);
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
         .expect("Commitment should succeed");
 
     let mut prover_transcript = fresh_transcript();

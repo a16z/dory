@@ -4,6 +4,7 @@
 
 use super::ark_field::ArkFr;
 use crate::error::DoryError;
+use crate::mode::Mode;
 use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 use crate::primitives::poly::{MultilinearLagrange, Polynomial};
 use crate::setup::ProverSetup;
@@ -53,59 +54,17 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
     }
 
     #[tracing::instrument(skip_all, name = "ArkworksPolynomial::commit", fields(nu, sigma, num_rows = 1 << nu, num_cols = 1 << sigma))]
-    fn commit<E, M1>(
-        &self,
-        nu: usize,
-        sigma: usize,
-        setup: &ProverSetup<E>,
-    ) -> Result<(E::GT, Vec<E::G1>), DoryError>
-    where
-        E: PairingCurve,
-        M1: DoryRoutines<E::G1>,
-        E::G1: Group<Scalar = ArkFr>,
-    {
-        let expected_len = 1 << (nu + sigma);
-        if self.coefficients.len() != expected_len {
-            return Err(DoryError::InvalidSize {
-                expected: expected_len,
-                actual: self.coefficients.len(),
-            });
-        }
-
-        let num_rows = 1 << nu;
-        let num_cols = 1 << sigma;
-
-        // Tier 1: Compute row commitments
-        let mut row_commitments = Vec::with_capacity(num_rows);
-        for i in 0..num_rows {
-            let row_start = i * num_cols;
-            let row_end = row_start + num_cols;
-            let row = &self.coefficients[row_start..row_end];
-
-            let g1_bases = &setup.g1_vec[..num_cols];
-            let row_commit = M1::msm(g1_bases, row);
-            row_commitments.push(row_commit);
-        }
-
-        // Tier 2: Compute final commitment via multi-pairing (g2_bases from setup)
-        let g2_bases = &setup.g2_vec[..num_rows];
-        let commitment = E::multi_pair_g2_setup(&row_commitments, g2_bases);
-
-        Ok((commitment, row_commitments))
-    }
-
-    #[cfg(feature = "zk")]
-    #[tracing::instrument(skip_all, name = "ArkworksPolynomial::commit_zk", fields(nu, sigma))]
     #[allow(clippy::type_complexity)]
-    fn commit_zk<E, M1, R>(
+    fn commit<E, Mo, M1, R>(
         &self,
         nu: usize,
         sigma: usize,
         setup: &ProverSetup<E>,
         rng: &mut R,
-    ) -> Result<(E::GT, Vec<E::G1>, Vec<ArkFr>), DoryError>
+    ) -> Result<(E::GT, Vec<E::G1>, Option<Vec<ArkFr>>), DoryError>
     where
         E: PairingCurve,
+        Mo: Mode,
         M1: DoryRoutines<E::G1>,
         E::G1: Group<Scalar = ArkFr>,
         R: rand_core::RngCore,
@@ -117,20 +76,25 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
                 actual: self.coefficients.len(),
             });
         }
-        let (num_rows, num_cols) = (1 << nu, 1 << sigma);
+
+        let num_rows = 1 << nu;
+        let num_cols = 1 << sigma;
         let g1 = &setup.g1_vec[..num_cols];
-        let blinds: Vec<ArkFr> = (0..num_rows).map(|_| ArkFr::random(rng)).collect();
-        let rows: Vec<E::G1> = (0..num_rows)
+
+        let blinds: Vec<ArkFr> = (0..num_rows).map(|_| Mo::sample(rng)).collect();
+
+        let row_commitments: Vec<E::G1> = (0..num_rows)
             .map(|i| {
-                M1::msm(g1, &self.coefficients[i * num_cols..(i + 1) * num_cols])
-                    + setup.h1.scale(&blinds[i])
+                let row = &self.coefficients[i * num_cols..(i + 1) * num_cols];
+                Mo::mask(M1::msm(g1, row), &setup.h1, &blinds[i])
             })
             .collect();
-        Ok((
-            E::multi_pair_g2_setup(&rows, &setup.g2_vec[..num_rows]),
-            rows,
-            blinds,
-        ))
+
+        let commitment = E::multi_pair_g2_setup(&row_commitments, &setup.g2_vec[..num_rows]);
+
+        let opt_blinds = if Mo::BLINDING { Some(blinds) } else { None };
+
+        Ok((commitment, row_commitments, opt_blinds))
     }
 }
 

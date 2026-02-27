@@ -377,14 +377,22 @@ where
     ///
     /// Applies fold-scalars transformation and returns the final E1, E2 elements.
     /// Must be called when num_rounds=0 (vectors are size 1).
+    ///
+    /// In ZK mode, E₁ and E₂ are additionally blinded with fresh randomness so
+    /// that the folded vectors `v₁[0]`, `v₂[0]` cannot be recovered from the
+    /// proof. These blinds do not affect the scalar product proof or the
+    /// accumulated `r_c` — they only add entropy to the Fiat-Shamir transcript
+    /// from which the `d` challenge is derived.
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
-    pub fn compute_final_message<M1, M2>(
+    pub fn compute_final_message<M1, M2, R>(
         &mut self,
         gamma: &<E::G1 as Group>::Scalar,
+        rng: &mut R,
     ) -> ScalarProductMessage<E::G1, E::G2>
     where
         M1: DoryRoutines<E::G1>,
         M2: DoryRoutines<E::G2>,
+        R: rand_core::RngCore,
     {
         debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for final message");
         debug_assert_eq!(self.v1.len(), 1, "v1 must have length 1");
@@ -392,13 +400,17 @@ where
 
         let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
 
-        // Apply fold-scalars transform:
-        // E₁ = v₁ + γ·s₁·H₁
-        let gamma_s1 = *gamma * self.s1[0];
+        // Sample independent blinds for the final message (zero in Transparent mode).
+        let r_final1: <E::G1 as Group>::Scalar = M::sample(rng);
+        let r_final2: <E::G1 as Group>::Scalar = M::sample(rng);
+
+        // Apply fold-scalars transform with blinding:
+        // E₁ = v₁ + (γ·s₁ + r_final1)·H₁
+        let gamma_s1 = *gamma * self.s1[0] + r_final1;
         let e1 = self.v1[0] + self.setup.h1.scale(&gamma_s1);
 
-        // E₂ = v₂ + γ⁻¹·s₂·H₂
-        let gamma_inv_s2 = gamma_inv * self.s2[0];
+        // E₂ = v₂ + (γ⁻¹·s₂ + r_final2)·H₂
+        let gamma_inv_s2 = gamma_inv * self.s2[0] + r_final2;
         let e2 = self.v2[0] + self.setup.h2.scale(&gamma_inv_s2);
 
         // Final blind accumulation: r_c ← r_c + γ·r_e2 + γ⁻¹·r_e1

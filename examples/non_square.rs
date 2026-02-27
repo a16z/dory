@@ -49,7 +49,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 3: Commit
     info!("3. Computing polynomial commitment...");
-    let (tier_2, tier_1) = poly.commit::<BN254, G1Routines>(nu, sigma, &prover_setup)?;
+    let (tier_2, tier_1, _) =
+        poly.commit::<BN254, Transparent, G1Routines, _>(nu, sigma, &prover_setup, &mut rng)?;
     info!(
         "   ✓ Tier-1 commitment: {} row commitments (G1)",
         tier_1.len()

@@ -35,10 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Poly2: {:?}", poly2);
 
     let commitment1 = poly1
-        .commit::<BN254, G1Routines>(2, 2, &prover_setup)
+        .commit::<BN254, Transparent, G1Routines, _>(2, 2, &prover_setup, &mut rng)
         .unwrap();
     let commitment2 = poly2
-        .commit::<BN254, G1Routines>(1, 1, &prover_setup)
+        .commit::<BN254, Transparent, G1Routines, _>(1, 1, &prover_setup, &mut rng)
         .unwrap();
     info!("✓ Commitments ready\n");
 
@@ -128,7 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("===========================================");
     let padded_poly_commitment = padded_poly2
-        .commit::<BN254, G1Routines>(2, 2, &prover_setup)
+        .commit::<BN254, Transparent, G1Routines, _>(2, 2, &prover_setup, &mut rng)
         .unwrap();
     assert_eq!(padded_poly_commitment.0, commitment2.0);
     info!("✓ Padded poly commitment matches original poly2 commitment");

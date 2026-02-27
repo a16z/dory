@@ -27,11 +27,10 @@ fn create_valid_proof_components(
     let poly = random_polynomial(size);
     let point = random_point(nu + sigma);
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
-        .unwrap();
-
     let mut rng = rand::thread_rng();
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
+        .unwrap();
     let mut prover_transcript = fresh_transcript();
     let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,

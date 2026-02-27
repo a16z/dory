@@ -96,7 +96,7 @@ This property enables efficient proof aggregation and batch verification. See `e
 ## Usage
 
 ```rust
-use dory_pcs::{setup, prove, verify};
+use dory_pcs::{setup, prove, verify, Transparent};
 use dory_pcs::backends::arkworks::{
     BN254, G1Routines, G2Routines, ArkworksPolynomial, Blake2bTranscript
 };
@@ -119,8 +119,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sigma = 4;  // log₂(cols) = 4 → 16 columns
 
     // 4. Commit to polynomial to get tier-2 commitment and row commitments
-    let (tier_2, row_commitments) = polynomial
-        .commit::<BN254, G1Routines>(nu, sigma, &prover_setup)?;
+    let (tier_2, row_commitments, _) = polynomial
+        .commit::<BN254, Transparent, G1Routines, _>(nu, sigma, &prover_setup, &mut rng)?;
 
     // 5. Create evaluation proof using row commitments
     let mut prover_transcript = Blake2bTranscript::new(b"dory-example");

@@ -16,7 +16,9 @@ fn make_transparent_proof() -> (
 
     let poly = random_polynomial(16);
     let point = random_point(4);
-    let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(2, 2, &setup).unwrap();
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(2, 2, &setup, &mut rng)
+        .unwrap();
     let mut transcript = fresh_transcript();
     let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
         &poly,
@@ -82,7 +84,9 @@ fn test_transparent_proof_roundtrip_verifies() {
 
     let poly = random_polynomial(16);
     let point = random_point(4);
-    let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(2, 2, &setup).unwrap();
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(2, 2, &setup, &mut rng)
+        .unwrap();
 
     let mut transcript = fresh_transcript();
     let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
@@ -131,7 +135,9 @@ mod zk_roundtrip {
 
         let poly = random_polynomial(16);
         let point = random_point(4);
-        let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(2, 2, &setup).unwrap();
+        let (tier_2, tier_1, _) = poly
+            .commit::<BN254, Transparent, TestG1Routines, _>(2, 2, &setup, &mut rng)
+            .unwrap();
 
         let mut transcript = fresh_transcript();
         let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(
@@ -193,7 +199,9 @@ mod zk_roundtrip {
 
         let poly = random_polynomial(16);
         let point = random_point(4);
-        let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(2, 2, &setup).unwrap();
+        let (tier_2, tier_1, _) = poly
+            .commit::<BN254, Transparent, TestG1Routines, _>(2, 2, &setup, &mut rng)
+            .unwrap();
 
         let mut transcript = fresh_transcript();
         let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK, _>(

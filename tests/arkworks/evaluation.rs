@@ -16,8 +16,8 @@ fn test_evaluation_proof_small() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &setup, &mut rng)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
@@ -61,8 +61,8 @@ fn test_evaluation_proof_with_precomputed_commitment() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &setup, &mut rng)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
@@ -109,8 +109,8 @@ fn test_evaluation_proof_constant_polynomial() {
     let expected_eval = poly.evaluate(&point);
     assert_eq!(expected_eval, ArkFr::from_u64(7));
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &setup, &mut rng)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
@@ -154,8 +154,8 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &setup, &mut rng)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
@@ -197,7 +197,9 @@ fn test_evaluation_proof_different_sizes() {
         let poly = random_polynomial(4);
         let point = random_point(2);
 
-        let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(1, 1, &setup).unwrap();
+        let (tier_2, tier_1, _) = poly
+            .commit::<BN254, Transparent, TestG1Routines, _>(1, 1, &setup, &mut rng)
+            .unwrap();
 
         let mut prover_transcript = fresh_transcript();
         let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
@@ -232,7 +234,9 @@ fn test_evaluation_proof_different_sizes() {
         let poly = random_polynomial(64);
         let point = random_point(6);
 
-        let (tier_2, tier_1) = poly.commit::<BN254, TestG1Routines>(3, 3, &setup).unwrap();
+        let (tier_2, tier_1, _) = poly
+            .commit::<BN254, Transparent, TestG1Routines, _>(3, 3, &setup, &mut rng)
+            .unwrap();
 
         let mut prover_transcript = fresh_transcript();
         let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent, _>(
@@ -271,8 +275,8 @@ fn test_multiple_evaluations_same_commitment() {
     let nu = 2;
     let sigma = 2;
 
-    let (tier_2, tier_1) = poly
-        .commit::<BN254, TestG1Routines>(nu, sigma, &setup)
+    let (tier_2, tier_1, _) = poly
+        .commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &setup, &mut rng)
         .unwrap();
 
     for _ in 0..3 {

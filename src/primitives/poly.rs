@@ -4,6 +4,7 @@ use crate::error::DoryError;
 use crate::setup::ProverSetup;
 
 use super::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
+use crate::mode::Mode;
 
 /// Trait for multilinear Lagrange polynomial operations
 pub trait MultilinearLagrange<F: Field>: Polynomial<F> {
@@ -56,12 +57,15 @@ pub trait Polynomial<F: Field> {
     /// Polynomial evaluation result
     fn evaluate(&self, point: &[F]) -> F;
 
-    /// Commit to polynomial using Dory's 2-tier (AFGHO) homomorphic commitment
+    /// Commit to polynomial using Dory's 2-tier (AFGHO) homomorphic commitment.
     ///
     /// The polynomial coefficients are arranged as a 2D matrix with 2^nu rows and 2^sigma columns.
     ///
     /// # Tier 1 (Row Commitments)
     /// For each row i: `row_commit[i] = MSM(g1_generators[0..2^sigma], row_coefficients[i])`
+    ///
+    /// In ZK mode (`Mo = ZK`), each row commitment is additionally blinded:
+    /// `row_commit[i] += H₁ · blind[i]` where `blind[i]` is a fresh random scalar.
     ///
     /// # Tier 2 (Final Commitment)
     /// `commitment = Σ e(row_commit[i], g2_generators[i])` for i in 0..2^nu
@@ -70,40 +74,27 @@ pub trait Polynomial<F: Field> {
     /// - `nu`: Log₂ of number of rows
     /// - `sigma`: Log₂ of number of columns
     /// - `setup`: Prover setup containing generators
+    /// - `rng`: Random number generator (unused in Transparent mode)
     ///
     /// # Returns
-    /// `(commitment, row_commitments)` where:
+    /// `(commitment, row_commitments, blinds)` where:
     /// - `commitment`: Final commitment in GT
     /// - `row_commitments`: Intermediate row commitments in G1 (used in opening proof)
+    /// - `blinds`: Per-row blinding scalars in ZK mode (`Some`), or `None` in Transparent mode
     ///
     /// # Errors
     /// Returns error if coefficient length doesn't match 2^(nu + sigma) or if setup is insufficient.
-    fn commit<E, M1>(
-        &self,
-        nu: usize,
-        sigma: usize,
-        setup: &ProverSetup<E>,
-    ) -> Result<(E::GT, Vec<E::G1>), DoryError>
-    where
-        E: PairingCurve,
-        M1: DoryRoutines<E::G1>,
-        E::G1: Group<Scalar = F>;
-
-    /// Commit with per-row ZK blinds. Returns `(commitment, row_commitments, blinds)`.
-    ///
-    /// # Errors
-    /// Returns error if coefficient length doesn't match 2^(nu + sigma).
-    #[cfg(feature = "zk")]
     #[allow(clippy::type_complexity)]
-    fn commit_zk<E, M1, R>(
+    fn commit<E, Mo, M1, R>(
         &self,
         nu: usize,
         sigma: usize,
         setup: &ProverSetup<E>,
         rng: &mut R,
-    ) -> Result<(E::GT, Vec<E::G1>, Vec<F>), DoryError>
+    ) -> Result<(E::GT, Vec<E::G1>, Option<Vec<F>>), DoryError>
     where
         E: PairingCurve,
+        Mo: Mode,
         M1: DoryRoutines<E::G1>,
         E::G1: Group<Scalar = F>,
         R: rand_core::RngCore;

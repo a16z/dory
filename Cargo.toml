@@ -89,6 +89,10 @@ required-features = ["backends"]
 name = "homomorphic_mixed_sizes"
 required-features = ["backends"]
 
+[[example]]
+name = "zk_e2e"
+required-features = ["backends", "zk"]
+
 [[bench]]
 name = "arkworks_proof"
 harness = false

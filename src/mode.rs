@@ -3,6 +3,8 @@ use crate::primitives::arithmetic::{Field, Group};
 
 /// Determines whether protocol messages are blinded (ZK) or unblinded (transparent).
 pub trait Mode: 'static {
+    /// Whether this mode produces blinding values that callers must retain.
+    const BLINDING: bool;
     /// Sample a blinding scalar: zero in Transparent mode, random in ZK mode.
     fn sample<F: Field, R: rand_core::RngCore>(rng: &mut R) -> F;
     /// Mask a group element: identity in Transparent mode, `value + base * blind` in ZK mode.
@@ -12,6 +14,7 @@ pub trait Mode: 'static {
 /// Transparent mode: no blinding, non-hiding proofs.
 pub struct Transparent;
 impl Mode for Transparent {
+    const BLINDING: bool = false;
     fn sample<F: Field, R: rand_core::RngCore>(_rng: &mut R) -> F {
         F::zero()
     }
@@ -25,6 +28,7 @@ impl Mode for Transparent {
 pub struct ZK;
 #[cfg(feature = "zk")]
 impl Mode for ZK {
+    const BLINDING: bool = true;
     fn sample<F: Field, R: rand_core::RngCore>(rng: &mut R) -> F {
         F::random(rng)
     }

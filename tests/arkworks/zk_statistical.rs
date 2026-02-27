@@ -7,7 +7,7 @@ use super::*;
 use ark_serialize::CanonicalSerialize;
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{create_evaluation_proof, setup, verify, DoryProof, ZK};
+use dory_pcs::{create_evaluation_proof, setup, verify, DoryProof, Transparent, ZK};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::collections::HashMap;
@@ -202,8 +202,13 @@ fn test_zk_statistical_indistinguishability() {
             let coeffs = vec![ArkFr::zero(); poly_size];
             let poly = ArkworksPolynomial::new(coeffs);
 
-            let (tier_2, tier_1) = poly
-                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+            let (tier_2, tier_1, _) = poly
+                .commit::<BN254, Transparent, TestG1Routines, _>(
+                    nu,
+                    sigma,
+                    &prover_setup,
+                    &mut trial_rng,
+                )
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);
@@ -241,8 +246,13 @@ fn test_zk_statistical_indistinguishability() {
             let coeffs = vec![ArkFr::one(); poly_size];
             let poly = ArkworksPolynomial::new(coeffs);
 
-            let (tier_2, tier_1) = poly
-                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+            let (tier_2, tier_1, _) = poly
+                .commit::<BN254, Transparent, TestG1Routines, _>(
+                    nu,
+                    sigma,
+                    &prover_setup,
+                    &mut trial_rng,
+                )
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);
@@ -278,8 +288,13 @@ fn test_zk_statistical_indistinguishability() {
         {
             let poly = random_polynomial(poly_size);
 
-            let (tier_2, tier_1) = poly
-                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+            let (tier_2, tier_1, _) = poly
+                .commit::<BN254, Transparent, TestG1Routines, _>(
+                    nu,
+                    sigma,
+                    &prover_setup,
+                    &mut trial_rng,
+                )
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);
@@ -387,8 +402,13 @@ fn test_zk_witness_independence() {
             coeffs[0] = ArkFr::from_u64(42);
             let poly = ArkworksPolynomial::new(coeffs);
 
-            let (tier_2, tier_1) = poly
-                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+            let (tier_2, tier_1, _) = poly
+                .commit::<BN254, Transparent, TestG1Routines, _>(
+                    nu,
+                    sigma,
+                    &prover_setup,
+                    &mut trial_rng,
+                )
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);
@@ -424,8 +444,13 @@ fn test_zk_witness_independence() {
         {
             let poly = random_polynomial(poly_size);
 
-            let (tier_2, tier_1) = poly
-                .commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+            let (tier_2, tier_1, _) = poly
+                .commit::<BN254, Transparent, TestG1Routines, _>(
+                    nu,
+                    sigma,
+                    &prover_setup,
+                    &mut trial_rng,
+                )
                 .unwrap();
 
             let evaluation = poly.evaluate(&point);

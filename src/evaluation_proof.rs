@@ -35,9 +35,6 @@ use crate::proof::DoryProof;
 use crate::reduce_and_fold::{DoryProverState, DoryVerifierState};
 use crate::setup::{ProverSetup, VerifierSetup};
 
-#[cfg(feature = "zk")]
-use crate::mode::ZK;
-
 /// Create evaluation proof for a polynomial at a point
 ///
 /// Implements Eval-VMV-RE protocol from Dory Section 5.
@@ -117,7 +114,8 @@ where
     let row_commitments = if let Some(rc) = row_commitments {
         rc
     } else {
-        let (_commitment, rc) = polynomial.commit::<E, M1>(nu, sigma, setup)?;
+        let (_commitment, rc, _blinds) =
+            polynomial.commit::<E, Mo, M1, R>(nu, sigma, setup, rng)?;
         rc
     };
 
@@ -160,21 +158,20 @@ where
     transcript.append_serde(b"vmv_e1", &vmv_message.e1);
 
     #[cfg(feature = "zk")]
-    let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2, zk_r_y) =
-        if std::any::TypeId::of::<Mo>() == std::any::TypeId::of::<ZK>() {
-            use crate::reduce_and_fold::{generate_sigma1_proof, generate_sigma2_proof};
-            let y = polynomial.evaluate(point);
-            let r_y: F = Mo::sample(rng);
-            let e2 = Mo::mask(g2_fin.scale(&y), &setup.h2, &r_e2);
-            let y_com = setup.g1_vec[0].scale(&y) + setup.h1.scale(&r_y);
-            transcript.append_serde(b"vmv_e2", &e2);
-            transcript.append_serde(b"vmv_y_com", &y_com);
-            let s1 = generate_sigma1_proof::<E, T, R>(&y, &r_e2, &r_y, setup, transcript, rng);
-            let s2 = generate_sigma2_proof::<E, T, R>(&r_e1, &-r_d2, setup, transcript, rng);
-            (Some(e2), Some(y_com), Some(s1), Some(s2), Some(r_y))
-        } else {
-            (None, None, None, None, None)
-        };
+    let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2, zk_r_y) = if Mo::BLINDING {
+        use crate::reduce_and_fold::{generate_sigma1_proof, generate_sigma2_proof};
+        let y = polynomial.evaluate(point);
+        let r_y: F = Mo::sample(rng);
+        let e2 = Mo::mask(g2_fin.scale(&y), &setup.h2, &r_e2);
+        let y_com = setup.g1_vec[0].scale(&y) + setup.h1.scale(&r_y);
+        transcript.append_serde(b"vmv_e2", &e2);
+        transcript.append_serde(b"vmv_y_com", &y_com);
+        let s1 = generate_sigma1_proof::<E, T, R>(&y, &r_e2, &r_y, setup, transcript, rng);
+        let s2 = generate_sigma2_proof::<E, T, R>(&r_e1, &-r_d2, setup, transcript, rng);
+        (Some(e2), Some(y_com), Some(s1), Some(s2), Some(r_y))
+    } else {
+        (None, None, None, None, None)
+    };
 
     // v₂ = v_vec · Γ₂,fin (each scalar scales g_fin)
     let v2 = M2::fixed_base_vector_scalar_mul(g2_fin, &v_vec);
@@ -231,13 +228,13 @@ where
     let gamma = transcript.challenge_scalar(b"gamma");
 
     #[cfg(feature = "zk")]
-    let scalar_product_proof = if std::any::TypeId::of::<Mo>() == std::any::TypeId::of::<ZK>() {
+    let scalar_product_proof = if Mo::BLINDING {
         Some(prover_state.scalar_product_proof(transcript, rng))
     } else {
         None
     };
 
-    let final_message = prover_state.compute_final_message::<M1, M2>(&gamma);
+    let final_message = prover_state.compute_final_message::<M1, M2, R>(&gamma, rng);
 
     transcript.append_serde(b"final_e1", &final_message.e1);
     transcript.append_serde(b"final_e2", &final_message.e2);

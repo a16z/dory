@@ -22,7 +22,7 @@ fn test_homomorphic_combination_e2e() {
     let commitments: Vec<_> = polys
         .iter()
         .map(|poly| {
-            poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+            poly.commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
                 .unwrap()
         })
         .collect();
@@ -130,7 +130,7 @@ fn test_homomorphic_combination_small() {
     let commitments: Vec<_> = polys
         .iter()
         .map(|poly| {
-            poly.commit::<BN254, TestG1Routines>(nu, sigma, &prover_setup)
+            poly.commit::<BN254, Transparent, TestG1Routines, _>(nu, sigma, &prover_setup, &mut rng)
                 .unwrap()
         })
         .collect();
