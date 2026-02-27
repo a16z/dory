@@ -16,6 +16,7 @@ pub mod evaluation;
 pub mod homomorphic;
 pub mod integration;
 pub mod non_square;
+pub mod serialization;
 pub mod setup;
 pub mod soundness;
 #[cfg(feature = "zk")]
