@@ -19,8 +19,8 @@ use tracing::info;
 
 const NUM_BUCKETS: usize = 16;
 const NUM_TRIALS: usize = 1000;
-/// chi-squared critical value: df=15, alpha=0.001 (Bonferroni-safe for ~120 elements)
-const CHI2_CRITICAL: f64 = 37.70;
+/// chi-squared critical value: df=15, alpha=0.0001 (Bonferroni-safe for ~360 tests)
+const CHI2_CRITICAL: f64 = 43.84;
 
 fn random_polynomial(size: usize) -> ArkworksPolynomial {
     let coefficients: Vec<ArkFr> = (0..size).map(|_| ArkFr::random()).collect();

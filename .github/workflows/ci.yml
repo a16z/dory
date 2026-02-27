@@ -90,3 +90,5 @@ jobs:
         run: cargo run --example homomorphic_mixed_sizes --features backends
       - name: Run zk_e2e example
         run: cargo run --example zk_e2e --features backends,zk
+      - name: Run zk_statistical example
+        run: cargo run --release --example zk_statistical --features backends,zk

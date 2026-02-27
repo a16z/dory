@@ -13,6 +13,8 @@ use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify, Transparent};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt::init();
+
     let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     let nu = 4;
