@@ -324,19 +324,28 @@ where
     transcript.append_serde(b"vmv_e1", &vmv_message.e1);
 
     #[cfg(feature = "zk")]
-    let (e2, is_zk) = if let (Some(pe2), Some(yc)) = (&proof.e2, &proof.y_com) {
-        use crate::reduce_and_fold::{verify_sigma1_proof, verify_sigma2_proof};
-        transcript.append_serde(b"vmv_e2", pe2);
-        transcript.append_serde(b"vmv_y_com", yc);
-        if let Some(ref s) = proof.sigma1_proof {
-            verify_sigma1_proof::<E, T>(pe2, yc, s, &setup, transcript)?;
+    let (e2, is_zk) = match (&proof.e2, &proof.y_com) {
+        (Some(pe2), Some(yc)) => {
+            use crate::reduce_and_fold::{verify_sigma1_proof, verify_sigma2_proof};
+            transcript.append_serde(b"vmv_e2", pe2);
+            transcript.append_serde(b"vmv_y_com", yc);
+            match (&proof.sigma1_proof, &proof.sigma2_proof) {
+                (Some(s1), Some(s2)) => {
+                    verify_sigma1_proof::<E, T>(pe2, yc, s1, &setup, transcript)?;
+                    verify_sigma2_proof::<E, T>(
+                        &vmv_message.e1,
+                        &vmv_message.d2,
+                        s2,
+                        &setup,
+                        transcript,
+                    )?;
+                }
+                _ => return Err(DoryError::InvalidProof),
+            }
+            (*pe2, true)
         }
-        if let Some(ref s) = proof.sigma2_proof {
-            verify_sigma2_proof::<E, T>(&vmv_message.e1, &vmv_message.d2, s, &setup, transcript)?;
-        }
-        (*pe2, true)
-    } else {
-        (setup.g2_0.scale(&evaluation), false)
+        (None, None) => (setup.g2_0.scale(&evaluation), false),
+        _ => return Err(DoryError::InvalidProof),
     };
     #[cfg(not(feature = "zk"))]
     let (e2, _is_zk) = (setup.g2_0.scale(&evaluation), false);
@@ -409,6 +418,8 @@ where
             transcript.append_serde(b"final_e1", &proof.final_message.e1);
             transcript.append_serde(b"final_e2", &proof.final_message.e2);
             return verifier_state.verify_final_zk(sp, &c, &transcript.challenge_scalar(b"d"));
+        } else {
+            return Err(DoryError::InvalidProof);
         }
     }
     transcript.append_serde(b"final_e1", &proof.final_message.e1);
