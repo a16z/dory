@@ -109,11 +109,9 @@ where
         });
     }
 
-    let row_commitments = if let Some(rc) = row_commitments {
-        rc
-    } else {
-        let (_commitment, rc, _blinds) = polynomial.commit::<E, Mo, M1>(nu, sigma, setup)?;
-        rc
+    let row_commitments = match row_commitments {
+        Some(rc) => rc,
+        None => polynomial.commit::<E, Mo, M1>(nu, sigma, setup)?.1,
     };
 
     let (left_vec, right_vec) = polynomial.compute_evaluation_vectors(point, nu, sigma);
@@ -353,18 +351,26 @@ where
     // Folded-scalar accumulation with per-round coordinates.
     // num_rounds = sigma (we fold column dimensions).
     let num_rounds = sigma;
+
+    // Bounds check: reject proofs with mismatched message counts or that exceed setup capacity.
+    let max_rounds = setup.max_log_n / 2;
+    if num_rounds > max_rounds
+        || proof.first_messages.len() != num_rounds
+        || proof.second_messages.len() != num_rounds
+    {
+        return Err(DoryError::InvalidProof);
+    }
+
     // s1 (right/prover): the σ column coordinates in natural order (LSB→MSB).
     // No padding here: the verifier folds across the σ column dimensions.
     // With MSB-first folding, these coordinates are only consumed after the first σ−ν rounds,
     // which correspond to the padded MSB dimensions on the left tensor, matching the prover.
-    let col_coords = &point[..sigma];
-    let s1_coords: Vec<F> = col_coords.to_vec();
+    let s1_coords: Vec<F> = point[..sigma].to_vec();
     // s2 (left/prover): the ν row coordinates in natural order, followed by zeros for the extra
     // MSB dimensions. Conceptually this is s ⊗ [1,0]^(σ−ν): under MSB-first folds, the first
     // σ−ν rounds multiply s2 by α⁻¹ while contributing no right halves (since those entries are 0).
     let mut s2_coords: Vec<F> = vec![F::zero(); sigma];
-    let row_coords = &point[sigma..sigma + nu];
-    s2_coords[..nu].copy_from_slice(&row_coords[..nu]);
+    s2_coords[..nu].copy_from_slice(&point[sigma..sigma + nu]);
 
     let mut verifier_state = DoryVerifierState::new(
         vmv_message.c,  // c from VMV message
@@ -398,13 +404,14 @@ where
         transcript.append_serde(b"e2_minus", &second_msg.e2_minus);
         let alpha = transcript.challenge_scalar(b"alpha");
 
-        verifier_state.process_round(first_msg, second_msg, &alpha, &beta);
+        verifier_state.process_round(first_msg, second_msg, &alpha, &beta)?;
     }
 
     let gamma = transcript.challenge_scalar(b"gamma");
 
+    // In ZK mode: absorb scalar product proof into transcript before deriving d.
     #[cfg(feature = "zk")]
-    if is_zk {
+    let zk_data = if is_zk {
         if let Some(ref sp) = proof.scalar_product_proof {
             for (l, v) in [
                 (b"sigma_p1" as &[u8], &sp.p1),
@@ -415,18 +422,23 @@ where
                 transcript.append_serde(l, v);
             }
             let c = transcript.challenge_scalar(b"sigma_c");
-            transcript.append_serde(b"final_e1", &proof.final_message.e1);
-            transcript.append_serde(b"final_e2", &proof.final_message.e2);
-            return verifier_state.verify_final_zk(sp, &c, &transcript.challenge_scalar(b"d"));
+            Some((sp, c))
         } else {
             return Err(DoryError::InvalidProof);
         }
-    }
+    } else {
+        None
+    };
+
+    // Shared: absorb final message and derive d.
     transcript.append_serde(b"final_e1", &proof.final_message.e1);
     transcript.append_serde(b"final_e2", &proof.final_message.e2);
-    verifier_state.verify_final(
-        &proof.final_message,
-        &gamma,
-        &transcript.challenge_scalar(b"d"),
-    )
+    let d = transcript.challenge_scalar(b"d");
+
+    #[cfg(feature = "zk")]
+    let zk = zk_data.as_ref().map(|(sp, c)| (*sp, c));
+    #[cfg(not(feature = "zk"))]
+    let zk: Option<(&crate::messages::ScalarProductProof<_, _, _, _>, _)> = None;
+
+    verifier_state.verify_final(&proof.final_message, &gamma, &d, zk)
 }

@@ -47,13 +47,6 @@ impl<E: PairingCurve> Blake2bTranscript<E> {
         self.append_bytes_impl(label, &bytes);
     }
 
-    pub fn append_serde_impl<S: serde::Serialize>(&mut self, label: &[u8], s: &S) {
-        match bincode::serialize(s) {
-            Ok(bytes) => self.append_bytes_impl(label, &bytes),
-            Err(_) => panic!("Bincode serialization failed"),
-        }
-    }
-
     pub fn challenge_scalar_impl<F: PrimeField>(&mut self, label: &[u8]) -> F {
         self.hasher.update(label);
 

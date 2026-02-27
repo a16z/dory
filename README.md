@@ -12,11 +12,12 @@ Dory is a transparent polynomial commitment scheme with excellent asymptotic per
 **Key Features:**
 - **Transparent setup**: No trusted setup ceremony required with optional disk persistence
 - **Logarithmic proof size**: O(log n) group elements
-- **Logarithmic verification**: O(log n) GT exps and 5 pairings
+- **Logarithmic verification**: O(log n) GT exps and 1 multi-pairing
 - **Modular design**: Pluggable backends for curves and cryptographic primitives
 - **Performance-optimized**: Vectorized operations, optional prepared point caching, and parallelization with Rayon
 - **Flexible matrix layouts**: Supports both square and non-square matrices (nu ≤ sigma)
 - **Homomorphic properties**: Commitment linearity enables proof aggregation
+- **Zero-knowledge mode**: Toggable hiding proofs
 
 ## Installation
 
@@ -153,7 +154,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Examples
 
-The repository includes four comprehensive examples demonstrating different aspects of Dory:
+The repository includes five comprehensive examples demonstrating different aspects of Dory:
 
 1. **`basic_e2e`** - Standard end-to-end workflow with square matrix (nu=4, sigma=4)
    ```bash
@@ -173,6 +174,11 @@ The repository includes four comprehensive examples demonstrating different aspe
 4. **`homomorphic_mixed_sizes`** - Combining polynomials with different matrix dimensions
    ```bash
    cargo run --example homomorphic_mixed_sizes --features backends
+   ```
+
+5. **`zk_e2e`** - Zero-knowledge end-to-end workflow with hiding proofs
+   ```bash
+   cargo run --example zk_e2e --features backends,zk
    ```
 
 ## Development Setup
@@ -242,6 +248,7 @@ cargo bench --features backends,cache,parallel
 - `backends` - Enable concrete backends. Currently supports Arkworks BN254.
 - `cache` - Enable prepared point caching for ~20-30% pairing speedup. Requires `arkworks` and `parallel`.
 - `parallel` - Enable parallelization using Rayon for MSMs and pairings. Works with both `arkworks` backend and enables parallel features in `ark-ec` and `ark-ff`.
+- `zk` - Enable zero-knowledge mode. Adds the `ZK` mode type for generating hiding proofs with blinded protocol messages, sigma proofs, and scalar-product sub-proofs.
 - `disk-persistence` - Enable automatic setup caching to disk. When enabled, `setup()` will load from OS-specific cache directories if available, avoiding regeneration.
 
 ## Project Structure
@@ -260,9 +267,14 @@ src/
 │       ├── mod.rs                 # Module exports
 │       ├── ark_field.rs           # Field wrapper (ArkFr)
 │       ├── ark_group.rs           # Group wrappers (ArkG1, ArkG2, ArkGT)
+│       ├── ark_pairing.rs         # Pairing curve (BN254)
 │       ├── ark_poly.rs            # Polynomial implementation
+│       ├── ark_proof.rs           # Proof type alias and serialization
+│       ├── ark_cache.rs           # Prepared point caching
+│       ├── ark_setup.rs           # Setup wrapper with disk persistence
 │       ├── ark_serde.rs           # Serialization bridge
 │       └── blake2b_transcript.rs  # Blake2b transcript
+├── mode.rs                        # Transparent and ZK mode types
 ├── setup.rs                       # Transparent setup generation
 ├── evaluation_proof.rs            # Proof creation and verification
 ├── reduce_and_fold.rs             # Inner product protocol
@@ -276,7 +288,13 @@ tests/arkworks/
 ├── commitment.rs                  # Commitment tests
 ├── evaluation.rs                  # Evaluation tests
 ├── integration.rs                 # End-to-end tests
-└── soundness.rs                   # Soundness tests
+├── homomorphic.rs                 # Homomorphic combination tests
+├── non_square.rs                  # Non-square matrix tests
+├── serialization.rs               # Proof serialization round-trip tests
+├── cache.rs                       # Prepared point caching tests
+├── soundness.rs                   # Soundness tests
+├── zk.rs                          # Zero-knowledge mode and ZK soundness tests
+└── zk_statistical.rs              # ZK statistical indistinguishability tests
 ```
 
 ## Test Coverage
@@ -288,6 +306,8 @@ The implementation includes comprehensive tests covering:
 - End-to-end workflows
 - Homomorphic combination
 - Non-square matrix support (nu < sigma, nu = sigma - 1, and very rectangular cases)
+- Zero-knowledge mode (hidden evaluations, sigma proofs, scalar-product proofs, soundness)
+- Statistical indistinguishability of ZK proofs (witness independence)
 - Soundness (tampering resistance for all proof components across 20+ attack vectors)
 - Prepared point caching correctness
 

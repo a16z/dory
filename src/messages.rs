@@ -88,7 +88,6 @@ pub struct Sigma2Proof<F, GT> {
 }
 
 /// ZK scalar product proof: proves (C, D1, D2) are consistent with blinded v1, v2.
-#[cfg(feature = "zk")]
 #[derive(Clone, Debug)]
 #[allow(missing_docs)]
 pub struct ScalarProductProof<G1, G2, F, GT> {

@@ -105,9 +105,11 @@ pub mod backends;
 
 pub use error::DoryError;
 pub use evaluation_proof::create_evaluation_proof;
-pub use messages::{FirstReduceMessage, ScalarProductMessage, SecondReduceMessage, VMVMessage};
+pub use messages::{
+    FirstReduceMessage, ScalarProductMessage, ScalarProductProof, SecondReduceMessage, VMVMessage,
+};
 #[cfg(feature = "zk")]
-pub use messages::{ScalarProductProof, Sigma1Proof, Sigma2Proof};
+pub use messages::{Sigma1Proof, Sigma2Proof};
 #[cfg(feature = "zk")]
 pub use mode::ZK;
 pub use mode::{Mode, Transparent};

@@ -32,13 +32,13 @@ pub struct DoryProverState<'a, E: PairingCurve, M: Mode = Transparent> {
     v2: Vec<E::G2>,
 
     /// For first round only: scalars used to construct v2 from fixed base h2
-    v2_scalars: Option<Vec<<E::G1 as Group>::Scalar>>,
+    v2_scalars: Option<Vec<Scalar<E>>>,
 
     /// Current s1 vector (scalars)
-    s1: Vec<<E::G1 as Group>::Scalar>,
+    s1: Vec<Scalar<E>>,
 
     /// Current s2 vector (scalars)
-    s2: Vec<<E::G1 as Group>::Scalar>,
+    s2: Vec<Scalar<E>>,
 
     /// Number of rounds remaining (log₂ of vector length)
     num_rounds: usize,
@@ -83,24 +83,24 @@ pub struct DoryVerifierState<E: PairingCurve> {
     e2: E::G2,
 
     /// Initial e1 from VMV message
-    /// Used in verify_final to batch the VMV constraint: D₂_init = e(E₁_init, H₂)
+    /// Used in verify_final to batch the VMV constraint: D₂_init = e(E₁_init, Γ₂₀)
     e1_init: E::G1,
 
     /// Initial d2 from VMV message
-    /// Used in verify_final to batch the VMV constraint: D₂_init = e(E₁_init, H₂)
+    /// Used in verify_final to batch the VMV constraint: D₂_init = e(E₁_init, Γ₂₀)
     d2_init: E::GT,
 
     /// Accumulated scalar for s1 after folding across rounds
-    s1_acc: <E::G1 as Group>::Scalar,
+    s1_acc: Scalar<E>,
 
     /// Accumulated scalar for s2 after folding across rounds
-    s2_acc: <E::G1 as Group>::Scalar,
+    s2_acc: Scalar<E>,
 
     /// Per-round coordinates for s1 (length = num_rounds). Order matches folding order.
-    s1_coords: Vec<<E::G1 as Group>::Scalar>,
+    s1_coords: Vec<Scalar<E>>,
 
     /// Per-round coordinates for s2 (length = num_rounds). Order matches folding order.
-    s2_coords: Vec<<E::G1 as Group>::Scalar>,
+    s2_coords: Vec<Scalar<E>>,
 
     /// Number of rounds remaining for indexing setup arrays
     num_rounds: usize,
@@ -127,9 +127,9 @@ where
     pub fn new(
         v1: Vec<E::G1>,
         v2: Vec<E::G2>,
-        v2_scalars: Option<Vec<<E::G1 as Group>::Scalar>>,
-        s1: Vec<<E::G1 as Group>::Scalar>,
-        s2: Vec<<E::G1 as Group>::Scalar>,
+        v2_scalars: Option<Vec<Scalar<E>>>,
+        s1: Vec<Scalar<E>>,
+        s2: Vec<Scalar<E>>,
         setup: &'a ProverSetup<E>,
     ) -> Self {
         debug_assert_eq!(v1.len(), v2.len(), "v1 and v2 must have equal length");
@@ -258,26 +258,20 @@ where
     ///
     /// Updates the state by combining with generators scaled by beta.
     #[tracing::instrument(skip_all, name = "DoryProverState::apply_first_challenge")]
-    pub fn apply_first_challenge<M1, M2>(&mut self, beta: &<E::G1 as Group>::Scalar)
+    pub fn apply_first_challenge<M1, M2>(&mut self, beta: &Scalar<E>)
     where
         M1: DoryRoutines<E::G1>,
         M2: DoryRoutines<E::G2>,
     {
-        let beta_inv = (*beta).inv().expect("beta must be invertible");
-
+        let beta_inv = beta.inv().expect("beta must be invertible");
         let n = 1 << self.num_rounds;
 
-        // Combine: v₁ ← v₁ + β·Γ₁
+        // v₁ ← v₁ + β·Γ₁, v₂ ← v₂ + β⁻¹·Γ₂
         M1::fixed_scalar_mul_bases_then_add(&self.setup.g1_vec[..n], &mut self.v1, beta);
-
-        // Combine: v₂ ← v₂ + β⁻¹·Γ₂
         M2::fixed_scalar_mul_bases_then_add(&self.setup.g2_vec[..n], &mut self.v2, &beta_inv);
-
-        // After first combine, the `v2_scalars` optimization does not apply.
         self.v2_scalars = None;
 
-        // Accumulate blinds: rC ← rC + β·rD2 + β⁻¹·rD1
-        self.r_c = self.r_c + self.r_d2 * *beta + self.r_d1 * beta_inv;
+        self.r_c = self.r_c + self.r_d2 * beta + self.r_d1 * beta_inv;
     }
 
     /// Compute second reduce message for current round
@@ -297,7 +291,6 @@ where
         let (s1_l, s1_r) = self.s1.split_at(n2);
         let (s2_l, s2_r) = self.s2.split_at(n2);
 
-        // Sample round blinds (zero in Transparent mode)
         self.round_c = [M::sample(), M::sample()];
         self.round_e1 = [M::sample(), M::sample()];
         self.round_e2 = [M::sample(), M::sample()];
@@ -329,9 +322,9 @@ where
     #[tracing::instrument(skip_all, name = "DoryProverState::apply_second_challenge")]
     pub fn apply_second_challenge<M1: DoryRoutines<E::G1>, M2: DoryRoutines<E::G2>>(
         &mut self,
-        alpha: &<E::G1 as Group>::Scalar,
+        alpha: &Scalar<E>,
     ) {
-        let alpha_inv = (*alpha).inv().expect("alpha must be invertible");
+        let alpha_inv = alpha.inv().expect("alpha must be invertible");
         let n2 = 1 << (self.num_rounds - 1); // n/2
 
         // Fold v₁: v₁ ← α·v₁L + v₁R
@@ -354,14 +347,12 @@ where
         M1::fold_field_vectors(s2_l, s2_r, &alpha_inv);
         self.s2.truncate(n2);
 
-        // Update accumulated blinds from stored round blinds
-        self.r_c = self.r_c + self.round_c[0] * *alpha + self.round_c[1] * alpha_inv;
-        self.r_d1 = self.round_d1[0] * *alpha + self.round_d1[1];
+        self.r_c = self.r_c + self.round_c[0] * alpha + self.round_c[1] * alpha_inv;
+        self.r_d1 = self.round_d1[0] * alpha + self.round_d1[1];
         self.r_d2 = self.round_d2[0] * alpha_inv + self.round_d2[1];
-        self.r_e1 = self.r_e1 + self.round_e1[0] * *alpha + self.round_e1[1] * alpha_inv;
-        self.r_e2 = self.r_e2 + self.round_e2[0] * *alpha + self.round_e2[1] * alpha_inv;
+        self.r_e1 = self.r_e1 + self.round_e1[0] * alpha + self.round_e1[1] * alpha_inv;
+        self.r_e2 = self.r_e2 + self.round_e2[0] * alpha + self.round_e2[1] * alpha_inv;
 
-        // Decrement round counter
         self.num_rounds -= 1;
     }
 
@@ -378,7 +369,7 @@ where
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
     pub fn compute_final_message<M1, M2>(
         &mut self,
-        gamma: &<E::G1 as Group>::Scalar,
+        gamma: &Scalar<E>,
     ) -> ScalarProductMessage<E::G1, E::G2>
     where
         M1: DoryRoutines<E::G1>,
@@ -388,23 +379,20 @@ where
         debug_assert_eq!(self.v1.len(), 1, "v1 must have length 1");
         debug_assert_eq!(self.v2.len(), 1, "v2 must have length 1");
 
-        let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
+        let gamma_inv = gamma.inv().expect("gamma must be invertible");
 
-        // Sample independent blinds for the final message (zero in Transparent mode).
-        let r_final1: <E::G1 as Group>::Scalar = M::sample();
-        let r_final2: <E::G1 as Group>::Scalar = M::sample();
+        let r_final1: Scalar<E> = M::sample();
+        let r_final2: Scalar<E> = M::sample();
 
-        // Apply fold-scalars transform with blinding:
         // E₁ = v₁ + (γ·s₁ + r_final1)·H₁
         let gamma_s1 = *gamma * self.s1[0] + r_final1;
-        let e1 = self.v1[0] + self.setup.h1.scale(&gamma_s1);
+        let e1 = self.v1[0] + gamma_s1 * self.setup.h1;
 
         // E₂ = v₂ + (γ⁻¹·s₂ + r_final2)·H₂
         let gamma_inv_s2 = gamma_inv * self.s2[0] + r_final2;
         let e2 = self.v2[0] + self.setup.h2.scale(&gamma_inv_s2);
 
-        // Final blind accumulation: r_c ← r_c + γ·r_e2 + γ⁻¹·r_e1
-        self.r_c = self.r_c + self.r_e2 * *gamma + self.r_e1 * gamma_inv;
+        self.r_c = self.r_c + self.r_e2 * gamma + self.r_e1 * gamma_inv;
 
         ScalarProductMessage { e1, e2 }
     }
@@ -418,9 +406,9 @@ where
         let (v1, v2) = (self.v1[0], self.v2[0]);
         let (g1, g2) = (self.setup.g1_vec[0], self.setup.g2_vec[0]);
         let ht = &self.setup.ht;
-        let r = || -> Scalar<E> { Field::random() };
+        let r = || Scalar::<E>::random();
         let (sd1, sd2) = (r(), r());
-        let (d1, d2) = (g1.scale(&sd1), g2.scale(&sd2));
+        let (d1, d2) = (sd1 * g1, g2.scale(&sd2));
         let (rp1, rp2, rq, rr) = (r(), r(), r(), r());
         let p1 = E::pair(&d1, &g2) + ht.scale(&rp1);
         let p2 = E::pair(&g1, &d2) + ht.scale(&rp2);
@@ -440,7 +428,7 @@ where
             p2,
             q,
             r: rr_val,
-            e1: d1 + v1.scale(&c),
+            e1: d1 + c * v1,
             e2: d2 + v2.scale(&c),
             r1: rp1 + c * self.r_d1,
             r2: rp2 + c * self.r_d2,
@@ -471,16 +459,16 @@ where
         Scalar::<E>::random(),
     );
     let a1 = g2_fin.scale(&k1) + setup.h2.scale(&k2);
-    let a2 = g1_fin.scale(&k1) + setup.h1.scale(&k3);
+    let a2 = k1 * g1_fin + k3 * setup.h1;
     transcript.append_serde(b"sigma1_a1", &a1);
     transcript.append_serde(b"sigma1_a2", &a2);
     let c = transcript.challenge_scalar(b"sigma1_c");
     Sigma1Proof {
         a1,
         a2,
-        z1: k1 + c * *y,
-        z2: k2 + c * *r_e2,
-        z3: k3 + c * *r_y,
+        z1: k1 + c * y,
+        z2: k2 + c * r_e2,
+        z3: k3 + c * r_y,
     }
 }
 
@@ -503,7 +491,7 @@ where
     if setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2) != proof.a1 + e2.scale(&c) {
         return Err(DoryError::InvalidProof);
     }
-    if setup.g1_0.scale(&proof.z1) + setup.h1.scale(&proof.z3) != proof.a2 + y_commit.scale(&c) {
+    if proof.z1 * setup.g1_0 + proof.z3 * setup.h1 != proof.a2 + c * y_commit {
         return Err(DoryError::InvalidProof);
     }
     Ok(())
@@ -533,8 +521,8 @@ where
     let c = transcript.challenge_scalar(b"sigma2_c");
     Sigma2Proof {
         a,
-        z1: k1 + c * *t1,
-        z2: k2 + c * *t2,
+        z1: k1 + c * t1,
+        z2: k2 + c * t2,
     }
 }
 
@@ -567,26 +555,11 @@ where
 }
 
 impl<E: PairingCurve> DoryVerifierState<E> {
-    /// Create new verifier state
+    /// Create new verifier state for O(1) accumulation.
     ///
-    /// # Parameters
-    /// - `c`: Initial inner product value
-    /// - `d1`: Initial d1 value (from VMV)
-    /// - `d2`: Initial d2 value (from VMV)
-    /// - `e1`: Initial e1 value
-    /// - `e2`: Initial e2 value
-    ///
-    /// Construct verifier state for O(1) accumulation
-    ///
-    /// - `s1_coords`: Per-round coordinates for s1 (right_vec in prover)
-    /// - `s2_coords`: Per-round coordinates for s2 (left_vec in prover)
-    /// - `num_rounds`: Number of rounds
-    /// - `setup`: Verifier setup parameters
-    ///
-    /// Note: `e1` and `d2` are stored both as initial values (for batched VMV check)
-    /// and as accumulators (updated during reduce rounds)
-    /// this is because the VMV check happens before the folding rounds, so we need to save
-    /// the value for the final batched pairing check.
+    /// `e1` and `d2` are stored both as initial values (for batched VMV check)
+    /// and as accumulators (updated during reduce rounds), since the VMV check
+    /// is deferred to the final batched pairing.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         c: E::GT,
@@ -594,8 +567,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         d2: E::GT,
         e1: E::G1,
         e2: E::G2,
-        s1_coords: Vec<<E::G1 as Group>::Scalar>,
-        s2_coords: Vec<<E::G1 as Group>::Scalar>,
+        s1_coords: Vec<Scalar<E>>,
+        s2_coords: Vec<Scalar<E>>,
         num_rounds: usize,
         setup: VerifierSetup<E>,
     ) -> Self {
@@ -610,8 +583,8 @@ impl<E: PairingCurve> DoryVerifierState<E> {
             e2,
             e1_init: e1,
             d2_init: d2,
-            s1_acc: <E::G1 as Group>::Scalar::one(),
-            s2_acc: <E::G1 as Group>::Scalar::one(),
+            s1_acc: Scalar::<E>::one(),
+            s2_acc: Scalar::<E>::one(),
             s1_coords,
             s2_coords,
             num_rounds,
@@ -628,164 +601,222 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         &mut self,
         first_msg: &FirstReduceMessage<E::G1, E::G2, E::GT>,
         second_msg: &SecondReduceMessage<E::G1, E::G2, E::GT>,
-        alpha: &<E::G1 as Group>::Scalar,
-        beta: &<E::G1 as Group>::Scalar,
-    ) where
-        E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
-        E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
-        <E::G1 as Group>::Scalar: Field,
-    {
-        assert!(self.num_rounds > 0, "No rounds remaining");
-
-        let alpha_inv = (*alpha).inv().expect("alpha must be invertible");
-        let beta_inv = (*beta).inv().expect("beta must be invertible");
-
-        // Update C: C' ← C + χᵢ + β·D₂ + β⁻¹·D₁ + α·C₊ + α⁻¹·C₋
-        let chi = &self.setup.chi[self.num_rounds];
-        self.c = self.c + chi;
-        self.c = self.c + self.d2.scale(beta);
-        self.c = self.c + self.d1.scale(&beta_inv);
-        self.c = self.c + second_msg.c_plus.scale(alpha);
-        self.c = self.c + second_msg.c_minus.scale(&alpha_inv);
-
-        // Update D₁: D₁' ← α·D₁L + D₁R + α·β·Δ₁L + β·Δ₁R
-        let delta_1l = &self.setup.delta_1l[self.num_rounds];
-        let delta_1r = &self.setup.delta_1r[self.num_rounds];
-        let alpha_beta = *alpha * *beta;
-        self.d1 = first_msg.d1_left.scale(alpha);
-        self.d1 = self.d1 + first_msg.d1_right;
-        self.d1 = self.d1 + delta_1l.scale(&alpha_beta);
-        self.d1 = self.d1 + delta_1r.scale(beta);
-
-        // Update D₂: D₂' ← α⁻¹·D₂L + D₂R + α⁻¹·β⁻¹·Δ₂L + β⁻¹·Δ₂R
-        let delta_2l = &self.setup.delta_2l[self.num_rounds];
-        let delta_2r = &self.setup.delta_2r[self.num_rounds];
-        let alpha_inv_beta_inv = alpha_inv * beta_inv;
-        self.d2 = first_msg.d2_left.scale(&alpha_inv);
-        self.d2 = self.d2 + first_msg.d2_right;
-        self.d2 = self.d2 + delta_2l.scale(&alpha_inv_beta_inv);
-        self.d2 = self.d2 + delta_2r.scale(&beta_inv);
-
-        // Update E₁: E₁' ← E₁ + β·E₁β + α·E₁₊ + α⁻¹·E₁₋
-        self.e1 = self.e1 + first_msg.e1_beta.scale(beta);
-        self.e1 = self.e1 + second_msg.e1_plus.scale(alpha);
-        self.e1 = self.e1 + second_msg.e1_minus.scale(&alpha_inv);
-
-        // Update E₂: E₂' ← E₂ + β⁻¹·E₂β + α·E₂₊ + α⁻¹·E₂₋
-        self.e2 = self.e2 + first_msg.e2_beta.scale(&beta_inv);
-        self.e2 = self.e2 + second_msg.e2_plus.scale(alpha);
-        self.e2 = self.e2 + second_msg.e2_minus.scale(&alpha_inv);
-
-        // Update folded scalars in O(1): s1_acc *= (α·(1−y_t) + y_t), s2_acc *= (α⁻¹·(1−x_t) + x_t)
-        // Endianness note: s*_coords are stored in increasing dimension index (little-endian by dimension).
-        // Folding processes the most significant dimension first (MSB-first), so we index from the end: idx = num_rounds - 1.
-        let idx = self.num_rounds - 1;
-        let y_t = self.s1_coords[idx];
-        let x_t = self.s2_coords[idx];
-        let one = <E::G1 as Group>::Scalar::one();
-        let s1_term = (*alpha) * (one - y_t) + y_t;
-        let s2_term = alpha_inv * (one - x_t) + x_t;
-        self.s1_acc = self.s1_acc * s1_term;
-        self.s2_acc = self.s2_acc * s2_term;
-
-        // Decrement round counter
-        self.num_rounds -= 1;
-    }
-
-    /// Verify final scalar product message (4 pairings batched with VMV check).
-    #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
-    pub fn verify_final(
-        &mut self,
-        msg: &ScalarProductMessage<E::G1, E::G2>,
-        gamma: &<E::G1 as Group>::Scalar,
-        d: &<E::G1 as Group>::Scalar,
-    ) -> Result<(), DoryError>
-    where
-        E::G2: Group<Scalar = <E::G1 as Group>::Scalar>,
-        E::GT: Group<Scalar = <E::G1 as Group>::Scalar>,
-        <E::G1 as Group>::Scalar: Field,
-    {
-        debug_assert_eq!(
-            self.num_rounds, 0,
-            "num_rounds must be 0 for final verification"
-        );
-
-        let gamma_inv = (*gamma).inv().expect("gamma must be invertible");
-        let d_inv = (*d).inv().expect("d must be invertible");
-        let d_sq = *d * *d;
-        let neg_gamma = -*gamma;
-        let neg_gamma_inv = -gamma_inv;
-
-        // Compute RHS (non-pairing GT terms):
-        // T = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁ + d²·D₂_init
-        // The d²·D₂_init term is the deferred VMV check contribution.
-        // We use d² instead of d to ensure independence from the d·D₂ term.
-        let s_product = self.s1_acc * self.s2_acc;
-        let mut rhs = self.c + self.setup.ht.scale(&s_product);
-        rhs = rhs + self.setup.chi[0];
-        rhs = rhs + self.d2.scale(d);
-        rhs = rhs + self.d1.scale(&d_inv);
-        rhs = rhs + self.d2_init.scale(&d_sq);
-
-        // Pair 1: (E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
-        let p1_g1 = msg.e1 + self.setup.g1_0.scale(d);
-        let p1_g2 = msg.e2 + self.setup.g2_0.scale(&d_inv);
-
-        // Pair 2: (H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))
-        let d_inv_s1 = d_inv * self.s1_acc;
-        let g2_term = self.e2 + self.setup.g2_0.scale(&d_inv_s1);
-        let p2_g1 = self.setup.h1;
-        let p2_g2 = g2_term.scale(&neg_gamma);
-
-        // Pair 3: ((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀), H₂)
-        let d_s2 = *d * self.s2_acc;
-        let g1_term = self.e1 + self.setup.g1_0.scale(&d_s2);
-        let p3_g1 = g1_term.scale(&neg_gamma_inv);
-        let p3_g2 = self.setup.h2;
-
-        // Pair 4: (d²·E₁_init, Γ2,fin) - deferred VMV check
-        let p4_g1 = self.e1_init.scale(&d_sq);
-        let p4_g2 = self.setup.g2_0;
-
-        let lhs = E::multi_pair(&[p1_g1, p2_g1, p3_g1, p4_g1], &[p1_g2, p2_g2, p3_g2, p4_g2]);
-
-        if lhs == rhs {
-            Ok(())
-        } else {
-            Err(DoryError::InvalidProof)
-        }
-    }
-
-    #[cfg(feature = "zk")]
-    pub fn verify_final_zk(
-        &mut self,
-        proof: &ScalarProductProof<E::G1, E::G2, Scalar<E>, E::GT>,
-        c: &Scalar<E>,
-        d: &Scalar<E>,
+        alpha: &Scalar<E>,
+        beta: &Scalar<E>,
     ) -> Result<(), DoryError>
     where
         E::G2: Group<Scalar = Scalar<E>>,
         E::GT: Group<Scalar = Scalar<E>>,
         Scalar<E>: Field,
     {
-        let d_inv = (*d).inv().expect("d must be invertible");
-        let c_sq = *c * *c;
-        let lhs = E::pair(
-            &(proof.e1 + self.setup.g1_0.scale(d)),
-            &(proof.e2 + self.setup.g2_0.scale(&d_inv)),
+        if self.num_rounds == 0 {
+            return Err(DoryError::InvalidProof);
+        }
+
+        let alpha_inv = alpha.inv().ok_or(DoryError::InvalidProof)?;
+        let beta_inv = beta.inv().ok_or(DoryError::InvalidProof)?;
+
+        // C' ← C + χᵢ + β·D₂ + β⁻¹·D₁ + α·C₊ + α⁻¹·C₋
+        self.c = self.c
+            + self.setup.chi[self.num_rounds]
+            + self.d2.scale(beta)
+            + self.d1.scale(&beta_inv)
+            + second_msg.c_plus.scale(alpha)
+            + second_msg.c_minus.scale(&alpha_inv);
+
+        // D₁' ← α·D₁L + D₁R + αβ·Δ₁L + β·Δ₁R
+        let alpha_beta = *alpha * beta;
+        self.d1 = first_msg.d1_left.scale(alpha)
+            + first_msg.d1_right
+            + self.setup.delta_1l[self.num_rounds].scale(&alpha_beta)
+            + self.setup.delta_1r[self.num_rounds].scale(beta);
+
+        // D₂' ← α⁻¹·D₂L + D₂R + α⁻¹β⁻¹·Δ₂L + β⁻¹·Δ₂R
+        let alpha_inv_beta_inv = alpha_inv * beta_inv;
+        self.d2 = first_msg.d2_left.scale(&alpha_inv)
+            + first_msg.d2_right
+            + self.setup.delta_2l[self.num_rounds].scale(&alpha_inv_beta_inv)
+            + self.setup.delta_2r[self.num_rounds].scale(&beta_inv);
+
+        // E₁' ← E₁ + β·E₁β + α·E₁₊ + α⁻¹·E₁₋
+        self.e1 = self.e1
+            + *beta * first_msg.e1_beta
+            + *alpha * second_msg.e1_plus
+            + alpha_inv * second_msg.e1_minus;
+
+        // E₂' ← E₂ + β⁻¹·E₂β + α·E₂₊ + α⁻¹·E₂₋
+        self.e2 = self.e2
+            + first_msg.e2_beta.scale(&beta_inv)
+            + second_msg.e2_plus.scale(alpha)
+            + second_msg.e2_minus.scale(&alpha_inv);
+
+        // Folded scalars: s_acc *= (α·(1−coord) + coord) indexed MSB-first
+        let idx = self.num_rounds - 1;
+        let (y_t, x_t) = (self.s1_coords[idx], self.s2_coords[idx]);
+        let one = Scalar::<E>::one();
+        self.s1_acc = self.s1_acc * (*alpha * (one - y_t) + y_t);
+        self.s2_acc = self.s2_acc * (alpha_inv * (one - x_t) + x_t);
+
+        self.num_rounds -= 1;
+        Ok(())
+    }
+
+    /// Verify the final scalar product equation.
+    ///
+    /// Must be called when `num_rounds == 0` after all reduce rounds are complete.
+    ///
+    /// When `zk_data` is `None`, performs the transparent 4-pairing check.
+    /// When `zk_data` is `Some((sp, sigma_c))`, performs the ZK 1-pairing check.
+    ///
+    /// # Non-optimized Protocol Equations
+    ///
+    /// ## VMV Check (batched together with the final pairing check)
+    ///
+    /// The VMV protocol requires: `D₂_init = e(E₁_init, Γ₂₀)`
+    /// (proven by the Sigma₂ proof in ZK mode, deferred here for batching in transparent mode).
+    ///
+    /// ## Fold-Scalars Updates
+    ///
+    /// ```text
+    /// C' ← C + (s₁·s₂)·HT + γ·e(H₁, E₂) + γ⁻¹·e(E₁, H₂)
+    /// D₁' ← D₁ + e(H₁, (s₁·γ)·Γ₂₀)
+    /// D₂' ← D₂ + e((s₂·γ⁻¹)·Γ₁₀, H₂)
+    /// ```
+    ///
+    /// ## Final Verification
+    ///
+    /// ```text
+    /// e(E₁ + d·Γ₁₀, E₂ + d⁻¹·Γ₂₀) = C' + χ₀ + d·D₂' + d⁻¹·D₁'
+    /// ```
+    ///
+    /// # Transparent Mode — Multi-Pairing Check (4 ML + 1 FE)
+    ///
+    /// ## Batching the VMV Check
+    ///
+    /// We use random linear combination with challenge `d²` to defer the VMV check.
+    /// We use `d²` (not `d`) to ensure sufficient independence from the existing `d·D₂` term.
+    ///
+    /// Soundness: `d` is derived from the transcript AFTER `D₂_init` and `E₁_init` are
+    /// committed, so if `D₂_init ≠ e(E₁_init, Γ₂₀)`, then with overwhelming probability
+    /// `T + d²·D₂_init ≠ multi_pair([...]) + d²·e(E₁_init, Γ₂₀)`.
+    ///
+    /// ## Final Combined Check
+    ///
+    /// The final check verifies both:
+    /// - (a) The fold-scalars/reduce protocol equation
+    /// - (b) The VMV constraint `D₂_init = e(E₁_init, Γ₂₀)`
+    ///
+    /// Combined via: `(a) + d²·(b)` where `d` is the final challenge.
+    ///
+    /// ```text
+    /// e(E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)            [Pair 1: scalar product]
+    ///   · e(H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))             [Pair 2: E₂ accumulator]
+    ///   · e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀), H₂)             [Pair 3: E₁ accumulator]
+    ///   · e(d²·E₁_init, Γ₂₀)                                [Pair 4: deferred VMV]
+    ///   = C + (s₁·s₂)·HT + χ₀ + d·D₂ + d⁻¹·D₁ + d²·D₂_init
+    /// ```
+    ///
+    /// Note: Pairs 3 and 4 cannot be combined into 3 ML because they use different
+    /// G2 elements (H₂ vs Γ₂₀). This differs from the original Dory construction
+    /// where `D₂ = e(Γ₁·v, H₂)` allowed H₂-sharing.
+    ///
+    /// # ZK Mode (1 ML + 1 FE)
+    ///
+    /// In ZK mode, the scalar product proof replaces the transparent check with a
+    /// Sigma-protocol equation proving knowledge of (v₁, v₂) opening (C, D₁, D₂).
+    /// E-accumulator and VMV binding are handled separately by Sigma₁/Sigma₂ proofs
+    /// verified earlier in the protocol.
+    ///
+    /// ```text
+    /// e(sp.e₁ + d·Γ₁₀, sp.e₂ + d⁻¹·Γ₂₀)
+    ///   = χ₀ + sp.r + c·sp.q + c²·C
+    ///     + d·(sp.p₂ + c·D₂) + d⁻¹·(sp.p₁ + c·D₁)
+    ///     − (sp.r₃ + d·sp.r₂ + d⁻¹·sp.r₁)·HT
+    /// ```
+    #[allow(clippy::type_complexity)]
+    #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
+    pub fn verify_final(
+        &self,
+        msg: &ScalarProductMessage<E::G1, E::G2>,
+        gamma: &Scalar<E>,
+        d: &Scalar<E>,
+        zk_data: Option<(
+            &ScalarProductProof<E::G1, E::G2, Scalar<E>, E::GT>,
+            &Scalar<E>,
+        )>,
+    ) -> Result<(), DoryError>
+    where
+        E::G2: Group<Scalar = Scalar<E>>,
+        E::GT: Group<Scalar = Scalar<E>>,
+        Scalar<E>: Field,
+    {
+        debug_assert_eq!(
+            self.num_rounds, 0,
+            "num_rounds must be 0 for final verification"
         );
-        let mut rhs = self.setup.chi[0] + proof.r + proof.q.scale(c) + self.c.scale(&c_sq);
-        rhs = rhs + proof.p2.scale(d) + self.d2.scale(&(*d * *c));
-        rhs = rhs + proof.p1.scale(&d_inv) + self.d1.scale(&(d_inv * *c));
-        rhs = rhs
-            - self
-                .setup
-                .ht
-                .scale(&(proof.r3 + *d * proof.r2 + d_inv * proof.r1));
-        if lhs == rhs {
-            Ok(())
+
+        let d_inv = d.inv().ok_or(DoryError::InvalidProof)?;
+
+        if let Some((sp, sigma_c)) = zk_data {
+            // ZK mode: 1 ML + 1 FE
+            let c = *sigma_c;
+            let c_sq = c * c;
+
+            let lhs = E::pair(
+                &(sp.e1 + self.setup.g1_0.scale(d)),
+                &(sp.e2 + self.setup.g2_0.scale(&d_inv)),
+            );
+
+            let ht_scalar = sp.r3 + *d * sp.r2 + d_inv * sp.r1;
+            let mut rhs = self.setup.chi[0] + sp.r + sp.q.scale(&c) + self.c.scale(&c_sq);
+            rhs = rhs + sp.p2.scale(d) + self.d2.scale(&(*d * c));
+            rhs = rhs + sp.p1.scale(&d_inv) + self.d1.scale(&(d_inv * c));
+            rhs = rhs - self.setup.ht.scale(&ht_scalar);
+
+            if lhs == rhs {
+                Ok(())
+            } else {
+                Err(DoryError::InvalidProof)
+            }
         } else {
-            Err(DoryError::InvalidProof)
+            // Transparent mode: 4 ML + 1 FE
+            let gamma_inv = gamma.inv().ok_or(DoryError::InvalidProof)?;
+            let d_sq = *d * *d;
+            let neg_gamma = -*gamma;
+            let neg_gamma_inv = -gamma_inv;
+
+            let s_product = self.s1_acc * self.s2_acc;
+            let rhs = self.c
+                + self.setup.ht.scale(&s_product)
+                + self.setup.chi[0]
+                + self.d2.scale(d)
+                + self.d1.scale(&d_inv)
+                + self.d2_init.scale(&d_sq);
+
+            // Pair 1: e(E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
+            let p1_g1 = msg.e1 + self.setup.g1_0.scale(d);
+            let p1_g2 = msg.e2 + self.setup.g2_0.scale(&d_inv);
+
+            // Pair 2: e(H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))
+            let p2_g1 = self.setup.h1;
+            let p2_g2 = (self.e2 + self.setup.g2_0.scale(&(d_inv * self.s1_acc))).scale(&neg_gamma);
+
+            // Pair 3: e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀), H₂)
+            let p3_g1 =
+                (self.e1 + self.setup.g1_0.scale(&(*d * self.s2_acc))).scale(&neg_gamma_inv);
+            let p3_g2 = self.setup.h2;
+
+            // Pair 4: e(d²·E₁_init, Γ₂₀) — deferred VMV check
+            let p4_g1 = self.e1_init.scale(&d_sq);
+            let p4_g2 = self.setup.g2_0;
+
+            let lhs = E::multi_pair(&[p1_g1, p2_g1, p3_g1, p4_g1], &[p1_g2, p2_g2, p3_g2, p4_g2]);
+
+            if lhs == rhs {
+                Ok(())
+            } else {
+                Err(DoryError::InvalidProof)
+            }
         }
     }
 }
