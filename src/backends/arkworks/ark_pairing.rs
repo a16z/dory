@@ -190,10 +190,6 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         let cache = crate::backends::arkworks::ark_cache::get_prepared_cache();
-        #[cfg(not(feature = "cache"))]
-        let cache: Option<
-            std::sync::Arc<crate::backends::arkworks::ark_cache::PreparedCache>,
-        > = None;
 
         let combined = ps
             .par_chunks(chunk_size)
@@ -210,9 +206,21 @@ mod pairing_helpers {
                     })
                     .collect();
 
+                #[cfg(feature = "cache")]
                 let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = if let Some(ref c) = cache {
                     c.g2_prepared[start_idx..end_idx].to_vec()
                 } else {
+                    use ark_bn254::G2Affine;
+                    qs[start_idx..end_idx]
+                        .iter()
+                        .map(|q| {
+                            let affine: G2Affine = q.0.into();
+                            affine.into()
+                        })
+                        .collect()
+                };
+                #[cfg(not(feature = "cache"))]
+                let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = {
                     use ark_bn254::G2Affine;
                     qs[start_idx..end_idx]
                         .iter()
@@ -246,10 +254,6 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         let cache = crate::backends::arkworks::ark_cache::get_prepared_cache();
-        #[cfg(not(feature = "cache"))]
-        let cache: Option<
-            std::sync::Arc<crate::backends::arkworks::ark_cache::PreparedCache>,
-        > = None;
 
         let combined = qs
             .par_chunks(chunk_size)
@@ -266,9 +270,21 @@ mod pairing_helpers {
                     })
                     .collect();
 
+                #[cfg(feature = "cache")]
                 let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = if let Some(ref c) = cache {
                     c.g1_prepared[start_idx..end_idx].to_vec()
                 } else {
+                    use ark_bn254::G1Affine;
+                    ps[start_idx..end_idx]
+                        .iter()
+                        .map(|p| {
+                            let affine: G1Affine = p.0.into();
+                            affine.into()
+                        })
+                        .collect()
+                };
+                #[cfg(not(feature = "cache"))]
+                let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = {
                     use ark_bn254::G1Affine;
                     ps[start_idx..end_idx]
                         .iter()
