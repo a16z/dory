@@ -25,21 +25,21 @@ Add `dory-pcs` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dory-pcs = "0.1"
+dory-pcs = "0.3"
 ```
 
 Or with specific features:
 
 ```toml
 [dependencies]
-dory-pcs = { version = "0.1", features = ["backends", "disk-persistence"] }
+dory-pcs = { version = "0.3", features = ["backends", "disk-persistence"] }
 ```
 
 For maximum performance with all optimizations:
 
 ```toml
 [dependencies]
-dory-pcs = { version = "0.1", features = ["backends", "cache", "parallel", "disk-persistence"] }
+dory-pcs = { version = "0.3", features = ["backends", "cache", "parallel", "disk-persistence"] }
 ```
 
 ## Architecture
@@ -120,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sigma = 4;  // log₂(cols) = 4 → 16 columns
 
     // 4. Commit to polynomial to get tier-2 commitment and row commitments
-    let (tier_2, row_commitments, _) = polynomial
+    let (tier_2, row_commitments, commit_blind) = polynomial
         .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
 
     // 5. Create evaluation proof using row commitments
@@ -129,6 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &polynomial,
         &point,
         row_commitments,
+        commit_blind,
         nu,
         sigma,
         &prover_setup,
@@ -154,7 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Examples
 
-The repository includes five comprehensive examples demonstrating different aspects of Dory:
+The repository includes six comprehensive examples demonstrating different aspects of Dory:
 
 1. **`basic_e2e`** - Standard end-to-end workflow with square matrix (nu=4, sigma=4)
    ```bash
@@ -179,6 +180,11 @@ The repository includes five comprehensive examples demonstrating different aspe
 5. **`zk_e2e`** - Zero-knowledge end-to-end workflow with hiding proofs
    ```bash
    cargo run --example zk_e2e --features backends,zk
+   ```
+
+6. **`zk_statistical`** - Chi-squared uniformity and witness-independence tests for ZK proofs
+   ```bash
+   cargo run --release --example zk_statistical --features backends,zk,parallel
    ```
 
 ## Development Setup
@@ -293,8 +299,7 @@ tests/arkworks/
 ├── serialization.rs               # Proof serialization round-trip tests
 ├── cache.rs                       # Prepared point caching tests
 ├── soundness.rs                   # Soundness tests
-├── zk.rs                          # Zero-knowledge mode and ZK soundness tests
-└── zk_statistical.rs              # ZK statistical indistinguishability tests
+└── zk.rs                          # Zero-knowledge mode and ZK soundness tests
 ```
 
 ## Test Coverage

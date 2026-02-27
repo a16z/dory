@@ -10,10 +10,11 @@
 //!
 //! - **Transparent setup** with automatic disk persistence
 //! - **Logarithmic proof size**: O(log n) group elements
-//! - **Logarithmic verification**: O(log n) GT exps and 5 pairings
+//! - **Logarithmic verification**: O(log n) GT exps and 1 multi-pairing
 //! - **Performance optimizations**: Optional prepared point caching (~20-30% speedup) and parallelization
 //! - **Flexible matrix layouts**: Supports both square and non-square matrices (nu ≤ sigma)
 //! - **Homomorphic properties**: Com(r₁·P₁ + r₂·P₂ + ... + rₙ·Pₙ) = r₁·Com(P₁) + r₂·Com(P₂) + ... + rₙ·Com(Pₙ)
+//! - **Zero-knowledge mode**: Optional hiding proofs via the `zk` feature flag
 //!
 //! ## Structure
 //!
@@ -82,11 +83,13 @@
 //! - `homomorphic.rs` - Homomorphic combination of multiple polynomials
 //! - `non_square.rs` - Non-square matrix layout (nu < sigma)
 //! - `zk_e2e.rs` - Zero-knowledge proof workflow (requires `zk` feature)
+//! - `zk_statistical.rs` - Chi-squared uniformity and witness-independence tests (requires `zk` feature)
 //!
 //! ## Feature Flags
 //!
 //! - `backends` - Enable concrete backends (currently Arkworks BN254, includes `disk-persistence`)
 //! - `cache` - Enable prepared point caching (~20-30% speedup, requires `parallel`)
+//! - `zk` - Enable zero-knowledge mode with hiding commitments and proofs
 //! - `parallel` - Enable Rayon parallelization for MSMs and pairings
 //! - `disk-persistence` - Enable automatic setup caching to disk
 
