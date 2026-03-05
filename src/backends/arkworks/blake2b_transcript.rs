@@ -112,6 +112,46 @@ impl Transcript for Blake2bTranscript<crate::backends::arkworks::BN254> {
     }
 }
 
+#[cfg(feature = "metal-gpu")]
+impl Transcript for Blake2bTranscript<crate::backends::metal::MetalBN254> {
+    type Curve = crate::backends::metal::MetalBN254;
+
+    fn append_bytes(&mut self, label: &[u8], bytes: &[u8]) {
+        self.append_bytes_impl(label, bytes);
+    }
+
+    fn append_field(
+        &mut self,
+        label: &[u8],
+        x: &<<crate::backends::metal::MetalBN254 as PairingCurve>::G1 as Group>::Scalar,
+    ) {
+        self.append_field_impl(label, &x.0);
+    }
+
+    fn append_group<G: Group + DorySerialize>(&mut self, label: &[u8], g: &G) {
+        let mut bytes: Vec<u8> = Vec::new();
+        g.serialize_with_mode(&mut bytes, Compress::Yes)
+            .expect("DorySerialize should not fail");
+        self.append_bytes_impl(label, &bytes);
+    }
+
+    fn append_serde<S: DorySerialize>(&mut self, label: &[u8], s: &S) {
+        let mut bytes: Vec<u8> = Vec::new();
+        s.serialize_with_mode(&mut bytes, Compress::Yes)
+            .expect("DorySerialize should not fail");
+        self.append_bytes_impl(label, &bytes);
+    }
+
+    fn challenge_scalar(&mut self, label: &[u8]) -> crate::backends::arkworks::ArkFr {
+        use crate::backends::arkworks::ArkFr;
+        ArkFr(self.challenge_scalar_impl(label))
+    }
+
+    fn reset(&mut self, domain_label: &[u8]) {
+        self.reset_impl(domain_label);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -103,7 +103,7 @@ pub mod proof;
 pub mod reduce_and_fold;
 pub mod setup;
 
-#[cfg(feature = "arkworks")]
+#[cfg(any(feature = "arkworks", feature = "metal-gpu"))]
 pub mod backends;
 
 pub use error::DoryError;
