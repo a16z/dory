@@ -1,29 +1,74 @@
-//! Transcript trait for Fiat-Shamir transformations
+//! Fiat-Shamir transcript traits for Dory's evaluation proof protocol.
+//!
+//! These traits abstract the prover and verifier sides of the Fiat-Shamir
+//! transform. With spongefish, proof data is serialized into a NARG string
+//! (`Vec<u8>`) by the prover and deserialized by the verifier.
 
-#![allow(missing_docs)]
-
+use crate::error::DoryError;
 use crate::primitives::arithmetic::{Group, PairingCurve};
-use crate::primitives::DorySerialize;
 
-/// Transcript to standardize fiat shamir across different transcript implementations
-pub trait Transcript {
-    type Curve: PairingCurve;
-    fn append_bytes(&mut self, label: &[u8], bytes: &[u8]);
+/// Prover-side Fiat-Shamir transcript.
+///
+/// Absorbs proof elements into the sponge and serializes them into the
+/// NARG string. Challenges are squeezed deterministically.
+pub trait ProverTranscript<E: PairingCurve> {
+    /// Absorb public data (not in NARG string, but bound to the sponge state).
+    fn public_u32(&mut self, val: u32);
 
-    fn append_field(
-        &mut self,
-        label: &[u8],
-        x: &<<Self::Curve as PairingCurve>::G1 as Group>::Scalar,
-    );
+    /// Absorb a GT element (goes into the NARG string).
+    fn absorb_gt(&mut self, val: &E::GT);
 
-    fn append_group<G: Group>(&mut self, label: &[u8], g: &G);
+    /// Absorb a G1 element (goes into the NARG string).
+    fn absorb_g1(&mut self, val: &E::G1);
 
-    fn append_serde<S: DorySerialize>(&mut self, label: &[u8], s: &S);
+    /// Absorb a G2 element (goes into the NARG string).
+    fn absorb_g2(&mut self, val: &E::G2);
 
-    fn challenge_scalar(
-        &mut self,
-        label: &[u8],
-    ) -> <<Self::Curve as PairingCurve>::G1 as Group>::Scalar;
+    /// Absorb a scalar field element (goes into the NARG string).
+    fn absorb_field(&mut self, val: &<E::G1 as Group>::Scalar);
 
-    fn reset(&mut self, domain_label: &[u8]);
+    /// Squeeze a scalar challenge from the sponge.
+    fn squeeze_scalar(&mut self) -> <E::G1 as Group>::Scalar;
+}
+
+/// Verifier-side Fiat-Shamir transcript.
+///
+/// Reads proof elements from the NARG string and absorbs them into
+/// the sponge. Challenges are squeezed deterministically.
+pub trait VerifierTranscript<E: PairingCurve> {
+    /// Absorb public data (must match the prover's `public_u32` calls).
+    ///
+    /// # Errors
+    /// Returns `DoryError` if the sponge state is inconsistent.
+    fn public_u32(&mut self, val: u32) -> Result<(), DoryError>;
+
+    /// Read a GT element from the NARG string.
+    ///
+    /// # Errors
+    /// Returns `DoryError` if deserialization or sponge absorption fails.
+    fn read_gt(&mut self) -> Result<E::GT, DoryError>;
+
+    /// Read a G1 element from the NARG string.
+    ///
+    /// # Errors
+    /// Returns `DoryError` if deserialization or sponge absorption fails.
+    fn read_g1(&mut self) -> Result<E::G1, DoryError>;
+
+    /// Read a G2 element from the NARG string.
+    ///
+    /// # Errors
+    /// Returns `DoryError` if deserialization or sponge absorption fails.
+    fn read_g2(&mut self) -> Result<E::G2, DoryError>;
+
+    /// Read a scalar field element from the NARG string.
+    ///
+    /// # Errors
+    /// Returns `DoryError` if deserialization or sponge absorption fails.
+    fn read_field(&mut self) -> Result<<E::G1 as Group>::Scalar, DoryError>;
+
+    /// Squeeze a scalar challenge from the sponge.
+    ///
+    /// # Errors
+    /// Returns `DoryError` if the sponge squeeze fails.
+    fn squeeze_scalar(&mut self) -> Result<<E::G1 as Group>::Scalar, DoryError>;
 }

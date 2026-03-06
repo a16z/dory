@@ -28,7 +28,6 @@
 //! - [`evaluation_proof`] - Evaluation proof creation and verification
 //! - [`reduce_and_fold`] - Inner product protocol state machines (prover/verifier)
 //! - [`messages`] - Protocol message structures (VMV, reduce rounds, scalar product)
-//! - [`proof`] - Complete proof data structure
 //! - [`error`] - Error types
 //!
 //! ### Backend Implementations
@@ -41,7 +40,10 @@
 //!
 //! ```ignore
 //! use dory_pcs::{setup, prove, verify, Transparent};
-//! use dory_pcs::backends::arkworks::{BN254, G1Routines, G2Routines, Blake2bTranscript};
+//! use dory_pcs::backends::arkworks::{
+//!     BN254, G1Routines, G2Routines,
+//!     dory_prover, dory_verifier,
+//! };
 //!
 //! // 1. Generate setup (automatically loads from/saves to disk)
 //! let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
@@ -50,19 +52,21 @@
 //! let (tier_2_commitment, tier_1_commitments, commit_blind) = polynomial
 //!     .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
 //!
-//! // 3. Generate evaluation proof
-//! let mut prover_transcript = Blake2bTranscript::new(b"domain-separation");
-//! let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
+//! // 3. Create checked prover and generate evaluation proof
+//! let mut prover = dory_prover(sigma, false);
+//! prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
 //!     &polynomial, &point, tier_1_commitments, commit_blind, nu, sigma,
-//!     &prover_setup, &mut prover_transcript
+//!     &prover_setup, &mut prover
 //! )?;
+//! let proof_bytes = prover.check_complete().narg_string().to_vec();
 //!
-//! // 4. Verify
-//! let mut verifier_transcript = Blake2bTranscript::new(b"domain-separation");
-//! verify::<_, BN254, G1Routines, G2Routines, _>(
-//!     tier_2_commitment, evaluation, &point, &proof,
-//!     verifier_setup, &mut verifier_transcript
+//! // 4. Verify with checked verifier (enforces pattern + no trailing bytes)
+//! let mut verifier = dory_verifier(sigma, false, &proof_bytes);
+//! verify::<_, BN254, G1Routines, G2Routines, _, Transparent>(
+//!     tier_2_commitment, evaluation, &point, nu, sigma,
+//!     verifier_setup, &mut verifier
 //! )?;
+//! verifier.check_eof()?;
 //! ```
 //!
 //! ### Performance Optimization
@@ -99,7 +103,6 @@ pub mod evaluation_proof;
 pub mod messages;
 pub mod mode;
 pub mod primitives;
-pub mod proof;
 pub mod reduce_and_fold;
 pub mod setup;
 
@@ -108,18 +111,14 @@ pub mod backends;
 
 pub use error::DoryError;
 pub use evaluation_proof::create_evaluation_proof;
-pub use messages::{
-    FirstReduceMessage, ScalarProductMessage, ScalarProductProof, SecondReduceMessage, VMVMessage,
-};
-#[cfg(feature = "zk")]
-pub use messages::{Sigma1Proof, Sigma2Proof};
+pub use messages::{FirstReduceMessage, ScalarProductMessage, SecondReduceMessage};
 #[cfg(feature = "zk")]
 pub use mode::ZK;
 pub use mode::{Mode, Transparent};
 use primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 pub use primitives::poly::{MultilinearLagrange, Polynomial};
 use primitives::serialization::{DoryDeserialize, DorySerialize};
-pub use proof::DoryProof;
+pub use primitives::transcript::{ProverTranscript, VerifierTranscript};
 pub use reduce_and_fold::{DoryProverState, DoryVerifierState};
 pub use setup::{ProverSetup, VerifierSetup};
 
@@ -230,12 +229,15 @@ where
 /// Evaluate a polynomial at a point and create proof
 ///
 /// Creates an evaluation proof for a polynomial at a given point using precomputed
-/// tier-1 commitments (row commitments).
+/// tier-1 commitments (row commitments). All proof elements are absorbed into
+/// the transcript — the transcript's NARG string IS the proof.
 ///
 /// # Workflow
 /// 1. Call `polynomial.commit(nu, sigma, setup)` to get `(tier_2, row_commitments, commit_blind)`
-/// 2. Call this function with the `row_commitments` and `commit_blind` to create the proof
-/// 3. Use `tier_2` for verification via the `verify()` function
+/// 2. Create a checked prover via `dory_prover(sigma, zk)`
+/// 3. Call this function — proof data is written to the transcript
+/// 4. Call `prover.check_complete()` to assert the full pattern was followed
+/// 5. Extract proof bytes via `.narg_string().to_vec()`
 ///
 /// # Parameters
 /// - `polynomial`: Polynomial implementing MultilinearLagrange trait
@@ -245,27 +247,16 @@ where
 /// - `nu`: Log₂ of number of rows (constraint: nu ≤ sigma for non-square matrices)
 /// - `sigma`: Log₂ of number of columns
 /// - `setup`: Prover setup
-/// - `transcript`: Fiat-Shamir transcript
+/// - `transcript`: Fiat-Shamir prover transcript
 ///
 /// # Returns
-/// The evaluation proof containing VMV message, reduce messages, and final message
-///
-/// # Homomorphic Properties
-/// Proofs can be created for homomorphically combined polynomials. If you have
-/// commitments Com(P₁), Com(P₂), ..., Com(Pₙ) and want to prove evaluation of
-/// r₁·P₁ + r₂·P₂ + ... + rₙ·Pₙ, you can:
-/// 1. Combine tier-2 commitments: r₁·Com(P₁) + r₂·Com(P₂) + ... + rₙ·Com(Pₙ)
-/// 2. Combine tier-1 commitments element-wise
-/// 3. Generate proof using this function with the combined polynomial
-///
-/// See `examples/homomorphic.rs` for a complete demonstration.
+/// In ZK mode, returns the blinding scalar `r_y`; in transparent mode, `None`.
 ///
 /// # Errors
 /// Returns `DoryError` if:
 /// - Point dimension doesn't match nu + sigma
 /// - Polynomial size doesn't match 2^(nu + sigma)
 /// - Number of row commitments doesn't match 2^nu
-#[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
 #[tracing::instrument(skip_all, name = "prove")]
 pub fn prove<F, E, M1, M2, P, T, Mo>(
@@ -277,7 +268,7 @@ pub fn prove<F, E, M1, M2, P, T, Mo>(
     sigma: usize,
     setup: &ProverSetup<E>,
     transcript: &mut T,
-) -> Result<(DoryProof<E::G1, E::G2, E::GT>, Option<F>), DoryError>
+) -> Result<Option<F>, DoryError>
 where
     F: Field,
     E: PairingCurve,
@@ -287,7 +278,7 @@ where
     M1: DoryRoutines<E::G1>,
     M2: DoryRoutines<E::G2>,
     P: MultilinearLagrange<F>,
-    T: primitives::transcript::Transcript<Curve = E>,
+    T: ProverTranscript<E>,
     Mo: Mode,
 {
     evaluation_proof::create_evaluation_proof::<F, E, M1, M2, T, P, Mo>(
@@ -305,18 +296,21 @@ where
 /// Verify an evaluation proof
 ///
 /// Verifies that a committed polynomial evaluates to the claimed value at the given point.
-/// The matrix dimensions (nu, sigma) are extracted from the proof.
+/// Proof elements are read from the NARG transcript — no separate proof struct is needed.
 ///
-/// Works with both square and non-square matrix layouts (nu ≤ sigma), and can verify
-/// proofs for homomorphically combined polynomials.
+/// # Workflow
+/// 1. Create a checked verifier via `dory_verifier(sigma, zk, &proof_bytes)`
+/// 2. Call this function — proof data is read from the transcript
+/// 3. Call `verifier.check_eof()?` to assert pattern completeness and reject trailing bytes
 ///
 /// # Parameters
 /// - `commitment`: Polynomial commitment (in GT) - can be a combined commitment for homomorphic proofs
 /// - `evaluation`: Claimed evaluation result
-/// - `point`: Evaluation point (length must equal proof.nu + proof.sigma)
-/// - `proof`: Evaluation proof to verify (contains nu and sigma)
+/// - `point`: Evaluation point (length must equal nu + sigma)
+/// - `nu`: Log₂ of number of rows
+/// - `sigma`: Log₂ of number of columns
 /// - `setup`: Verifier setup
-/// - `transcript`: Fiat-Shamir transcript
+/// - `transcript`: Fiat-Shamir verifier transcript (reads from NARG string)
 ///
 /// # Returns
 /// `Ok(())` if proof is valid, `Err(DoryError)` otherwise
@@ -325,11 +319,12 @@ where
 /// Returns `DoryError::InvalidProof` if the proof is invalid, or other variants
 /// if the input parameters are incorrect (e.g., point dimension mismatch).
 #[tracing::instrument(skip_all, name = "verify")]
-pub fn verify<F, E, M1, M2, T>(
+pub fn verify<F, E, M1, M2, T, Mo>(
     commitment: E::GT,
     evaluation: F,
     point: &[F],
-    proof: &DoryProof<E::G1, E::G2, E::GT>,
+    nu: usize,
+    sigma: usize,
     setup: VerifierSetup<E>,
     transcript: &mut T,
 ) -> Result<(), DoryError>
@@ -341,9 +336,10 @@ where
     E::GT: Group<Scalar = F>,
     M1: DoryRoutines<E::G1>,
     M2: DoryRoutines<E::G2>,
-    T: primitives::transcript::Transcript<Curve = E>,
+    T: VerifierTranscript<E>,
+    Mo: Mode,
 {
-    evaluation_proof::verify_evaluation_proof::<F, E, M1, M2, T>(
-        commitment, evaluation, point, proof, setup, transcript,
+    evaluation_proof::verify_evaluation_proof::<F, E, M1, M2, T, Mo>(
+        commitment, evaluation, point, nu, sigma, setup, transcript,
     )
 }

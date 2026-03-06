@@ -16,7 +16,7 @@ use crate::setup::{ProverSetup, VerifierSetup};
 use std::marker::PhantomData;
 
 #[cfg(feature = "zk")]
-use crate::primitives::transcript::Transcript;
+use crate::primitives::transcript::{ProverTranscript, VerifierTranscript};
 
 type Scalar<E> = <<E as PairingCurve>::G1 as Group>::Scalar;
 
@@ -398,10 +398,7 @@ where
 
     /// Generate ZK scalar product proof. Must be called BEFORE `compute_final_message`.
     #[cfg(feature = "zk")]
-    pub fn scalar_product_proof<T: Transcript<Curve = E>>(
-        &self,
-        transcript: &mut T,
-    ) -> ScalarProductProof<E::G1, E::G2, Scalar<E>, E::GT> {
+    pub fn scalar_product_proof<T: ProverTranscript<E>>(&self, transcript: &mut T) {
         let (v1, v2) = (self.v1[0], self.v2[0]);
         let (g1, g2) = (self.setup.g1_vec[0], self.setup.g2_vec[0]);
         let ht = &self.setup.ht;
@@ -413,26 +410,24 @@ where
         let p2 = E::pair(&g1, &d2) + ht.scale(&rp2);
         let q = E::pair(&d1, &v2) + E::pair(&v1, &d2) + ht.scale(&rq);
         let rr_val = E::pair(&d1, &d2) + ht.scale(&rr);
-        for (label, val) in [
-            (b"sigma_p1" as &[u8], &p1),
-            (b"sigma_p2", &p2),
-            (b"sigma_q", &q),
-            (b"sigma_r", &rr_val),
-        ] {
-            transcript.append_serde(label, val);
-        }
-        let c = transcript.challenge_scalar(b"sigma_c");
-        ScalarProductProof {
-            p1,
-            p2,
-            q,
-            r: rr_val,
-            e1: d1 + c * v1,
-            e2: d2 + v2.scale(&c),
-            r1: rp1 + c * self.r_d1,
-            r2: rp2 + c * self.r_d2,
-            r3: rr + c * rq + c * c * self.r_c,
-        }
+
+        transcript.absorb_gt(&p1);
+        transcript.absorb_gt(&p2);
+        transcript.absorb_gt(&q);
+        transcript.absorb_gt(&rr_val);
+        let c = transcript.squeeze_scalar();
+
+        let resp_e1 = d1 + c * v1;
+        let resp_e2 = d2 + v2.scale(&c);
+        let resp_r1 = rp1 + c * self.r_d1;
+        let resp_r2 = rp2 + c * self.r_d2;
+        let resp_r3 = rr + c * rq + c * c * self.r_c;
+
+        transcript.absorb_g1(&resp_e1);
+        transcript.absorb_g2(&resp_e2);
+        transcript.absorb_field(&resp_r1);
+        transcript.absorb_field(&resp_r2);
+        transcript.absorb_field(&resp_r3);
     }
 }
 
@@ -444,10 +439,9 @@ pub fn generate_sigma1_proof<E, T>(
     r_y: &Scalar<E>,
     setup: &ProverSetup<E>,
     transcript: &mut T,
-) -> Sigma1Proof<E::G1, E::G2, Scalar<E>>
-where
+) where
     E: PairingCurve,
-    T: Transcript<Curve = E>,
+    T: ProverTranscript<E>,
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
 {
@@ -459,24 +453,22 @@ where
     );
     let a1 = g2_fin.scale(&k1) + setup.h2.scale(&k2);
     let a2 = k1 * g1_fin + k3 * setup.h1;
-    transcript.append_serde(b"sigma1_a1", &a1);
-    transcript.append_serde(b"sigma1_a2", &a2);
-    let c = transcript.challenge_scalar(b"sigma1_c");
-    Sigma1Proof {
-        a1,
-        a2,
-        z1: k1 + c * y,
-        z2: k2 + c * r_e2,
-        z3: k3 + c * r_y,
-    }
+    transcript.absorb_g2(&a1);
+    transcript.absorb_g1(&a2);
+    let c = transcript.squeeze_scalar();
+    let z1 = k1 + c * *y;
+    let z2 = k2 + c * *r_e2;
+    let z3 = k3 + c * *r_y;
+    transcript.absorb_field(&z1);
+    transcript.absorb_field(&z2);
+    transcript.absorb_field(&z3);
 }
 
-/// Verify Sigma1 proof.
+/// Verify Sigma1 proof by reading elements from the NARG transcript.
 #[cfg(feature = "zk")]
-pub fn verify_sigma1_proof<E: PairingCurve, T: Transcript<Curve = E>>(
+pub fn verify_sigma1_proof<E: PairingCurve, T: VerifierTranscript<E>>(
     e2: &E::G2,
     y_commit: &E::G1,
-    proof: &Sigma1Proof<E::G1, E::G2, Scalar<E>>,
     setup: &VerifierSetup<E>,
     transcript: &mut T,
 ) -> Result<(), DoryError>
@@ -484,13 +476,16 @@ where
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
 {
-    transcript.append_serde(b"sigma1_a1", &proof.a1);
-    transcript.append_serde(b"sigma1_a2", &proof.a2);
-    let c = transcript.challenge_scalar(b"sigma1_c");
-    if setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2) != proof.a1 + e2.scale(&c) {
+    let a1 = transcript.read_g2()?;
+    let a2 = transcript.read_g1()?;
+    let c = transcript.squeeze_scalar()?;
+    let z1 = transcript.read_field()?;
+    let z2 = transcript.read_field()?;
+    let z3 = transcript.read_field()?;
+    if setup.g2_0.scale(&z1) + setup.h2.scale(&z2) != a1 + e2.scale(&c) {
         return Err(DoryError::InvalidProof);
     }
-    if proof.z1 * setup.g1_0 + proof.z3 * setup.h1 != proof.a2 + c * y_commit {
+    if z1 * setup.g1_0 + z3 * setup.h1 != a2 + c * *y_commit {
         return Err(DoryError::InvalidProof);
     }
     Ok(())
@@ -503,10 +498,9 @@ pub fn generate_sigma2_proof<E, T>(
     t2: &Scalar<E>,
     setup: &ProverSetup<E>,
     transcript: &mut T,
-) -> Sigma2Proof<Scalar<E>, E::GT>
-where
+) where
     E: PairingCurve,
-    T: Transcript<Curve = E>,
+    T: ProverTranscript<E>,
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
     E::GT: Group<Scalar = Scalar<E>>,
@@ -516,21 +510,19 @@ where
         &setup.h1,
         &(setup.g2_vec[0].scale(&k1) + setup.h2.scale(&k2)),
     );
-    transcript.append_serde(b"sigma2_a", &a);
-    let c = transcript.challenge_scalar(b"sigma2_c");
-    Sigma2Proof {
-        a,
-        z1: k1 + c * t1,
-        z2: k2 + c * t2,
-    }
+    transcript.absorb_gt(&a);
+    let c = transcript.squeeze_scalar();
+    let z1 = k1 + c * *t1;
+    let z2 = k2 + c * *t2;
+    transcript.absorb_field(&z1);
+    transcript.absorb_field(&z2);
 }
 
-/// Verify Sigma2 proof.
+/// Verify Sigma2 proof by reading elements from the NARG transcript.
 #[cfg(feature = "zk")]
-pub fn verify_sigma2_proof<E: PairingCurve, T: Transcript<Curve = E>>(
+pub fn verify_sigma2_proof<E: PairingCurve, T: VerifierTranscript<E>>(
     e1: &E::G1,
     d2: &E::GT,
-    proof: &Sigma2Proof<Scalar<E>, E::GT>,
     setup: &VerifierSetup<E>,
     transcript: &mut T,
 ) -> Result<(), DoryError>
@@ -539,14 +531,13 @@ where
     E::G2: Group<Scalar = Scalar<E>>,
     E::GT: Group<Scalar = Scalar<E>>,
 {
-    transcript.append_serde(b"sigma2_a", &proof.a);
-    let c = transcript.challenge_scalar(b"sigma2_c");
+    let a = transcript.read_gt()?;
+    let c = transcript.squeeze_scalar()?;
+    let z1 = transcript.read_field()?;
+    let z2 = transcript.read_field()?;
     let expected = E::pair(e1, &setup.g2_0) - *d2;
-    let lhs = E::pair(
-        &setup.h1,
-        &(setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2)),
-    );
-    if lhs == proof.a + expected.scale(&c) {
+    let lhs = E::pair(&setup.h1, &(setup.g2_0.scale(&z1) + setup.h2.scale(&z2)));
+    if lhs == a + expected.scale(&c) {
         Ok(())
     } else {
         Err(DoryError::InvalidProof)

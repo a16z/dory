@@ -30,4 +30,8 @@ pub enum DoryError {
     /// Setup file not found or corrupted
     #[error("Invalid or missing URS file: {0}")]
     InvalidURS(String),
+
+    /// Spongefish transcript verification failed
+    #[error("Sponge verification failed: {0}")]
+    SpongeVerification(String),
 }

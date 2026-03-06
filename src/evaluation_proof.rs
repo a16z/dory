@@ -26,12 +26,10 @@
 //! See `examples/homomorphic.rs` for a complete demonstration.
 
 use crate::error::DoryError;
-use crate::messages::VMVMessage;
 use crate::mode::Mode;
 use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 use crate::primitives::poly::MultilinearLagrange;
-use crate::primitives::transcript::Transcript;
-use crate::proof::DoryProof;
+use crate::primitives::transcript::ProverTranscript;
 use crate::reduce_and_fold::{DoryProverState, DoryVerifierState};
 use crate::setup::{ProverSetup, VerifierSetup};
 
@@ -40,6 +38,9 @@ use crate::setup::{ProverSetup, VerifierSetup};
 /// Implements Eval-VMV-RE protocol from Dory Section 5.
 /// The protocol proves that polynomial(point) = evaluation via the VMV relation:
 /// evaluation = L^T × M × R
+///
+/// All proof elements are absorbed into the transcript. The transcript's NARG
+/// string IS the proof — no separate proof struct is returned.
 ///
 /// # Algorithm
 /// 1. Compute or use provided row commitments (Tier 1 commitment)
@@ -64,7 +65,7 @@ use crate::setup::{ProverSetup, VerifierSetup};
 /// - `transcript`: Fiat-Shamir transcript for challenge generation
 ///
 /// # Returns
-/// Complete Dory proof containing VMV message, reduce messages, and final message
+/// In ZK mode, returns the blinding scalar `r_y`; in transparent mode, `None`.
 ///
 /// # Errors
 /// Returns error if dimensions are invalid (nu > sigma) or protocol fails
@@ -84,7 +85,7 @@ pub fn create_evaluation_proof<F, E, M1, M2, T, P, Mo>(
     sigma: usize,
     setup: &ProverSetup<E>,
     transcript: &mut T,
-) -> Result<(DoryProof<E::G1, E::G2, E::GT>, Option<F>), DoryError>
+) -> Result<Option<F>, DoryError>
 where
     F: Field,
     E: PairingCurve,
@@ -93,7 +94,7 @@ where
     E::GT: Group<Scalar = F>,
     M1: DoryRoutines<E::G1>,
     M2: DoryRoutines<E::G2>,
-    T: Transcript<Curve = E>,
+    T: ProverTranscript<E>,
     P: MultilinearLagrange<F>,
     Mo: Mode,
 {
@@ -111,6 +112,10 @@ where
             actual: nu,
         });
     }
+
+    // Public inputs: bind nu and sigma to the sponge state
+    transcript.public_u32(nu as u32);
+    transcript.public_u32(sigma as u32);
 
     let (row_commitments, commit_blind) = match row_commitments {
         Some(rc) => (rc, commit_blind),
@@ -148,26 +153,25 @@ where
     // E₁ = ⟨row_commitments, left_vec⟩ + r_e1·H₁
     let e1 = Mo::mask(M1::msm(&row_commitments, &left_vec), &setup.h1, &r_e1);
 
-    let vmv_message = VMVMessage { c, d2, e1 };
-
-    transcript.append_serde(b"vmv_c", &vmv_message.c);
-    transcript.append_serde(b"vmv_d2", &vmv_message.d2);
-    transcript.append_serde(b"vmv_e1", &vmv_message.e1);
+    // Absorb VMV message
+    transcript.absorb_gt(&c);
+    transcript.absorb_gt(&d2);
+    transcript.absorb_g1(&e1);
 
     #[cfg(feature = "zk")]
-    let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2, zk_r_y) = if Mo::BLINDING {
+    let zk_r_y = if Mo::BLINDING {
         use crate::reduce_and_fold::{generate_sigma1_proof, generate_sigma2_proof};
         let y = polynomial.evaluate(point);
         let r_y: F = Mo::sample();
         let e2 = Mo::mask(g2_fin.scale(&y), &setup.h2, &r_e2);
         let y_com = setup.g1_vec[0].scale(&y) + setup.h1.scale(&r_y);
-        transcript.append_serde(b"vmv_e2", &e2);
-        transcript.append_serde(b"vmv_y_com", &y_com);
-        let s1 = generate_sigma1_proof::<E, T>(&y, &r_e2, &r_y, setup, transcript);
-        let s2 = generate_sigma2_proof::<E, T>(&r_e1, &-r_d2, setup, transcript);
-        (Some(e2), Some(y_com), Some(s1), Some(s2), Some(r_y))
+        transcript.absorb_g2(&e2);
+        transcript.absorb_g1(&y_com);
+        generate_sigma1_proof::<E, T>(&y, &r_e2, &r_y, setup, transcript);
+        generate_sigma2_proof::<E, T>(&r_e1, &-r_d2, setup, transcript);
+        Some(r_y)
     } else {
-        (None, None, None, None, None)
+        None
     };
 
     // v₂ = v_vec · Γ₂,fin (each scalar scales g_fin)
@@ -190,75 +194,51 @@ where
     );
     prover_state.set_initial_blinds(commit_blind, r_c, r_d2, r_e1, r_e2);
 
-    let num_rounds = nu.max(sigma);
-    let mut first_messages = Vec::with_capacity(num_rounds);
-    let mut second_messages = Vec::with_capacity(num_rounds);
+    let num_rounds = sigma;
 
     for _round in 0..num_rounds {
         let first_msg = prover_state.compute_first_message::<M1, M2>();
 
-        transcript.append_serde(b"d1_left", &first_msg.d1_left);
-        transcript.append_serde(b"d1_right", &first_msg.d1_right);
-        transcript.append_serde(b"d2_left", &first_msg.d2_left);
-        transcript.append_serde(b"d2_right", &first_msg.d2_right);
-        transcript.append_serde(b"e1_beta", &first_msg.e1_beta);
-        transcript.append_serde(b"e2_beta", &first_msg.e2_beta);
+        transcript.absorb_gt(&first_msg.d1_left);
+        transcript.absorb_gt(&first_msg.d1_right);
+        transcript.absorb_gt(&first_msg.d2_left);
+        transcript.absorb_gt(&first_msg.d2_right);
+        transcript.absorb_g1(&first_msg.e1_beta);
+        transcript.absorb_g2(&first_msg.e2_beta);
 
-        let beta = transcript.challenge_scalar(b"beta");
+        let beta = transcript.squeeze_scalar();
         prover_state.apply_first_challenge::<M1, M2>(&beta);
-        first_messages.push(first_msg);
 
         let second_msg = prover_state.compute_second_message::<M1, M2>();
 
-        transcript.append_serde(b"c_plus", &second_msg.c_plus);
-        transcript.append_serde(b"c_minus", &second_msg.c_minus);
-        transcript.append_serde(b"e1_plus", &second_msg.e1_plus);
-        transcript.append_serde(b"e1_minus", &second_msg.e1_minus);
-        transcript.append_serde(b"e2_plus", &second_msg.e2_plus);
-        transcript.append_serde(b"e2_minus", &second_msg.e2_minus);
+        transcript.absorb_gt(&second_msg.c_plus);
+        transcript.absorb_gt(&second_msg.c_minus);
+        transcript.absorb_g1(&second_msg.e1_plus);
+        transcript.absorb_g1(&second_msg.e1_minus);
+        transcript.absorb_g2(&second_msg.e2_plus);
+        transcript.absorb_g2(&second_msg.e2_minus);
 
-        let alpha = transcript.challenge_scalar(b"alpha");
+        let alpha = transcript.squeeze_scalar();
         prover_state.apply_second_challenge::<M1, M2>(&alpha);
-        second_messages.push(second_msg);
     }
 
-    let gamma = transcript.challenge_scalar(b"gamma");
+    let gamma = transcript.squeeze_scalar();
 
     #[cfg(feature = "zk")]
-    let scalar_product_proof = if Mo::BLINDING {
-        Some(prover_state.scalar_product_proof(transcript))
-    } else {
-        None
-    };
+    if Mo::BLINDING {
+        prover_state.scalar_product_proof(transcript);
+    }
 
     let final_message = prover_state.compute_final_message::<M1, M2>(&gamma);
 
-    transcript.append_serde(b"final_e1", &final_message.e1);
-    transcript.append_serde(b"final_e2", &final_message.e2);
-    let _d = transcript.challenge_scalar(b"d");
+    transcript.absorb_g1(&final_message.e1);
+    transcript.absorb_g2(&final_message.e2);
+    let _d = transcript.squeeze_scalar();
 
-    let proof = DoryProof {
-        vmv_message,
-        first_messages,
-        second_messages,
-        final_message,
-        nu,
-        sigma,
-        #[cfg(feature = "zk")]
-        e2: zk_e2,
-        #[cfg(feature = "zk")]
-        y_com: zk_y_com,
-        #[cfg(feature = "zk")]
-        sigma1_proof: zk_sigma1,
-        #[cfg(feature = "zk")]
-        sigma2_proof: zk_sigma2,
-        #[cfg(feature = "zk")]
-        scalar_product_proof,
-    };
     #[cfg(feature = "zk")]
-    return Ok((proof, zk_r_y));
+    return Ok(zk_r_y);
     #[cfg(not(feature = "zk"))]
-    Ok((proof, None))
+    Ok(None)
 }
 
 /// Verify an evaluation proof
@@ -266,39 +246,38 @@ where
 /// Verifies that a committed polynomial evaluates to the claimed value at the given point.
 /// Works with both square and non-square matrix layouts (nu ≤ sigma).
 ///
+/// Proof elements are read from the NARG transcript — no separate proof struct is needed.
+///
 /// # Algorithm
-/// 1. Extract VMV message from proof
-/// 2. Compute e2 = Γ2,fin * evaluation (or use proof.e2 in ZK mode)
+/// 1. Read VMV message from transcript
+/// 2. Compute e2 = Γ2,fin * evaluation (or read from transcript in ZK mode)
 /// 3. Initialize verifier state with commitment and VMV message
-/// 4. Run max(nu, sigma) rounds of reduce-and-fold verification (with automatic padding)
+/// 4. Read reduce messages from transcript for max(nu, sigma) rounds
 /// 5. Derive gamma and d challenges
 /// 6. Verify final scalar product message
 ///
 /// # Parameters
 /// - `commitment`: Polynomial commitment (in GT) - can be a homomorphically combined commitment
 /// - `evaluation`: Claimed evaluation result
-/// - `point`: Evaluation point (length must equal proof.nu + proof.sigma)
-/// - `proof`: Evaluation proof to verify (contains nu and sigma dimensions)
+/// - `point`: Evaluation point (length must equal nu + sigma)
+/// - `nu`: Log₂ of number of rows
+/// - `sigma`: Log₂ of number of columns
 /// - `setup`: Verifier setup
-/// - `transcript`: Fiat-Shamir transcript for challenge generation
+/// - `transcript`: Fiat-Shamir verifier transcript (reads from NARG string)
 ///
 /// # Returns
 /// `Ok(())` if proof is valid, `Err(DoryError)` otherwise
-///
-/// # Homomorphic Verification
-/// This function can verify proofs for homomorphically combined polynomials.
-/// The commitment parameter should be the combined commitment, and the evaluation
-/// should be the evaluation of the combined polynomial.
 ///
 /// # Errors
 /// Returns `DoryError::InvalidProof` if verification fails, or other variants
 /// if the input parameters are incorrect (e.g., point dimension mismatch).
 #[tracing::instrument(skip_all, name = "verify_evaluation_proof")]
-pub fn verify_evaluation_proof<F, E, M1, M2, T>(
+pub fn verify_evaluation_proof<F, E, M1, M2, T, Mo>(
     commitment: E::GT,
     evaluation: F,
     point: &[F],
-    proof: &DoryProof<E::G1, E::G2, E::GT>,
+    nu: usize,
+    sigma: usize,
     setup: VerifierSetup<E>,
     transcript: &mut T,
 ) -> Result<(), DoryError>
@@ -310,11 +289,9 @@ where
     E::GT: Group<Scalar = F>,
     M1: DoryRoutines<E::G1>,
     M2: DoryRoutines<E::G2>,
-    T: Transcript<Curve = E>,
+    T: crate::primitives::transcript::VerifierTranscript<E>,
+    Mo: Mode,
 {
-    let nu = proof.nu;
-    let sigma = proof.sigma;
-
     if point.len() != nu + sigma {
         return Err(DoryError::InvalidPointDimension {
             expected: nu + sigma,
@@ -322,129 +299,126 @@ where
         });
     }
 
-    let vmv_message = &proof.vmv_message;
-    transcript.append_serde(b"vmv_c", &vmv_message.c);
-    transcript.append_serde(b"vmv_d2", &vmv_message.d2);
-    transcript.append_serde(b"vmv_e1", &vmv_message.e1);
+    // Public inputs: bind nu and sigma to the sponge state
+    transcript.public_u32(nu as u32)?;
+    transcript.public_u32(sigma as u32)?;
+
+    // Read VMV message from transcript
+    let vmv_c = transcript.read_gt()?;
+    let vmv_d2 = transcript.read_gt()?;
+    let vmv_e1 = transcript.read_g1()?;
 
     #[cfg(feature = "zk")]
-    let (e2, is_zk) = match (&proof.e2, &proof.y_com) {
-        (Some(pe2), Some(yc)) => {
-            use crate::reduce_and_fold::{verify_sigma1_proof, verify_sigma2_proof};
-            transcript.append_serde(b"vmv_e2", pe2);
-            transcript.append_serde(b"vmv_y_com", yc);
-            match (&proof.sigma1_proof, &proof.sigma2_proof) {
-                (Some(s1), Some(s2)) => {
-                    verify_sigma1_proof::<E, T>(pe2, yc, s1, &setup, transcript)?;
-                    verify_sigma2_proof::<E, T>(
-                        &vmv_message.e1,
-                        &vmv_message.d2,
-                        s2,
-                        &setup,
-                        transcript,
-                    )?;
-                }
-                _ => return Err(DoryError::InvalidProof),
-            }
-            (*pe2, true)
-        }
-        (None, None) => (setup.g2_0.scale(&evaluation), false),
-        _ => return Err(DoryError::InvalidProof),
+    let e2 = if Mo::BLINDING {
+        use crate::reduce_and_fold::{verify_sigma1_proof, verify_sigma2_proof};
+        let pe2 = transcript.read_g2()?;
+        let yc = transcript.read_g1()?;
+        verify_sigma1_proof::<E, T>(&pe2, &yc, &setup, transcript)?;
+        verify_sigma2_proof::<E, T>(&vmv_e1, &vmv_d2, &setup, transcript)?;
+        pe2
+    } else {
+        setup.g2_0.scale(&evaluation)
     };
     #[cfg(not(feature = "zk"))]
-    let (e2, _is_zk) = (setup.g2_0.scale(&evaluation), false);
+    let e2 = setup.g2_0.scale(&evaluation);
 
-    // Folded-scalar accumulation with per-round coordinates.
     // num_rounds = sigma (we fold column dimensions).
     let num_rounds = sigma;
 
-    // Bounds check: reject proofs with mismatched message counts or that exceed setup capacity.
+    // Bounds check: reject proofs that exceed setup capacity.
     let max_rounds = setup.max_log_n / 2;
-    if num_rounds > max_rounds
-        || proof.first_messages.len() != num_rounds
-        || proof.second_messages.len() != num_rounds
-    {
+    if num_rounds > max_rounds {
         return Err(DoryError::InvalidProof);
     }
 
     // s1 (right/prover): the σ column coordinates in natural order (LSB→MSB).
-    // No padding here: the verifier folds across the σ column dimensions.
-    // With MSB-first folding, these coordinates are only consumed after the first σ−ν rounds,
-    // which correspond to the padded MSB dimensions on the left tensor, matching the prover.
     let s1_coords: Vec<F> = point[..sigma].to_vec();
-    // s2 (left/prover): the ν row coordinates in natural order, followed by zeros for the extra
-    // MSB dimensions. Conceptually this is s ⊗ [1,0]^(σ−ν): under MSB-first folds, the first
-    // σ−ν rounds multiply s2 by α⁻¹ while contributing no right halves (since those entries are 0).
+    // s2 (left/prover): the ν row coordinates in natural order, followed by zeros.
     let mut s2_coords: Vec<F> = vec![F::zero(); sigma];
     s2_coords[..nu].copy_from_slice(&point[sigma..sigma + nu]);
 
     let mut verifier_state = DoryVerifierState::new(
-        vmv_message.c,  // c from VMV message
-        commitment,     // d1 = commitment
-        vmv_message.d2, // d2 from VMV message
-        vmv_message.e1, // e1 from VMV message
-        e2,             // e2 computed from evaluation
-        s1_coords,      // s1: columns c0..c_{σ−1} (LSB→MSB), no padding; folded across σ dims
-        s2_coords,      // s2: rows r0..r_{ν−1} then zeros in MSB dims (emulates s ⊗ [1,0]^(σ−ν))
+        vmv_c,      // c from VMV message
+        commitment, // d1 = commitment
+        vmv_d2,     // d2 from VMV message
+        vmv_e1,     // e1 from VMV message
+        e2,         // e2 computed from evaluation or read from transcript
+        s1_coords,
+        s2_coords,
         num_rounds,
         setup.clone(),
     );
 
-    for round in 0..num_rounds {
-        let first_msg = &proof.first_messages[round];
-        let second_msg = &proof.second_messages[round];
+    for _round in 0..num_rounds {
+        // Read first reduce message from transcript
+        let first_msg = crate::messages::FirstReduceMessage {
+            d1_left: transcript.read_gt()?,
+            d1_right: transcript.read_gt()?,
+            d2_left: transcript.read_gt()?,
+            d2_right: transcript.read_gt()?,
+            e1_beta: transcript.read_g1()?,
+            e2_beta: transcript.read_g2()?,
+        };
+        let beta = transcript.squeeze_scalar()?;
 
-        transcript.append_serde(b"d1_left", &first_msg.d1_left);
-        transcript.append_serde(b"d1_right", &first_msg.d1_right);
-        transcript.append_serde(b"d2_left", &first_msg.d2_left);
-        transcript.append_serde(b"d2_right", &first_msg.d2_right);
-        transcript.append_serde(b"e1_beta", &first_msg.e1_beta);
-        transcript.append_serde(b"e2_beta", &first_msg.e2_beta);
-        let beta = transcript.challenge_scalar(b"beta");
+        // Read second reduce message from transcript
+        let second_msg = crate::messages::SecondReduceMessage {
+            c_plus: transcript.read_gt()?,
+            c_minus: transcript.read_gt()?,
+            e1_plus: transcript.read_g1()?,
+            e1_minus: transcript.read_g1()?,
+            e2_plus: transcript.read_g2()?,
+            e2_minus: transcript.read_g2()?,
+        };
+        let alpha = transcript.squeeze_scalar()?;
 
-        transcript.append_serde(b"c_plus", &second_msg.c_plus);
-        transcript.append_serde(b"c_minus", &second_msg.c_minus);
-        transcript.append_serde(b"e1_plus", &second_msg.e1_plus);
-        transcript.append_serde(b"e1_minus", &second_msg.e1_minus);
-        transcript.append_serde(b"e2_plus", &second_msg.e2_plus);
-        transcript.append_serde(b"e2_minus", &second_msg.e2_minus);
-        let alpha = transcript.challenge_scalar(b"alpha");
-
-        verifier_state.process_round(first_msg, second_msg, &alpha, &beta)?;
+        verifier_state.process_round(&first_msg, &second_msg, &alpha, &beta)?;
     }
 
-    let gamma = transcript.challenge_scalar(b"gamma");
+    let gamma = transcript.squeeze_scalar()?;
 
-    // In ZK mode: absorb scalar product proof into transcript before deriving d.
+    // In ZK mode: read scalar product proof from transcript before deriving d.
     #[cfg(feature = "zk")]
-    let zk_data = if is_zk {
-        if let Some(ref sp) = proof.scalar_product_proof {
-            for (l, v) in [
-                (b"sigma_p1" as &[u8], &sp.p1),
-                (b"sigma_p2", &sp.p2),
-                (b"sigma_q", &sp.q),
-                (b"sigma_r", &sp.r),
-            ] {
-                transcript.append_serde(l, v);
-            }
-            let c = transcript.challenge_scalar(b"sigma_c");
-            Some((sp, c))
-        } else {
-            return Err(DoryError::InvalidProof);
-        }
+    let zk_data = if Mo::BLINDING {
+        let p1 = transcript.read_gt()?;
+        let p2 = transcript.read_gt()?;
+        let q = transcript.read_gt()?;
+        let r = transcript.read_gt()?;
+        let sigma_c = transcript.squeeze_scalar()?;
+        let sp_e1 = transcript.read_g1()?;
+        let sp_e2 = transcript.read_g2()?;
+        let r1 = transcript.read_field()?;
+        let r2 = transcript.read_field()?;
+        let r3 = transcript.read_field()?;
+        let sp = crate::messages::ScalarProductProof {
+            p1,
+            p2,
+            q,
+            r,
+            e1: sp_e1,
+            e2: sp_e2,
+            r1,
+            r2,
+            r3,
+        };
+        Some((sp, sigma_c))
     } else {
         None
     };
 
-    // Shared: absorb final message and derive d.
-    transcript.append_serde(b"final_e1", &proof.final_message.e1);
-    transcript.append_serde(b"final_e2", &proof.final_message.e2);
-    let d = transcript.challenge_scalar(b"d");
+    // Read final message from transcript and derive d.
+    let final_e1 = transcript.read_g1()?;
+    let final_e2 = transcript.read_g2()?;
+    let final_message = crate::messages::ScalarProductMessage {
+        e1: final_e1,
+        e2: final_e2,
+    };
+    let d = transcript.squeeze_scalar()?;
 
     #[cfg(feature = "zk")]
-    let zk = zk_data.as_ref().map(|(sp, c)| (*sp, c));
+    let zk = zk_data.as_ref().map(|(sp, c)| (sp, c));
     #[cfg(not(feature = "zk"))]
     let zk: Option<(&crate::messages::ScalarProductProof<_, _, _, _>, _)> = None;
 
-    verifier_state.verify_final(&proof.final_message, &gamma, &d, zk)
+    verifier_state.verify_final(&final_message, &gamma, &d, zk)
 }
