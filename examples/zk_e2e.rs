@@ -7,7 +7,7 @@
 //! Matrix dimensions: 16x16 (nu=4, sigma=4, total 256 coefficients)
 
 use dory_pcs::backends::arkworks::{
-    ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
+    dory_prover, dory_verifier, ArkFr, ArkworksPolynomial, G1Routines, G2Routines, BN254,
 };
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
@@ -32,8 +32,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
     let evaluation = poly.evaluate(&point);
 
-    let mut prover_transcript = Blake2bTranscript::new(b"dory-zk-example");
-    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, ZK>(
+    let mut prover = dory_prover(sigma, true);
+    prove::<_, BN254, G1Routines, G2Routines, _, _, ZK>(
         &poly,
         &point,
         tier_1,
@@ -41,18 +41,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )?;
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = Blake2bTranscript::new(b"dory-zk-example");
-    verify::<_, BN254, G1Routines, G2Routines, _>(
+    let mut verifier = dory_verifier(sigma, true, &proof_bytes);
+    verify::<_, BN254, G1Routines, G2Routines, _, ZK>(
         tier_2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     )?;
+    verifier.check_eof().map_err(|e| format!("{e:?}"))?;
 
     Ok(())
 }

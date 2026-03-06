@@ -22,8 +22,8 @@ fn test_full_workflow() {
     let point = random_point(8);
     let expected_evaluation = poly.evaluate(&point);
 
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let mut prover = test_prover(sigma);
+    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -31,23 +31,26 @@ fn test_full_workflow() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
     assert_eq!(evaluation, expected_evaluation);
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     );
 
     assert!(result.is_ok());
+    verifier.check_eof().unwrap();
 }
 
 #[test]
@@ -65,8 +68,8 @@ fn test_workflow_without_precommitment() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let mut prover = test_prover(sigma);
+    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -74,22 +77,25 @@ fn test_workflow_without_precommitment() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     );
 
     assert!(result.is_ok());
+    verifier.check_eof().unwrap();
 }
 
 #[test]
@@ -104,11 +110,11 @@ fn test_batched_proofs() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    for i in 0..5 {
+    for _i in 0..5 {
         let point = random_point(8);
 
-        let mut prover_transcript = Blake2bTranscript::new(format!("test-{i}").as_bytes());
-        let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+        let mut prover = test_prover(sigma);
+        let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
             &poly,
             &point,
             tier_1.clone(),
@@ -116,22 +122,25 @@ fn test_batched_proofs() {
             nu,
             sigma,
             &prover_setup,
-            &mut prover_transcript,
+            &mut prover,
         )
         .unwrap();
         let evaluation = poly.evaluate(&point);
+        let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-        let mut verifier_transcript = Blake2bTranscript::new(format!("test-{i}").as_bytes());
-        let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+        let mut verifier = test_verifier(sigma, &proof_bytes);
+        let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
             tier_2,
             evaluation,
             &point,
-            &proof,
+            nu,
+            sigma,
             verifier_setup.clone(),
-            &mut verifier_transcript,
+            &mut verifier,
         );
 
-        assert!(result.is_ok(), "Proof {i} should verify");
+        assert!(result.is_ok(), "Proof should verify");
+        verifier.check_eof().unwrap();
     }
 }
 
@@ -160,8 +169,8 @@ fn test_linear_polynomial() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let mut prover = test_prover(sigma);
+    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -169,25 +178,28 @@ fn test_linear_polynomial() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .unwrap();
 
     let evaluation = poly.evaluate(&point);
     let expected_eval = poly.evaluate(&point);
     assert_eq!(evaluation, expected_eval);
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     );
 
     assert!(result.is_ok());
+    verifier.check_eof().unwrap();
 }
 
 #[test]
@@ -204,8 +216,8 @@ fn test_zero_polynomial() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let mut prover = test_prover(sigma);
+    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -213,68 +225,25 @@ fn test_zero_polynomial() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .unwrap();
 
     let evaluation = poly.evaluate(&point);
     assert_eq!(evaluation, ArkFr::zero());
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     );
 
     assert!(result.is_ok());
-}
-
-#[test]
-fn test_soundness_wrong_commitment() {
-    let (prover_setup, verifier_setup) = setup::<BN254>(10);
-
-    let poly1 = random_polynomial(256);
-    let poly2 = random_polynomial(256);
-    let point = random_point(8);
-
-    let nu = 4;
-    let sigma = 4;
-
-    let (commitment1, _, _commit_blind) = poly1
-        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
-        .unwrap();
-
-    let (_, tier_1_poly2, commit_blind) = poly2
-        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
-        .unwrap();
-
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
-        &poly2,
-        &point,
-        tier_1_poly2,
-        commit_blind,
-        nu,
-        sigma,
-        &prover_setup,
-        &mut prover_transcript,
-    )
-    .unwrap();
-    let evaluation = poly2.evaluate(&point);
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment1,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err());
+    verifier.check_eof().unwrap();
 }

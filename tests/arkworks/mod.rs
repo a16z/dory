@@ -3,10 +3,10 @@
 #![allow(unreachable_pub)]
 
 use dory_pcs::backends::arkworks::{
-    ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
+    dory_prover, dory_verifier, ArkFr, ArkworksPolynomial, CheckedProverState,
+    CheckedVerifierState, G1Routines, G2Routines, BN254,
 };
 use dory_pcs::primitives::arithmetic::Field;
-use dory_pcs::proof::DoryProof;
 use dory_pcs::setup::{ProverSetup, VerifierSetup};
 
 pub mod cache;
@@ -47,8 +47,26 @@ pub fn test_setup_pair(max_log_n: usize) -> (ProverSetup<BN254>, VerifierSetup<B
     (prover_setup, verifier_setup)
 }
 
-pub fn fresh_transcript() -> Blake2bTranscript<BN254> {
-    Blake2bTranscript::new(b"dory-test")
+/// Create a checked prover state for transparent mode testing.
+pub fn test_prover(sigma: usize) -> CheckedProverState {
+    dory_prover(sigma, false)
+}
+
+/// Create a checked verifier state for transparent mode testing.
+pub fn test_verifier(sigma: usize, proof_bytes: &[u8]) -> CheckedVerifierState<'_> {
+    dory_verifier(sigma, false, proof_bytes)
+}
+
+/// Create a checked prover state for ZK mode testing.
+#[cfg(feature = "zk")]
+pub fn test_prover_zk(sigma: usize) -> CheckedProverState {
+    dory_prover(sigma, true)
+}
+
+/// Create a checked verifier state for ZK mode testing.
+#[cfg(feature = "zk")]
+pub fn test_verifier_zk(sigma: usize, proof_bytes: &[u8]) -> CheckedVerifierState<'_> {
+    dory_verifier(sigma, true, proof_bytes)
 }
 
 pub type TestG1Routines = G1Routines;

@@ -3,7 +3,7 @@
 //! Demonstrates: Com(r1*P1 + r2*P2 + ... + rn*Pn) = r1*Com(P1) + r2*Com(P2) + ... + rn*Com(Pn)
 
 use dory_pcs::backends::arkworks::{
-    ArkFr, ArkG1, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
+    dory_prover, dory_verifier, ArkFr, ArkG1, ArkworksPolynomial, G1Routines, G2Routines, BN254,
 };
 use dory_pcs::primitives::arithmetic::{Field, Group};
 use dory_pcs::primitives::poly::Polynomial;
@@ -86,8 +86,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     assert_eq!(evaluation, expected_eval);
 
-    let mut prover_transcript = Blake2bTranscript::new(b"dory-homomorphic-example");
-    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
+    let mut prover = dory_prover(sigma, false);
+    prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -95,18 +95,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )?;
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = Blake2bTranscript::new(b"dory-homomorphic-example");
-    verify::<_, BN254, G1Routines, G2Routines, _>(
+    let mut verifier = dory_verifier(sigma, false, &proof_bytes);
+    verify::<_, BN254, G1Routines, G2Routines, _, Transparent>(
         combined_tier2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     )?;
+    verifier.check_eof().map_err(|e| format!("{e:?}"))?;
 
     Ok(())
 }

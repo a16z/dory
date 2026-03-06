@@ -13,7 +13,7 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use dory_pcs::backends::arkworks::{
-    ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
+    dory_prover, dory_verifier, ArkFr, ArkworksPolynomial, G1Routines, G2Routines, BN254,
 };
 use dory_pcs::mode::Transparent;
 use dory_pcs::primitives::arithmetic::Field;
@@ -33,7 +33,6 @@ fn setup_benchmark_data() -> (
 
     let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
-    // Initialize cache with setup generators for optimized pairings
     #[cfg(feature = "cache")]
     {
         if !dory_pcs::backends::arkworks::is_cached() {
@@ -41,8 +40,7 @@ fn setup_benchmark_data() -> (
         }
     }
 
-    // Create polynomial with 2^26 coefficients (nu=13, sigma=13)
-    let poly_size = 1 << 26; // 67,108,864 coefficients
+    let poly_size = 1 << 26;
     let num_vars = 26;
     let coefficients: Vec<ArkFr> = (0..poly_size).map(|_| ArkFr::random()).collect();
     let poly = ArkworksPolynomial::new(coefficients);
@@ -80,7 +78,7 @@ fn bench_prove(c: &mut Criterion) {
 
     c.bench_function("prove_2^26_coefficients", |b| {
         b.iter(|| {
-            let mut transcript = Blake2bTranscript::new(b"dory-bench");
+            let mut prover = dory_prover(sigma, false);
             prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
                 black_box(&poly),
                 black_box(&point),
@@ -89,7 +87,7 @@ fn bench_prove(c: &mut Criterion) {
                 black_box(nu),
                 black_box(sigma),
                 black_box(&prover_setup),
-                black_box(&mut transcript),
+                black_box(&mut prover),
             )
             .unwrap()
         })
@@ -105,8 +103,8 @@ fn bench_verify(c: &mut Criterion) {
         .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover_transcript = Blake2bTranscript::new(b"dory-bench");
-    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
+    let mut prover = dory_prover(sigma, false);
+    prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -114,24 +112,27 @@ fn bench_verify(c: &mut Criterion) {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .unwrap();
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
     let evaluation = poly.evaluate(&point);
 
     c.bench_function("verify_2^26_coefficients", |b| {
         b.iter(|| {
-            let mut transcript = Blake2bTranscript::new(b"dory-bench");
-            verify::<_, BN254, G1Routines, G2Routines, _>(
+            let mut verifier = dory_verifier(sigma, false, &proof_bytes);
+            verify::<_, BN254, G1Routines, G2Routines, _, Transparent>(
                 black_box(tier_2),
                 black_box(evaluation),
                 black_box(&point),
-                black_box(&proof),
+                black_box(nu),
+                black_box(sigma),
                 black_box(verifier_setup.clone()),
-                black_box(&mut transcript),
+                black_box(&mut verifier),
             )
-            .unwrap()
+            .unwrap();
+            verifier.check_eof().unwrap();
         })
     });
 }
@@ -140,7 +141,6 @@ fn bench_end_to_end(c: &mut Criterion) {
     let max_log_n = 26;
     let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
-    // Initialize cache once
     #[cfg(feature = "cache")]
     {
         if !dory_pcs::backends::arkworks::is_cached() {
@@ -152,25 +152,21 @@ fn bench_end_to_end(c: &mut Criterion) {
         b.iter(|| {
             let nu = 13;
             let sigma = 13;
-            let poly_size = 1 << 26; // 67,108,864 coefficients
+            let poly_size = 1 << 26;
             let num_vars = 26;
 
-            // Create polynomial
             let coefficients: Vec<ArkFr> = (0..poly_size).map(|_| ArkFr::random()).collect();
             let poly = ArkworksPolynomial::new(coefficients);
 
-            // Commit
             let (tier_2, tier_1, commit_blind) = poly
                 .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
                 .unwrap();
 
-            // Evaluate
             let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
             let evaluation = poly.evaluate(&point);
 
-            // Prove
-            let mut prover_transcript = Blake2bTranscript::new(b"dory-bench");
-            let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
+            let mut prover = dory_prover(sigma, false);
+            prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
                 &poly,
                 &point,
                 tier_1,
@@ -178,21 +174,23 @@ fn bench_end_to_end(c: &mut Criterion) {
                 nu,
                 sigma,
                 &prover_setup,
-                &mut prover_transcript,
+                &mut prover,
             )
             .unwrap();
+            let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-            // Verify
-            let mut verifier_transcript = Blake2bTranscript::new(b"dory-bench");
-            verify::<_, BN254, G1Routines, G2Routines, _>(
+            let mut verifier = dory_verifier(sigma, false, &proof_bytes);
+            verify::<_, BN254, G1Routines, G2Routines, _, Transparent>(
                 tier_2,
                 evaluation,
                 &point,
-                &proof,
+                nu,
+                sigma,
                 verifier_setup.clone(),
-                &mut verifier_transcript,
+                &mut verifier,
             )
             .unwrap();
+            verifier.check_eof().unwrap();
         })
     });
 }

@@ -4,7 +4,7 @@
 //! dimensions (sizes 16 and 4, combined in a 4x4 layout).
 
 use dory_pcs::backends::arkworks::{
-    ArkFr, ArkG1, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
+    dory_prover, dory_verifier, ArkFr, ArkG1, ArkworksPolynomial, G1Routines, G2Routines, BN254,
 };
 use dory_pcs::primitives::arithmetic::{Field, Group};
 use dory_pcs::primitives::poly::Polynomial;
@@ -81,27 +81,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     expected = expected + coeff_scalars[1].mul(&eval2);
     assert_eq!(evaluation, expected);
 
-    let mut prover_transcript = Blake2bTranscript::new(b"dory-homomorphic-mixed");
-    let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
+    let nu = 2;
+    let sigma = 2;
+    let mut prover = dory_prover(sigma, false);
+    prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
         combined_tier1,
         ArkFr::zero(),
-        2,
-        2,
+        nu,
+        sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )?;
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = Blake2bTranscript::new(b"dory-homomorphic-mixed");
-    verify::<_, BN254, G1Routines, G2Routines, _>(
+    let mut verifier = dory_verifier(sigma, false, &proof_bytes);
+    verify::<_, BN254, G1Routines, G2Routines, _, Transparent>(
         combined_tier2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     )?;
+    verifier.check_eof().map_err(|e| format!("{e:?}"))?;
 
     let padded_poly_commitment = padded_poly2
         .commit::<BN254, Transparent, G1Routines>(2, 2, &prover_setup)

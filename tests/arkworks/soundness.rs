@@ -1,15 +1,18 @@
 //! Comprehensive soundness tests for Dory PCS
+//!
+//! With the spongefish NARG API, proofs are opaque byte arrays.
+//! Soundness is tested by corrupting the proof bytes in various ways
+//! and verifying that the verifier rejects them.
 
 use super::*;
-use ark_bn254::{Fq12, Fr, G1Projective, G2Projective};
+use ark_bn254::Fr;
 use ark_ff::UniformRand;
-use dory_pcs::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
+use dory_pcs::backends::arkworks::{ArkFr, ArkGT};
 use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, verify, Transparent};
-use std::mem::swap;
 
 #[allow(clippy::type_complexity)]
-fn create_valid_proof_components(
+fn create_valid_proof(
     size: usize,
     nu: usize,
     sigma: usize,
@@ -20,18 +23,17 @@ fn create_valid_proof_components(
     Vec<ArkFr>,
     ArkGT,
     ArkFr,
-    DoryProof<ArkG1, ArkG2, ArkGT>,
+    Vec<u8>,
 ) {
     let (prover_setup, verifier_setup) = test_setup_pair(nu + sigma + 2);
-
     let poly = random_polynomial(size);
     let point = random_point(nu + sigma);
-
     let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+
+    let mut prover = test_prover(sigma);
+    prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -39,10 +41,11 @@ fn create_valid_proof_components(
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
     (
         prover_setup,
@@ -51,595 +54,453 @@ fn create_valid_proof_components(
         point,
         tier_2,
         evaluation,
-        proof,
+        proof_bytes,
     )
 }
 
-#[test]
-fn test_soundness_tamper_vmv_c() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    proof.vmv_message.c = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+/// Helper: attempt verification with given proof bytes, including `check_eof()`.
+fn try_verify(
+    commitment: ArkGT,
+    evaluation: ArkFr,
+    point: &[ArkFr],
+    nu: usize,
+    sigma: usize,
+    verifier_setup: VerifierSetup<BN254>,
+    proof_bytes: &[u8],
+) -> Result<(), dory_pcs::DoryError> {
+    let mut verifier = test_verifier(sigma, proof_bytes);
+    verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         commitment,
         evaluation,
-        &point,
-        &proof,
+        point,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered VMV C");
+        &mut verifier,
+    )?;
+    verifier
+        .check_eof()
+        .map_err(|e| dory_pcs::DoryError::SpongeVerification(format!("{e:?}")))
 }
 
-#[test]
-fn test_soundness_tamper_vmv_d2() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    proof.vmv_message.d2 = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered VMV D2");
-}
+// ---------------------------------------------------------------------------
+// 1. Wrong commitment
+// ---------------------------------------------------------------------------
 
 #[test]
-fn test_soundness_tamper_vmv_e1() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
+fn test_soundness_wrong_commitment() {
+    let nu = 4;
+    let sigma = 4;
+    let (prover_setup, verifier_setup, _, _, _, _, _) = create_valid_proof(256, nu, sigma);
 
-    proof.vmv_message.e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    let poly1 = random_polynomial(256);
+    let poly2 = random_polynomial(256);
+    let point = random_point(nu + sigma);
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
+    let (commitment1, _, _) = poly1
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
+    let (_, tier_1_poly2, commit_blind2) = poly2
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+
+    let mut prover = test_prover(sigma);
+    prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+        &poly2,
+        &point,
+        tier_1_poly2,
+        commit_blind2,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut prover,
+    )
+    .unwrap();
+    let evaluation = poly2.evaluate(&point);
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
+
+    let result = try_verify(
+        commitment1,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered VMV E1");
-}
-
-#[test]
-fn test_soundness_tamper_d1_left() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d1_left = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered d1_left");
-}
-
-#[test]
-fn test_soundness_tamper_d1_right() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d1_right = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered d1_right");
-}
-
-#[test]
-fn test_soundness_tamper_d2_left() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d2_left = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered d2_left");
-}
-
-#[test]
-fn test_soundness_tamper_d2_right() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d2_right = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered d2_right");
-}
-
-#[test]
-fn test_soundness_tamper_e1_beta() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.first_messages.is_empty() {
-        proof.first_messages[0].e1_beta = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered e1_beta");
-}
-
-#[test]
-fn test_soundness_tamper_e2_beta() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.first_messages.is_empty() {
-        proof.first_messages[0].e2_beta = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered e2_beta");
-}
-
-#[test]
-fn test_soundness_tamper_c_plus() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.second_messages.is_empty() {
-        proof.second_messages[0].c_plus = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered c_plus");
-}
-
-#[test]
-fn test_soundness_tamper_c_minus() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.second_messages.is_empty() {
-        proof.second_messages[0].c_minus = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered c_minus");
-}
-
-#[test]
-fn test_soundness_tamper_e1_plus() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.second_messages.is_empty() {
-        proof.second_messages[0].e1_plus = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered e1_plus");
-}
-
-#[test]
-fn test_soundness_tamper_e1_minus() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.second_messages.is_empty() {
-        proof.second_messages[0].e1_minus = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered e1_minus");
-}
-
-#[test]
-fn test_soundness_tamper_e2_plus() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.second_messages.is_empty() {
-        proof.second_messages[0].e2_plus = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered e2_plus");
-}
-
-#[test]
-fn test_soundness_tamper_e2_minus() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    if !proof.second_messages.is_empty() {
-        proof.second_messages[0].e2_minus = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered e2_minus");
-}
-
-#[test]
-fn test_soundness_tamper_final_e1() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    proof.final_message.e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered final e1");
-}
-
-#[test]
-fn test_soundness_tamper_final_e2() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    proof.final_message.e2 = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with tampered final e2");
-}
-
-#[test]
-fn test_soundness_tamper_both_final_elements() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    proof.final_message.e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
-    proof.final_message.e2 = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
+        &proof_bytes,
     );
 
     assert!(
         result.is_err(),
-        "Should fail with both final elements tampered"
+        "Should fail when commitment doesn't match proof"
     );
 }
 
-#[test]
-fn test_soundness_swap_d1_values() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
+// ---------------------------------------------------------------------------
+// 2. Byte-level tampering: flip random bytes in proof
+// ---------------------------------------------------------------------------
 
-    if !proof.first_messages.is_empty() {
-        let msg = &mut proof.first_messages[0];
-        swap(&mut msg.d1_left, &mut msg.d1_right);
+#[test]
+fn test_soundness_byte_tampering() {
+    let nu = 4;
+    let sigma = 4;
+    let (_, verifier_setup, _, point, commitment, evaluation, proof_bytes) =
+        create_valid_proof(256, nu, sigma);
+
+    let positions_to_flip = [
+        0,
+        1,
+        proof_bytes.len() / 4,
+        proof_bytes.len() / 2,
+        proof_bytes.len() - 1,
+    ];
+
+    for &pos in &positions_to_flip {
+        if pos >= proof_bytes.len() {
+            continue;
+        }
+        let mut tampered = proof_bytes.clone();
+        tampered[pos] ^= 0xFF;
+
+        let result = try_verify(
+            commitment,
+            evaluation,
+            &point,
+            nu,
+            sigma,
+            verifier_setup.clone(),
+            &tampered,
+        );
+
+        assert!(
+            result.is_err(),
+            "Should fail with byte flipped at position {pos}"
+        );
     }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with swapped d1 values");
 }
 
 #[test]
-fn test_soundness_swap_c_values() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
+fn test_soundness_flip_sampled_bytes() {
+    let nu = 4;
+    let sigma = 4;
+    let (_, verifier_setup, _, point, commitment, evaluation, proof_bytes) =
+        create_valid_proof(256, nu, sigma);
 
-    if !proof.second_messages.is_empty() {
-        let msg = &mut proof.second_messages[0];
-        swap(&mut msg.c_plus, &mut msg.c_minus);
+    // Sample positions throughout the proof rather than flipping every byte
+    let len = proof_bytes.len();
+    let positions = [
+        0,
+        1,
+        len / 8,
+        len / 4,
+        len / 3,
+        len / 2,
+        2 * len / 3,
+        3 * len / 4,
+        7 * len / 8,
+        len - 2,
+        len - 1,
+    ];
+
+    for &pos in &positions {
+        let mut tampered = proof_bytes.clone();
+        tampered[pos] ^= 0xFF;
+
+        let result = try_verify(
+            commitment,
+            evaluation,
+            &point,
+            nu,
+            sigma,
+            verifier_setup.clone(),
+            &tampered,
+        );
+
+        assert!(
+            result.is_err(),
+            "Should fail with byte flipped at position {pos}"
+        );
     }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with swapped c values");
 }
 
+// ---------------------------------------------------------------------------
+// 3. Truncated proof
+// ---------------------------------------------------------------------------
+
 #[test]
-fn test_soundness_scale_d1_values() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
+fn test_soundness_truncated_proof() {
+    let nu = 4;
+    let sigma = 4;
+    let (_, verifier_setup, _, point, commitment, evaluation, proof_bytes) =
+        create_valid_proof(256, nu, sigma);
 
-    if !proof.first_messages.is_empty() {
-        use dory_pcs::primitives::arithmetic::Group;
+    let truncation_points = [0, 1, proof_bytes.len() / 2, proof_bytes.len() - 1];
 
-        let scale = ArkFr(Fr::rand(&mut rand::thread_rng()));
-        proof.first_messages[0].d1_left = proof.first_messages[0].d1_left.scale(&scale);
-        proof.first_messages[0].d1_right = proof.first_messages[0].d1_right.scale(&scale);
+    for &len in &truncation_points {
+        if len >= proof_bytes.len() {
+            continue;
+        }
+        let truncated = &proof_bytes[..len];
+
+        let result = try_verify(
+            commitment,
+            evaluation,
+            &point,
+            nu,
+            sigma,
+            verifier_setup.clone(),
+            truncated,
+        );
+
+        assert!(
+            result.is_err(),
+            "Should fail with proof truncated to {len} bytes"
+        );
     }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with scaled d1 values");
 }
+
+// ---------------------------------------------------------------------------
+// 4. Extra bytes appended — caught by check_eof on checked verifier
+// ---------------------------------------------------------------------------
 
 #[test]
-fn test_soundness_multi_round_tampering() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
+fn test_soundness_extra_bytes_rejected_by_length_check() {
+    let nu = 4;
+    let sigma = 4;
+    let (_, verifier_setup, _, point, tier_2, eval, proof_bytes) =
+        create_valid_proof(256, nu, sigma);
 
-    if proof.first_messages.len() >= 2 {
-        proof.first_messages[0].d1_left = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-        proof.first_messages[1].e2_beta = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
+    // Valid proof passes check_eof
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
+        tier_2,
+        eval,
         &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
+        nu,
+        sigma,
+        verifier_setup.clone(),
+        &mut verifier,
+    )
+    .unwrap();
+    assert!(verifier.check_eof().is_ok());
 
-    assert!(result.is_err(), "Should fail with multi-round tampering");
+    // Appending even one byte fails check_eof
+    let mut extended = proof_bytes.clone();
+    extended.push(0x00);
+    let mut verifier = test_verifier(sigma, &extended);
+    verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
+        tier_2,
+        eval,
+        &point,
+        nu,
+        sigma,
+        verifier_setup.clone(),
+        &mut verifier,
+    )
+    .unwrap();
+    assert!(verifier.check_eof().is_err());
+
+    // Truncated also fails
+    let truncated = &proof_bytes[..proof_bytes.len() - 1];
+    let mut verifier = test_verifier(sigma, truncated);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
+        tier_2,
+        eval,
+        &point,
+        nu,
+        sigma,
+        verifier_setup,
+        &mut verifier,
+    );
+    assert!(result.is_err());
 }
 
-#[test]
-fn test_soundness_last_round_tampering() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    let last_round = proof.first_messages.len().saturating_sub(1);
-    if !proof.first_messages.is_empty() {
-        proof.first_messages[last_round].d2_right = ArkGT(Fq12::rand(&mut rand::thread_rng()));
-    }
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with last round tampering");
-}
-
-#[test]
-fn test_soundness_identity_elements() {
-    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
-        create_valid_proof_components(256, 4, 4);
-
-    use dory_pcs::primitives::arithmetic::Group;
-    proof.final_message.e1 = ArkG1::identity();
-    proof.final_message.e2 = ArkG2::identity();
-
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment,
-        evaluation,
-        &point,
-        &proof,
-        verifier_setup,
-        &mut verifier_transcript,
-    );
-
-    assert!(result.is_err(), "Should fail with identity elements");
-}
+// ---------------------------------------------------------------------------
+// 5. Wrong evaluation value
+// ---------------------------------------------------------------------------
 
 #[test]
 fn test_soundness_wrong_evaluation() {
-    let (_, verifier_setup, _, point, commitment, _, proof) =
-        create_valid_proof_components(256, 4, 4);
+    let nu = 4;
+    let sigma = 4;
+    let (_, verifier_setup, _, point, commitment, _, proof_bytes) =
+        create_valid_proof(256, nu, sigma);
 
     let wrong_evaluation = ArkFr(Fr::rand(&mut rand::thread_rng()));
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let result = try_verify(
         commitment,
         wrong_evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &proof_bytes,
     );
 
     assert!(result.is_err(), "Should fail with wrong evaluation");
 }
 
 #[test]
-fn test_soundness_mixed_proofs() {
-    let (_, _, _, _point1, _, _, proof1) = create_valid_proof_components(256, 4, 4);
-    let (_, verifier_setup, _, point2, commitment2, evaluation2, mut proof2) =
-        create_valid_proof_components(256, 4, 4);
+fn test_soundness_zero_evaluation() {
+    let nu = 4;
+    let sigma = 4;
+    let (_, verifier_setup, _, point, commitment, evaluation, proof_bytes) =
+        create_valid_proof(256, nu, sigma);
 
-    if !proof1.first_messages.is_empty() && !proof2.first_messages.is_empty() {
-        proof2.first_messages[0].d1_left = proof1.first_messages[0].d1_left;
+    use dory_pcs::primitives::arithmetic::Field;
+    let zero_eval = ArkFr::zero();
+
+    // Only test if the real evaluation is non-zero (almost certainly true for random poly)
+    if evaluation != zero_eval {
+        let result = try_verify(
+            commitment,
+            zero_eval,
+            &point,
+            nu,
+            sigma,
+            verifier_setup,
+            &proof_bytes,
+        );
+
+        assert!(
+            result.is_err(),
+            "Should fail with zero evaluation for non-zero poly"
+        );
     }
+}
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
-        commitment2,
-        evaluation2,
-        &point2,
-        &proof2,
-        verifier_setup,
-        &mut verifier_transcript,
+// ---------------------------------------------------------------------------
+// 6. Proof from one instance used with another's commitment
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_soundness_cross_instance_proof() {
+    let nu = 4;
+    let sigma = 4;
+
+    let (_, verifier_setup1, _, point1, commitment1, evaluation1, _proof_bytes1) =
+        create_valid_proof(256, nu, sigma);
+    let (_, _verifier_setup2, _, _point2, _commitment2, _evaluation2, proof_bytes2) =
+        create_valid_proof(256, nu, sigma);
+
+    // Use proof from instance 2 with commitment/evaluation/point from instance 1
+    let result = try_verify(
+        commitment1,
+        evaluation1,
+        &point1,
+        nu,
+        sigma,
+        verifier_setup1,
+        &proof_bytes2,
     );
 
-    assert!(result.is_err(), "Should fail with mixed proof elements");
+    assert!(
+        result.is_err(),
+        "Should fail when using proof from a different instance"
+    );
 }
 
 #[test]
-fn test_soundness_different_transcript() {
-    let (_, verifier_setup, _, point, commitment, evaluation, proof) =
-        create_valid_proof_components(256, 4, 4);
+fn test_soundness_cross_instance_swapped_commitment() {
+    let nu = 4;
+    let sigma = 4;
 
-    let mut verifier_transcript = Blake2bTranscript::new(b"different-domain");
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let (_, _verifier_setup1, _, _point1, commitment1, _evaluation1, _proof_bytes1) =
+        create_valid_proof(256, nu, sigma);
+    let (_, verifier_setup2, _, point2, _commitment2, evaluation2, proof_bytes2) =
+        create_valid_proof(256, nu, sigma);
+
+    // Use commitment from instance 1 with proof/evaluation/point from instance 2
+    let result = try_verify(
+        commitment1,
+        evaluation2,
+        &point2,
+        nu,
+        sigma,
+        verifier_setup2,
+        &proof_bytes2,
+    );
+
+    assert!(
+        result.is_err(),
+        "Should fail with swapped commitment from another instance"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 7. Empty proof bytes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_soundness_empty_proof() {
+    let nu = 4;
+    let sigma = 4;
+    let (_, verifier_setup, _, point, commitment, evaluation, _proof_bytes) =
+        create_valid_proof(256, nu, sigma);
+
+    let result = try_verify(
         commitment,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &[],
     );
 
-    assert!(result.is_err(), "Should fail with different transcript");
+    assert!(result.is_err(), "Should fail with empty proof bytes");
+}
+
+// ---------------------------------------------------------------------------
+// Additional: random garbage proof and zeroed proof
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_soundness_random_garbage_proof() {
+    let nu = 4;
+    let sigma = 4;
+    let (_, verifier_setup, _, point, commitment, evaluation, proof_bytes) =
+        create_valid_proof(256, nu, sigma);
+
+    let garbage: Vec<u8> = (0..proof_bytes.len())
+        .map(|_| rand::random::<u8>())
+        .collect();
+
+    let result = try_verify(
+        commitment,
+        evaluation,
+        &point,
+        nu,
+        sigma,
+        verifier_setup,
+        &garbage,
+    );
+
+    assert!(
+        result.is_err(),
+        "Should fail with random garbage proof bytes"
+    );
+}
+
+#[test]
+fn test_soundness_zeroed_proof() {
+    let nu = 4;
+    let sigma = 4;
+    let (_, verifier_setup, _, point, commitment, evaluation, proof_bytes) =
+        create_valid_proof(256, nu, sigma);
+
+    let zeroed = vec![0u8; proof_bytes.len()];
+
+    let result = try_verify(
+        commitment,
+        evaluation,
+        &point,
+        nu,
+        sigma,
+        verifier_setup,
+        &zeroed,
+    );
+
+    assert!(result.is_err(), "Should fail with zeroed proof");
 }

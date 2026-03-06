@@ -1,19 +1,21 @@
 //! Statistical tests for zero-knowledge property of Dory PCS
 //!
-//! Verifies that proof elements are statistically indistinguishable from uniform
+//! Verifies that proof bytes are statistically indistinguishable from uniform
 //! random regardless of the witness (polynomial) distribution.
+//!
+//! With the spongefish NARG model, proofs are opaque byte arrays. We test
+//! that byte distributions at various offsets are uniform and witness-independent.
 //!
 //! ```sh
 //! cargo run --release --features "backends zk" --example zk_statistical
 //! ```
 
-use ark_serialize::CanonicalSerialize;
 use dory_pcs::backends::arkworks::{
-    ArkFr, ArkworksPolynomial, Blake2bTranscript, G1Routines, G2Routines, BN254,
+    dory_prover, dory_verifier, ArkFr, ArkworksPolynomial, G1Routines, G2Routines, BN254,
 };
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{create_evaluation_proof, setup, verify, DoryProof, ZK};
+use dory_pcs::{prove, setup, verify, ZK};
 use std::collections::HashMap;
 use tracing::info;
 
@@ -29,10 +31,6 @@ fn random_polynomial(size: usize) -> ArkworksPolynomial {
 
 fn random_point(num_vars: usize) -> Vec<ArkFr> {
     (0..num_vars).map(|_| ArkFr::random()).collect()
-}
-
-fn fresh_transcript() -> Blake2bTranscript<BN254> {
-    Blake2bTranscript::new(b"dory-test")
 }
 
 struct BucketTracker {
@@ -71,111 +69,38 @@ impl BucketTracker {
     }
 }
 
-fn bucket_from_serializable<T: CanonicalSerialize>(elem: &T) -> usize {
-    let mut bytes = Vec::new();
-    elem.serialize_compressed(&mut bytes).unwrap();
-    (bytes[0] as usize) % NUM_BUCKETS
-}
-
-type ArkDoryProof = DoryProof<
-    dory_pcs::backends::arkworks::ArkG1,
-    dory_pcs::backends::arkworks::ArkG2,
-    dory_pcs::backends::arkworks::ArkGT,
->;
-
-fn collect_full_zk_proof_stats(proof: &ArkDoryProof, tracker: &mut BucketTracker) {
-    tracker.record("zk_vmv_c", bucket_from_serializable(&proof.vmv_message.c));
-    tracker.record("zk_vmv_d2", bucket_from_serializable(&proof.vmv_message.d2));
-    tracker.record("zk_vmv_e1", bucket_from_serializable(&proof.vmv_message.e1));
-
-    if let Some(ref e2) = proof.e2 {
-        tracker.record("zk_vmv_e2", bucket_from_serializable(e2));
-    }
-    if let Some(ref y_com) = proof.y_com {
-        tracker.record("zk_vmv_y_com", bucket_from_serializable(y_com));
+/// Collect byte-level statistics from proof bytes at sampled offsets.
+fn collect_proof_byte_stats(proof_bytes: &[u8], tracker: &mut BucketTracker) {
+    let len = proof_bytes.len();
+    if len == 0 {
+        return;
     }
 
-    for (i, msg) in proof.first_messages.iter().enumerate() {
-        let prefix = format!("zk_first_{i}");
-        tracker.record(
-            &format!("{prefix}_d1_left"),
-            bucket_from_serializable(&msg.d1_left),
-        );
-        tracker.record(
-            &format!("{prefix}_d1_right"),
-            bucket_from_serializable(&msg.d1_right),
-        );
-        tracker.record(
-            &format!("{prefix}_d2_left"),
-            bucket_from_serializable(&msg.d2_left),
-        );
-        tracker.record(
-            &format!("{prefix}_d2_right"),
-            bucket_from_serializable(&msg.d2_right),
-        );
+    let offsets = [
+        0,
+        len / 8,
+        len / 4,
+        3 * len / 8,
+        len / 2,
+        5 * len / 8,
+        3 * len / 4,
+        7 * len / 8,
+        len - 1,
+    ];
+
+    for &offset in &offsets {
+        if offset < len {
+            let bucket = (proof_bytes[offset] as usize) % NUM_BUCKETS;
+            tracker.record(&format!("byte_{offset}"), bucket);
+        }
     }
 
-    for (i, msg) in proof.second_messages.iter().enumerate() {
-        let prefix = format!("zk_second_{i}");
-        tracker.record(
-            &format!("{prefix}_c_plus"),
-            bucket_from_serializable(&msg.c_plus),
-        );
-        tracker.record(
-            &format!("{prefix}_c_minus"),
-            bucket_from_serializable(&msg.c_minus),
-        );
-        tracker.record(
-            &format!("{prefix}_e1_plus"),
-            bucket_from_serializable(&msg.e1_plus),
-        );
-        tracker.record(
-            &format!("{prefix}_e1_minus"),
-            bucket_from_serializable(&msg.e1_minus),
-        );
-        tracker.record(
-            &format!("{prefix}_e2_plus"),
-            bucket_from_serializable(&msg.e2_plus),
-        );
-        tracker.record(
-            &format!("{prefix}_e2_minus"),
-            bucket_from_serializable(&msg.e2_minus),
-        );
-    }
-
-    tracker.record(
-        "zk_final_e1",
-        bucket_from_serializable(&proof.final_message.e1),
-    );
-    tracker.record(
-        "zk_final_e2",
-        bucket_from_serializable(&proof.final_message.e2),
-    );
-
-    if let Some(ref sigma1) = proof.sigma1_proof {
-        tracker.record("sigma1_a1", bucket_from_serializable(&sigma1.a1));
-        tracker.record("sigma1_a2", bucket_from_serializable(&sigma1.a2));
-        tracker.record("sigma1_z1", bucket_from_serializable(&sigma1.z1));
-        tracker.record("sigma1_z2", bucket_from_serializable(&sigma1.z2));
-        tracker.record("sigma1_z3", bucket_from_serializable(&sigma1.z3));
-    }
-
-    if let Some(ref sigma2) = proof.sigma2_proof {
-        tracker.record("sigma2_a", bucket_from_serializable(&sigma2.a));
-        tracker.record("sigma2_z1", bucket_from_serializable(&sigma2.z1));
-        tracker.record("sigma2_z2", bucket_from_serializable(&sigma2.z2));
-    }
-
-    if let Some(ref sp) = proof.scalar_product_proof {
-        tracker.record("zk_sp_p1", bucket_from_serializable(&sp.p1));
-        tracker.record("zk_sp_p2", bucket_from_serializable(&sp.p2));
-        tracker.record("zk_sp_q", bucket_from_serializable(&sp.q));
-        tracker.record("zk_sp_r", bucket_from_serializable(&sp.r));
-        tracker.record("zk_sp_e1", bucket_from_serializable(&sp.e1));
-        tracker.record("zk_sp_e2", bucket_from_serializable(&sp.e2));
-        tracker.record("zk_sp_r1", bucket_from_serializable(&sp.r1));
-        tracker.record("zk_sp_r2", bucket_from_serializable(&sp.r2));
-        tracker.record("zk_sp_r3", bucket_from_serializable(&sp.r3));
+    let pair_offsets = [0, len / 4, len / 2, 3 * len / 4];
+    for &offset in &pair_offsets {
+        if offset + 1 < len {
+            let bucket = ((proof_bytes[offset] ^ proof_bytes[offset + 1]) as usize) % NUM_BUCKETS;
+            tracker.record(&format!("pair_{offset}"), bucket);
+        }
     }
 }
 
@@ -193,31 +118,35 @@ fn prove_verify_collect(
         .unwrap();
 
     let evaluation = poly.evaluate(point);
-    let mut transcript = fresh_transcript();
-    let (proof, _) = create_evaluation_proof::<_, BN254, G1Routines, G2Routines, _, _, ZK>(
+
+    let mut prover = dory_prover(sigma, true);
+    prove::<_, BN254, G1Routines, G2Routines, _, _, ZK>(
         poly,
         point,
-        Some(tier_1),
+        tier_1,
         commit_blind,
         nu,
         sigma,
         prover_setup,
-        &mut transcript,
+        &mut prover,
     )
     .unwrap();
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    verify::<_, BN254, G1Routines, G2Routines, _>(
+    let mut verifier = dory_verifier(sigma, true, &proof_bytes);
+    verify::<_, BN254, G1Routines, G2Routines, _, ZK>(
         tier_2,
         evaluation,
         point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup.clone(),
-        &mut verifier_transcript,
+        &mut verifier,
     )
     .expect("proof verification failed");
+    verifier.check_eof().expect("proof has trailing bytes");
 
-    collect_full_zk_proof_stats(&proof, tracker);
+    collect_proof_byte_stats(&proof_bytes, tracker);
 }
 
 fn two_sample_chi_squared(a: &[usize], b: &[usize]) -> f64 {

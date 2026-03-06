@@ -21,8 +21,8 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let mut prover = test_prover(sigma);
+    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -30,23 +30,26 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .expect("Proof generation should succeed");
 
     let evaluation = poly.evaluate(&point);
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     );
 
     assert!(result.is_ok(), "Verification should succeed for nu < sigma");
+    verifier.check_eof().unwrap();
 }
 
 #[test]
@@ -66,7 +69,7 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
-    let mut prover_transcript = fresh_transcript();
+    let mut prover = test_prover(sigma);
     let proof_result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
@@ -75,7 +78,7 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     );
 
     assert!(
@@ -101,8 +104,8 @@ fn test_non_square_matrix_small() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let mut prover = test_prover(sigma);
+    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -110,26 +113,29 @@ fn test_non_square_matrix_small() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .expect("Proof generation should succeed");
 
     let evaluation = poly.evaluate(&point);
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     );
 
     assert!(
         result.is_ok(),
         "Verification should succeed for nu < sigma (small)"
     );
+    verifier.check_eof().unwrap();
 }
 
 #[test]
@@ -150,8 +156,8 @@ fn test_non_square_matrix_very_rectangular() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let mut prover = test_prover(sigma);
+    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
         tier_1,
@@ -159,24 +165,27 @@ fn test_non_square_matrix_very_rectangular() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .expect("Proof generation should succeed");
 
     let evaluation = poly.evaluate(&point);
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     );
 
     assert!(
         result.is_ok(),
         "Verification should succeed for nu << sigma (very rectangular)"
     );
+    verifier.check_eof().unwrap();
 }

@@ -85,8 +85,8 @@ fn test_homomorphic_combination_e2e() {
     );
 
     // Create evaluation proof using combined commitment
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let mut prover = test_prover(sigma);
+    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -94,24 +94,27 @@ fn test_homomorphic_combination_e2e() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .unwrap();
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         combined_tier2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     );
 
     assert!(
         result.is_ok(),
         "Verification should succeed for homomorphically combined commitment"
     );
+    verifier.check_eof().unwrap();
 }
 
 #[test]
@@ -175,8 +178,8 @@ fn test_homomorphic_combination_small() {
     let point = random_point(num_vars);
     let evaluation = combined_poly.evaluate(&point);
 
-    let mut prover_transcript = fresh_transcript();
-    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let mut prover = test_prover(sigma);
+    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
         combined_tier1,
@@ -184,19 +187,22 @@ fn test_homomorphic_combination_small() {
         nu,
         sigma,
         &prover_setup,
-        &mut prover_transcript,
+        &mut prover,
     )
     .unwrap();
+    let proof_bytes = prover.check_complete().narg_string().to_vec();
 
-    let mut verifier_transcript = fresh_transcript();
-    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         combined_tier2,
         evaluation,
         &point,
-        &proof,
+        nu,
+        sigma,
         verifier_setup,
-        &mut verifier_transcript,
+        &mut verifier,
     );
 
     assert!(result.is_ok());
+    verifier.check_eof().unwrap();
 }
