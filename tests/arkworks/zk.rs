@@ -21,11 +21,14 @@ fn test_zk_full_workflow() {
 
     let point = random_point(8);
     let expected_evaluation = poly.evaluate(&point);
+    let evaluation = poly.evaluate(&point);
 
-    let mut prover = test_prover_zk(sigma);
+    let mut prover = test_prover_zk(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -34,11 +37,10 @@ fn test_zk_full_workflow() {
         &mut prover,
     )
     .unwrap();
-    let evaluation = poly.evaluate(&point);
     assert_eq!(evaluation, expected_evaluation);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier_zk(sigma, &proof_bytes);
+    let mut verifier = test_verifier_zk(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
         tier_2,
         evaluation,
@@ -68,10 +70,12 @@ fn test_zk_small_polynomial() {
     let point = random_point(2);
     let evaluation = poly.evaluate(&point);
 
-    let mut prover = test_prover_zk(sigma);
+    let mut prover = test_prover_zk(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -80,9 +84,9 @@ fn test_zk_small_polynomial() {
         &mut prover,
     )
     .unwrap();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier_zk(sigma, &proof_bytes);
+    let mut verifier = test_verifier_zk(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
         tier_2,
         evaluation,
@@ -116,10 +120,12 @@ fn test_zk_larger_polynomial() {
     let point = random_point(10);
     let evaluation = poly.evaluate(&point);
 
-    let mut prover = test_prover_zk(sigma);
+    let mut prover = test_prover_zk(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -128,9 +134,9 @@ fn test_zk_larger_polynomial() {
         &mut prover,
     )
     .unwrap();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier_zk(sigma, &proof_bytes);
+    let mut verifier = test_verifier_zk(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
         tier_2,
         evaluation,
@@ -165,10 +171,12 @@ fn test_zk_non_square_matrix() {
     let point = random_point(7); // nu + sigma = 7
     let evaluation = poly.evaluate(&point);
 
-    let mut prover = test_prover_zk(sigma);
+    let mut prover = test_prover_zk(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -177,9 +185,9 @@ fn test_zk_non_square_matrix() {
         &mut prover,
     )
     .unwrap();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier_zk(sigma, &proof_bytes);
+    let mut verifier = test_verifier_zk(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
         tier_2,
         evaluation,
@@ -214,10 +222,12 @@ fn test_zk_hidden_evaluation() {
     let evaluation = poly.evaluate(&point);
 
     // Create ZK proof using unified API with ZK mode
-    let mut prover = test_prover_zk(sigma);
+    let mut prover = test_prover_zk(nu, sigma);
     let _y = create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         Some(tier_1),
         commit_blind,
         nu,
@@ -226,7 +236,7 @@ fn test_zk_hidden_evaluation() {
         &mut prover,
     )
     .unwrap();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
     // Verify that ZK proof bytes are non-empty
     assert!(
@@ -234,7 +244,7 @@ fn test_zk_hidden_evaluation() {
         "ZK proof should produce non-empty bytes"
     );
 
-    let mut verifier = test_verifier_zk(sigma, &proof_bytes);
+    let mut verifier = test_verifier_zk(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
         tier_2,
         evaluation,
@@ -269,10 +279,12 @@ fn test_zk_hidden_evaluation_larger() {
     let point = random_point(8);
     let evaluation = poly.evaluate(&point);
 
-    let mut prover = test_prover_zk(sigma);
+    let mut prover = test_prover_zk(nu, sigma);
     let _y = create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         Some(tier_1),
         commit_blind,
         nu,
@@ -281,9 +293,9 @@ fn test_zk_hidden_evaluation_larger() {
         &mut prover,
     )
     .unwrap();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier_zk(sigma, &proof_bytes);
+    let mut verifier = test_verifier_zk(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
         tier_2,
         evaluation,
@@ -329,10 +341,14 @@ fn create_valid_zk_proof_bytes(
         .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover = test_prover_zk(sigma);
+    let evaluation = poly.evaluate(&point);
+
+    let mut prover = test_prover_zk(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -341,8 +357,7 @@ fn create_valid_zk_proof_bytes(
         &mut prover,
     )
     .unwrap();
-    let evaluation = poly.evaluate(&point);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
     (
         proof_bytes,
@@ -364,7 +379,7 @@ fn verify_tampered_zk_proof(
     proof_bytes: &[u8],
     verifier_setup: VerifierSetup<BN254>,
 ) -> Result<(), dory_pcs::DoryError> {
-    let mut verifier = test_verifier_zk(sigma, proof_bytes);
+    let mut verifier = test_verifier_zk(nu, sigma, proof_bytes);
     verify::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
         commitment,
         evaluation,
@@ -523,19 +538,19 @@ fn test_zk_soundness_empty_proof() {
     assert!(result.is_err(), "Should fail with empty ZK proof");
 }
 
-/// In ZK mode, the evaluation is hidden inside the commitment and verified
-/// via sigma proofs. The `evaluation` parameter to `verify()` is not used
-/// in ZK mode — the proof itself binds the correct evaluation. This is
-/// correct ZK behavior: the evaluation is private to the prover.
+/// In ZK mode, the evaluation is hidden inside the proof and verified
+/// via sigma proofs. However, evaluation is now absorbed as a public
+/// message into the sponge state, so passing a wrong evaluation causes
+/// the sponge states to diverge and verification to fail.
 #[test]
-fn test_zk_evaluation_is_hidden() {
+fn test_zk_wrong_evaluation_rejected() {
     let nu = 4;
     let sigma = 4;
     let (proof_bytes, _sigma, verifier_setup, point, commitment, _evaluation) =
         create_valid_zk_proof_bytes(256, nu, sigma);
 
-    // In ZK mode, any evaluation value can be passed — the proof is
-    // self-contained and the sigma proofs bind the correct evaluation.
+    // Even in ZK mode, the evaluation is now bound to the transcript as a
+    // public message. Passing an arbitrary evaluation diverges the sponge.
     let arbitrary_evaluation = ArkFr::random();
 
     let result = verify_tampered_zk_proof(
@@ -548,8 +563,8 @@ fn test_zk_evaluation_is_hidden() {
         verifier_setup,
     );
     assert!(
-        result.is_ok(),
-        "ZK verify ignores evaluation param — proof is self-contained"
+        result.is_err(),
+        "Wrong evaluation should fail even in ZK mode — evaluation is transcript-bound"
     );
 }
 
@@ -589,10 +604,14 @@ fn test_zk_soundness_transparent_proof_as_zk() {
         .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -601,8 +620,7 @@ fn test_zk_soundness_transparent_proof_as_zk() {
         &mut prover,
     )
     .unwrap();
-    let transparent_bytes = prover.check_complete().narg_string().to_vec();
-    let evaluation = poly.evaluate(&point);
+    let transparent_bytes = prover.narg_string().to_vec();
 
     // Try to verify transparent proof bytes using ZK domain
     let result = verify_tampered_zk_proof(
@@ -630,14 +648,18 @@ fn test_zk_proof_bytes_larger_than_transparent() {
     let (prover_setup, _) = test_setup_pair(nu + sigma + 2);
     let poly = random_polynomial(256);
     let point = random_point(nu + sigma);
-    let (_, tier_1, commit_blind) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -646,7 +668,7 @@ fn test_zk_proof_bytes_larger_than_transparent() {
         &mut prover,
     )
     .unwrap();
-    let transparent_bytes = prover.check_complete().narg_string().to_vec();
+    let transparent_bytes = prover.narg_string().to_vec();
 
     assert!(
         zk_bytes.len() > transparent_bytes.len(),

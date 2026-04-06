@@ -19,10 +19,13 @@ fn test_evaluation_proof_small() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     let result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -32,11 +35,9 @@ fn test_evaluation_proof_small() {
     );
     assert!(result.is_ok());
 
-    let _y = result.unwrap();
-    let evaluation = poly.evaluate(&point);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let verify_result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
@@ -66,10 +67,13 @@ fn test_evaluation_proof_with_precomputed_commitment() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     let result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -79,11 +83,9 @@ fn test_evaluation_proof_with_precomputed_commitment() {
     );
     assert!(result.is_ok());
 
-    let _y = result.unwrap();
-    let evaluation = poly.evaluate(&point);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let verify_result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
@@ -116,10 +118,14 @@ fn test_evaluation_proof_constant_polynomial() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
-    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let evaluation = poly.evaluate(&point);
+    assert_eq!(evaluation, ArkFr::from_u64(7));
+    let mut prover = test_prover(nu, sigma);
+    prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -129,11 +135,9 @@ fn test_evaluation_proof_constant_polynomial() {
     )
     .unwrap();
 
-    let evaluation = poly.evaluate(&point);
-    assert_eq!(evaluation, ArkFr::from_u64(7));
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let verify_result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
@@ -163,10 +167,14 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
-    let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+    let evaluation = poly.evaluate(&point);
+    let wrong_evaluation = evaluation + ArkFr::one();
+    let mut prover = test_prover(nu, sigma);
+    prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -176,11 +184,9 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
     )
     .unwrap();
 
-    let evaluation = poly.evaluate(&point);
-    let wrong_evaluation = evaluation + ArkFr::one();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let verify_result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         wrong_evaluation,
@@ -209,10 +215,13 @@ fn test_evaluation_proof_different_sizes() {
             .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
             .unwrap();
 
-        let mut prover = test_prover(sigma);
-        let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+        let evaluation = poly.evaluate(&point);
+        let mut prover = test_prover(nu, sigma);
+        prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
             &poly,
             &point,
+            &tier_2,
+            &evaluation,
             tier_1,
             commit_blind,
             nu,
@@ -221,10 +230,9 @@ fn test_evaluation_proof_different_sizes() {
             &mut prover,
         )
         .unwrap();
-        let evaluation = poly.evaluate(&point);
-        let proof_bytes = prover.check_complete().narg_string().to_vec();
+        let proof_bytes = prover.narg_string().to_vec();
 
-        let mut verifier = test_verifier(sigma, &proof_bytes);
+        let mut verifier = test_verifier(nu, sigma, &proof_bytes);
         let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
             tier_2,
             evaluation,
@@ -251,10 +259,13 @@ fn test_evaluation_proof_different_sizes() {
             .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
             .unwrap();
 
-        let mut prover = test_prover(sigma);
-        let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+        let evaluation = poly.evaluate(&point);
+        let mut prover = test_prover(nu, sigma);
+        prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
             &poly,
             &point,
+            &tier_2,
+            &evaluation,
             tier_1,
             commit_blind,
             nu,
@@ -263,10 +274,9 @@ fn test_evaluation_proof_different_sizes() {
             &mut prover,
         )
         .unwrap();
-        let evaluation = poly.evaluate(&point);
-        let proof_bytes = prover.check_complete().narg_string().to_vec();
+        let proof_bytes = prover.narg_string().to_vec();
 
-        let mut verifier = test_verifier(sigma, &proof_bytes);
+        let mut verifier = test_verifier(nu, sigma, &proof_bytes);
         let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
             tier_2,
             evaluation,
@@ -297,10 +307,13 @@ fn test_multiple_evaluations_same_commitment() {
     for _ in 0..3 {
         let point = random_point(4);
 
-        let mut prover = test_prover(sigma);
-        let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+        let evaluation = poly.evaluate(&point);
+        let mut prover = test_prover(nu, sigma);
+        prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
             &poly,
             &point,
+            &tier_2,
+            &evaluation,
             tier_1.clone(),
             commit_blind,
             nu,
@@ -310,10 +323,9 @@ fn test_multiple_evaluations_same_commitment() {
         )
         .unwrap();
 
-        let evaluation = poly.evaluate(&point);
-        let proof_bytes = prover.check_complete().narg_string().to_vec();
+        let proof_bytes = prover.narg_string().to_vec();
 
-        let mut verifier = test_verifier(sigma, &proof_bytes);
+        let mut verifier = test_verifier(nu, sigma, &proof_bytes);
         let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
             tier_2,
             evaluation,

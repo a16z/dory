@@ -72,16 +72,20 @@ fn bench_prove(c: &mut Criterion) {
     let nu = 13;
     let sigma = 13;
 
-    let (_, tier_1, commit_blind) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
+    let evaluation = poly.evaluate(&point);
+
     c.bench_function("prove_2^26_coefficients", |b| {
         b.iter(|| {
-            let mut prover = dory_prover(sigma, false);
+            let mut prover = dory_prover(nu, sigma, false);
             prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
                 black_box(&poly),
                 black_box(&point),
+                black_box(&tier_2),
+                black_box(&evaluation),
                 black_box(tier_1.clone()),
                 black_box(commit_blind),
                 black_box(nu),
@@ -103,10 +107,14 @@ fn bench_verify(c: &mut Criterion) {
         .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover = dory_prover(sigma, false);
+    let evaluation = poly.evaluate(&point);
+
+    let mut prover = dory_prover(nu, sigma, false);
     prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -115,13 +123,11 @@ fn bench_verify(c: &mut Criterion) {
         &mut prover,
     )
     .unwrap();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
-
-    let evaluation = poly.evaluate(&point);
+    let proof_bytes = prover.narg_string().to_vec();
 
     c.bench_function("verify_2^26_coefficients", |b| {
         b.iter(|| {
-            let mut verifier = dory_verifier(sigma, false, &proof_bytes);
+            let mut verifier = dory_verifier(nu, sigma, false, &proof_bytes);
             verify::<_, BN254, G1Routines, G2Routines, _, Transparent>(
                 black_box(tier_2),
                 black_box(evaluation),
@@ -165,10 +171,12 @@ fn bench_end_to_end(c: &mut Criterion) {
             let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
             let evaluation = poly.evaluate(&point);
 
-            let mut prover = dory_prover(sigma, false);
+            let mut prover = dory_prover(nu, sigma, false);
             prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
                 &poly,
                 &point,
+                &tier_2,
+                &evaluation,
                 tier_1,
                 commit_blind,
                 nu,
@@ -177,9 +185,9 @@ fn bench_end_to_end(c: &mut Criterion) {
                 &mut prover,
             )
             .unwrap();
-            let proof_bytes = prover.check_complete().narg_string().to_vec();
+            let proof_bytes = prover.narg_string().to_vec();
 
-            let mut verifier = dory_verifier(sigma, false, &proof_bytes);
+            let mut verifier = dory_verifier(nu, sigma, false, &proof_bytes);
             verify::<_, BN254, G1Routines, G2Routines, _, Transparent>(
                 tier_2,
                 evaluation,

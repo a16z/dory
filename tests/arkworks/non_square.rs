@@ -21,10 +21,13 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -34,10 +37,9 @@ fn test_non_square_matrix_nu_eq_sigma_minus_1() {
     )
     .expect("Proof generation should succeed");
 
-    let evaluation = poly.evaluate(&point);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
@@ -65,14 +67,17 @@ fn test_non_square_matrix_nu_greater_than_sigma_rejected() {
     let poly = random_polynomial(poly_size);
     let point = random_point(num_vars);
 
-    let (_, tier_1, commit_blind) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     let proof_result = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -104,10 +109,13 @@ fn test_non_square_matrix_small() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -117,10 +125,9 @@ fn test_non_square_matrix_small() {
     )
     .expect("Proof generation should succeed");
 
-    let evaluation = poly.evaluate(&point);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
@@ -156,10 +163,13 @@ fn test_non_square_matrix_very_rectangular() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .expect("Commitment should succeed");
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -169,10 +179,9 @@ fn test_non_square_matrix_very_rectangular() {
     )
     .expect("Proof generation should succeed");
 
-    let evaluation = poly.evaluate(&point);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,

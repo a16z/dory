@@ -86,10 +86,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     assert_eq!(evaluation, expected_eval);
 
-    let mut prover = dory_prover(sigma, false);
+    let mut prover = dory_prover(nu, sigma, false);
     prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
+        &combined_tier2,
+        &evaluation,
         combined_tier1,
         ArkFr::zero(),
         nu,
@@ -97,9 +99,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &prover_setup,
         &mut prover,
     )?;
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = dory_verifier(sigma, false, &proof_bytes);
+    let mut verifier = dory_verifier(nu, sigma, false, &proof_bytes);
     verify::<_, BN254, G1Routines, G2Routines, _, Transparent>(
         combined_tier2,
         evaluation,

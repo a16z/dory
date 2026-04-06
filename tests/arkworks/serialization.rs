@@ -14,14 +14,17 @@ fn make_transparent_proof_bytes(nu: usize, sigma: usize) -> Vec<u8> {
     let poly_size = 1 << (nu + sigma);
     let poly = random_polynomial(poly_size);
     let point = random_point(nu + sigma);
-    let (_, tier_1, commit_blind) = poly
+    let (tier_2, tier_1, commit_blind) = poly
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -31,7 +34,7 @@ fn make_transparent_proof_bytes(nu: usize, sigma: usize) -> Vec<u8> {
     )
     .unwrap();
 
-    prover.check_complete().narg_string().to_vec()
+    prover.narg_string().to_vec()
 }
 
 #[test]
@@ -85,10 +88,13 @@ fn test_proof_bytes_roundtrip_through_verify() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -97,13 +103,12 @@ fn test_proof_bytes_roundtrip_through_verify() {
         &mut prover,
     )
     .unwrap();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let eval = poly.evaluate(&point);
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
-        eval,
+        evaluation,
         &point,
         nu,
         sigma,
@@ -135,14 +140,17 @@ mod zk_narg {
         let poly_size = 1 << (nu + sigma);
         let poly = random_polynomial(poly_size);
         let point = random_point(nu + sigma);
-        let (_, tier_1, commit_blind) = poly
+        let (tier_2, tier_1, commit_blind) = poly
             .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &setup)
             .unwrap();
 
-        let mut prover = test_prover_zk(sigma);
+        let evaluation = poly.evaluate(&point);
+        let mut prover = test_prover_zk(nu, sigma);
         prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
             &poly,
             &point,
+            &tier_2,
+            &evaluation,
             tier_1,
             commit_blind,
             nu,
@@ -152,7 +160,7 @@ mod zk_narg {
         )
         .unwrap();
 
-        prover.check_complete().narg_string().to_vec()
+        prover.narg_string().to_vec()
     }
 
     #[test]
@@ -179,10 +187,13 @@ mod zk_narg {
             .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &setup)
             .unwrap();
 
-        let mut prover = test_prover_zk(sigma);
+        let evaluation = poly.evaluate(&point);
+        let mut prover = test_prover_zk(nu, sigma);
         prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
             &poly,
             &point,
+            &tier_2,
+            &evaluation,
             tier_1,
             commit_blind,
             nu,
@@ -191,13 +202,12 @@ mod zk_narg {
             &mut prover,
         )
         .unwrap();
-        let proof_bytes = prover.check_complete().narg_string().to_vec();
+        let proof_bytes = prover.narg_string().to_vec();
 
-        let eval = poly.evaluate(&point);
-        let mut verifier = test_verifier_zk(sigma, &proof_bytes);
+        let mut verifier = test_verifier_zk(nu, sigma, &proof_bytes);
         verify::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
             tier_2,
-            eval,
+            evaluation,
             &point,
             nu,
             sigma,

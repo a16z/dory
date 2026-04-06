@@ -22,10 +22,14 @@ fn test_full_workflow() {
     let point = random_point(8);
     let expected_evaluation = poly.evaluate(&point);
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    assert_eq!(evaluation, expected_evaluation);
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -34,11 +38,9 @@ fn test_full_workflow() {
         &mut prover,
     )
     .unwrap();
-    let evaluation = poly.evaluate(&point);
-    assert_eq!(evaluation, expected_evaluation);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
@@ -68,10 +70,13 @@ fn test_workflow_without_precommitment() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -80,10 +85,9 @@ fn test_workflow_without_precommitment() {
         &mut prover,
     )
     .unwrap();
-    let evaluation = poly.evaluate(&point);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
@@ -113,10 +117,13 @@ fn test_batched_proofs() {
     for _i in 0..5 {
         let point = random_point(8);
 
-        let mut prover = test_prover(sigma);
+        let evaluation = poly.evaluate(&point);
+        let mut prover = test_prover(nu, sigma);
         let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
             &poly,
             &point,
+            &tier_2,
+            &evaluation,
             tier_1.clone(),
             commit_blind,
             nu,
@@ -125,10 +132,9 @@ fn test_batched_proofs() {
             &mut prover,
         )
         .unwrap();
-        let evaluation = poly.evaluate(&point);
-        let proof_bytes = prover.check_complete().narg_string().to_vec();
+        let proof_bytes = prover.narg_string().to_vec();
 
-        let mut verifier = test_verifier(sigma, &proof_bytes);
+        let mut verifier = test_verifier(nu, sigma, &proof_bytes);
         let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
             tier_2,
             evaluation,
@@ -169,10 +175,15 @@ fn test_linear_polynomial() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let expected_eval = poly.evaluate(&point);
+    assert_eq!(evaluation, expected_eval);
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -181,13 +192,9 @@ fn test_linear_polynomial() {
         &mut prover,
     )
     .unwrap();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let evaluation = poly.evaluate(&point);
-    let expected_eval = poly.evaluate(&point);
-    assert_eq!(evaluation, expected_eval);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
-
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,
@@ -216,10 +223,14 @@ fn test_zero_polynomial() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    assert_eq!(evaluation, ArkFr::zero());
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -228,12 +239,9 @@ fn test_zero_polynomial() {
         &mut prover,
     )
     .unwrap();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let evaluation = poly.evaluate(&point);
-    assert_eq!(evaluation, ArkFr::zero());
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
-
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         evaluation,

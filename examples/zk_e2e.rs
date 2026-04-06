@@ -32,10 +32,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
     let evaluation = poly.evaluate(&point);
 
-    let mut prover = dory_prover(sigma, true);
+    let mut prover = dory_prover(nu, sigma, true);
     prove::<_, BN254, G1Routines, G2Routines, _, _, ZK>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -43,9 +45,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &prover_setup,
         &mut prover,
     )?;
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = dory_verifier(sigma, true, &proof_bytes);
+    let mut verifier = dory_verifier(nu, sigma, true, &proof_bytes);
     verify::<_, BN254, G1Routines, G2Routines, _, ZK>(
         tier_2,
         evaluation,

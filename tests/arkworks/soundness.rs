@@ -32,10 +32,13 @@ fn create_valid_proof(
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let mut prover = test_prover(sigma);
+    let evaluation = poly.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
         &point,
+        &tier_2,
+        &evaluation,
         tier_1,
         commit_blind,
         nu,
@@ -44,8 +47,7 @@ fn create_valid_proof(
         &mut prover,
     )
     .unwrap();
-    let evaluation = poly.evaluate(&point);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
     (
         prover_setup,
@@ -68,7 +70,7 @@ fn try_verify(
     verifier_setup: VerifierSetup<BN254>,
     proof_bytes: &[u8],
 ) -> Result<(), dory_pcs::DoryError> {
-    let mut verifier = test_verifier(sigma, proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, proof_bytes);
     verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         commitment,
         evaluation,
@@ -101,14 +103,16 @@ fn test_soundness_wrong_commitment() {
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
 
-    let (_, tier_1_poly2, commit_blind2) = poly2
+    let (commitment2, tier_1_poly2, commit_blind2) = poly2
         .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
         .unwrap();
-
-    let mut prover = test_prover(sigma);
+    let evaluation = poly2.evaluate(&point);
+    let mut prover = test_prover(nu, sigma);
     prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly2,
         &point,
+        &commitment2,
+        &evaluation,
         tier_1_poly2,
         commit_blind2,
         nu,
@@ -117,8 +121,7 @@ fn test_soundness_wrong_commitment() {
         &mut prover,
     )
     .unwrap();
-    let evaluation = poly2.evaluate(&point);
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
     let result = try_verify(
         commitment1,
@@ -271,7 +274,7 @@ fn test_soundness_extra_bytes_rejected_by_length_check() {
         create_valid_proof(256, nu, sigma);
 
     // Valid proof passes check_eof
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         eval,
@@ -287,7 +290,7 @@ fn test_soundness_extra_bytes_rejected_by_length_check() {
     // Appending even one byte fails check_eof
     let mut extended = proof_bytes.clone();
     extended.push(0x00);
-    let mut verifier = test_verifier(sigma, &extended);
+    let mut verifier = test_verifier(nu, sigma, &extended);
     verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         eval,
@@ -302,7 +305,7 @@ fn test_soundness_extra_bytes_rejected_by_length_check() {
 
     // Truncated also fails
     let truncated = &proof_bytes[..proof_bytes.len() - 1];
-    let mut verifier = test_verifier(sigma, truncated);
+    let mut verifier = test_verifier(nu, sigma, truncated);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         tier_2,
         eval,

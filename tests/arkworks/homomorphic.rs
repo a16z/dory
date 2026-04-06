@@ -85,10 +85,12 @@ fn test_homomorphic_combination_e2e() {
     );
 
     // Create evaluation proof using combined commitment
-    let mut prover = test_prover(sigma);
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
+        &combined_tier2,
+        &evaluation,
         combined_tier1,
         ArkFr::zero(),
         nu,
@@ -97,9 +99,9 @@ fn test_homomorphic_combination_e2e() {
         &mut prover,
     )
     .unwrap();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         combined_tier2,
         evaluation,
@@ -178,10 +180,12 @@ fn test_homomorphic_combination_small() {
     let point = random_point(num_vars);
     let evaluation = combined_poly.evaluate(&point);
 
-    let mut prover = test_prover(sigma);
+    let mut prover = test_prover(nu, sigma);
     let _y = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &combined_poly,
         &point,
+        &combined_tier2,
+        &evaluation,
         combined_tier1,
         ArkFr::zero(),
         nu,
@@ -190,9 +194,9 @@ fn test_homomorphic_combination_small() {
         &mut prover,
     )
     .unwrap();
-    let proof_bytes = prover.check_complete().narg_string().to_vec();
+    let proof_bytes = prover.narg_string().to_vec();
 
-    let mut verifier = test_verifier(sigma, &proof_bytes);
+    let mut verifier = test_verifier(nu, sigma, &proof_bytes);
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
         combined_tier2,
         evaluation,
