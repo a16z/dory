@@ -52,16 +52,17 @@
 //! let (tier_2_commitment, tier_1_commitments, commit_blind) = polynomial
 //!     .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
 //!
-//! // 3. Create checked prover and generate evaluation proof
-//! let mut prover = dory_prover(sigma, false);
+//! // 3. Create prover and generate evaluation proof
+//! let mut prover = dory_prover(nu, sigma, false);
 //! prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
-//!     &polynomial, &point, tier_1_commitments, commit_blind, nu, sigma,
+//!     &polynomial, &point, &tier_2_commitment, &evaluation,
+//!     tier_1_commitments, commit_blind, nu, sigma,
 //!     &prover_setup, &mut prover
 //! )?;
-//! let proof_bytes = prover.check_complete().narg_string().to_vec();
+//! let proof_bytes = prover.narg_string().to_vec();
 //!
-//! // 4. Verify with checked verifier (enforces pattern + no trailing bytes)
-//! let mut verifier = dory_verifier(sigma, false, &proof_bytes);
+//! // 4. Verify (no trailing bytes allowed)
+//! let mut verifier = dory_verifier(nu, sigma, false, &proof_bytes);
 //! verify::<_, BN254, G1Routines, G2Routines, _, Transparent>(
 //!     tier_2_commitment, evaluation, &point, nu, sigma,
 //!     verifier_setup, &mut verifier
@@ -234,14 +235,15 @@ where
 ///
 /// # Workflow
 /// 1. Call `polynomial.commit(nu, sigma, setup)` to get `(tier_2, row_commitments, commit_blind)`
-/// 2. Create a checked prover via `dory_prover(sigma, zk)`
+/// 2. Create a prover via `dory_prover(nu, sigma, zk)`
 /// 3. Call this function — proof data is written to the transcript
-/// 4. Call `prover.check_complete()` to assert the full pattern was followed
-/// 5. Extract proof bytes via `.narg_string().to_vec()`
+/// 4. Extract proof bytes via `prover.narg_string().to_vec()`
 ///
 /// # Parameters
 /// - `polynomial`: Polynomial implementing MultilinearLagrange trait
 /// - `point`: Evaluation point (length must equal nu + sigma)
+/// - `commitment`: Tier-2 commitment (GT element) — absorbed as public message for Fiat-Shamir binding
+/// - `evaluation`: Claimed evaluation result — absorbed as public message for Fiat-Shamir binding
 /// - `row_commitments`: Tier-1 commitments (row commitments in G1) from `polynomial.commit()`
 /// - `commit_blind`: GT-level blinding scalar from `polynomial.commit()` (zero in Transparent mode)
 /// - `nu`: Log₂ of number of rows (constraint: nu ≤ sigma for non-square matrices)
@@ -262,6 +264,8 @@ where
 pub fn prove<F, E, M1, M2, P, T, Mo>(
     polynomial: &P,
     point: &[F],
+    commitment: &E::GT,
+    evaluation: &F,
     row_commitments: Vec<E::G1>,
     commit_blind: F,
     nu: usize,
@@ -284,6 +288,8 @@ where
     evaluation_proof::create_evaluation_proof::<F, E, M1, M2, T, P, Mo>(
         polynomial,
         point,
+        commitment,
+        evaluation,
         Some(row_commitments),
         commit_blind,
         nu,
@@ -299,9 +305,9 @@ where
 /// Proof elements are read from the NARG transcript — no separate proof struct is needed.
 ///
 /// # Workflow
-/// 1. Create a checked verifier via `dory_verifier(sigma, zk, &proof_bytes)`
+/// 1. Create a verifier via `dory_verifier(nu, sigma, zk, &proof_bytes)`
 /// 2. Call this function — proof data is read from the transcript
-/// 3. Call `verifier.check_eof()?` to assert pattern completeness and reject trailing bytes
+/// 3. Call `verifier.check_eof()?` to reject trailing bytes
 ///
 /// # Parameters
 /// - `commitment`: Polynomial commitment (in GT) - can be a combined commitment for homomorphic proofs

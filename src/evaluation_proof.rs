@@ -56,6 +56,8 @@ use crate::setup::{ProverSetup, VerifierSetup};
 /// # Parameters
 /// - `polynomial`: Polynomial to prove evaluation for
 /// - `point`: Evaluation point (length nu + sigma)
+/// - `commitment`: Tier-2 commitment (GT element) — absorbed as public message
+/// - `evaluation`: Claimed evaluation result — absorbed as public message
 /// - `row_commitments`: Optional precomputed row commitments from polynomial.commit()
 /// - `commit_blind`: GT-level blinding scalar from `commit()`. Ignored when
 ///   `row_commitments` is `None` (the blind is computed internally in that case).
@@ -79,6 +81,8 @@ use crate::setup::{ProverSetup, VerifierSetup};
 pub fn create_evaluation_proof<F, E, M1, M2, T, P, Mo>(
     polynomial: &P,
     point: &[F],
+    commitment: &E::GT,
+    evaluation: &F,
     row_commitments: Option<Vec<E::G1>>,
     commit_blind: F,
     nu: usize,
@@ -116,6 +120,14 @@ where
     // Public inputs: bind nu and sigma to the sponge state
     transcript.public_u32(nu as u32);
     transcript.public_u32(sigma as u32);
+
+    // External inputs: bind commitment, evaluation, and point to the sponge state.
+    // These are public messages (not in the NARG string) — both sides absorb independently.
+    transcript.public_gt(commitment);
+    transcript.public_field(evaluation);
+    for coord in point {
+        transcript.public_field(coord);
+    }
 
     let (row_commitments, commit_blind) = match row_commitments {
         Some(rc) => (rc, commit_blind),
@@ -302,6 +314,14 @@ where
     // Public inputs: bind nu and sigma to the sponge state
     transcript.public_u32(nu as u32)?;
     transcript.public_u32(sigma as u32)?;
+
+    // External inputs: bind commitment, evaluation, and point to the sponge state.
+    // These are public messages (not in the NARG string) — both sides absorb independently.
+    transcript.public_gt(&commitment)?;
+    transcript.public_field(&evaluation)?;
+    for coord in point {
+        transcript.public_field(coord)?;
+    }
 
     // Read VMV message from transcript
     let vmv_c = transcript.read_gt()?;

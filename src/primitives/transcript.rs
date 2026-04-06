@@ -15,6 +15,12 @@ pub trait ProverTranscript<E: PairingCurve> {
     /// Absorb public data (not in NARG string, but bound to the sponge state).
     fn public_u32(&mut self, val: u32);
 
+    /// Absorb a public GT element (not in NARG string, but bound to the sponge state).
+    fn public_gt(&mut self, val: &E::GT);
+
+    /// Absorb a public scalar field element (not in NARG string, but bound to the sponge state).
+    fn public_field(&mut self, val: &<E::G1 as Group>::Scalar);
+
     /// Absorb a GT element (goes into the NARG string).
     fn absorb_gt(&mut self, val: &E::GT);
 
@@ -41,6 +47,18 @@ pub trait VerifierTranscript<E: PairingCurve> {
     /// # Errors
     /// Returns `DoryError` if the sponge state is inconsistent.
     fn public_u32(&mut self, val: u32) -> Result<(), DoryError>;
+
+    /// Absorb a public GT element (must match the prover's `public_gt` calls).
+    ///
+    /// # Errors
+    /// Returns `DoryError` if the sponge state is inconsistent.
+    fn public_gt(&mut self, val: &E::GT) -> Result<(), DoryError>;
+
+    /// Absorb a public scalar field element (must match the prover's `public_field` calls).
+    ///
+    /// # Errors
+    /// Returns `DoryError` if the sponge state is inconsistent.
+    fn public_field(&mut self, val: &<E::G1 as Group>::Scalar) -> Result<(), DoryError>;
 
     /// Read a GT element from the NARG string.
     ///

@@ -28,11 +28,19 @@ macro_rules! impl_verifier_read {
 }
 
 // ---------------------------------------------------------------------------
-// CheckedProverState implements ProverTranscript<BN254>
+// ProverState implements ProverTranscript<BN254>
 // ---------------------------------------------------------------------------
-impl ProverTranscript<BN254> for spongefish::CheckedProverState {
+impl ProverTranscript<BN254> for spongefish::ProverState {
     fn public_u32(&mut self, val: u32) {
         self.public_message(&val.to_le_bytes());
+    }
+
+    fn public_gt(&mut self, val: &ArkGT) {
+        self.public_message(&val.0);
+    }
+
+    fn public_field(&mut self, val: &ArkFr) {
+        self.public_message(&val.0);
     }
 
     impl_prover_absorb! {
@@ -48,11 +56,21 @@ impl ProverTranscript<BN254> for spongefish::CheckedProverState {
 }
 
 // ---------------------------------------------------------------------------
-// CheckedVerifierState implements VerifierTranscript<BN254>
+// VerifierState implements VerifierTranscript<BN254>
 // ---------------------------------------------------------------------------
-impl VerifierTranscript<BN254> for spongefish::CheckedVerifierState<'_> {
+impl VerifierTranscript<BN254> for spongefish::VerifierState<'_> {
     fn public_u32(&mut self, val: u32) -> Result<(), DoryError> {
         self.public_message(&val.to_le_bytes());
+        Ok(())
+    }
+
+    fn public_gt(&mut self, val: &ArkGT) -> Result<(), DoryError> {
+        self.public_message(&val.0);
+        Ok(())
+    }
+
+    fn public_field(&mut self, val: &ArkFr) -> Result<(), DoryError> {
+        self.public_message(&val.0);
         Ok(())
     }
 
