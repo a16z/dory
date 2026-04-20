@@ -279,6 +279,9 @@ pub fn save_setup<E: PairingCurve>(
     DorySerialize::serialize_compressed(verifier, &mut writer)
         .unwrap_or_else(|e| panic!("Failed to serialize verifier setup: {e}"));
 
+    #[cfg(feature = "cache")]
+    crate::backends::arkworks::invalidate_cache();
+
     tracing::info!("Successfully saved setup to disk");
 }
 

@@ -34,6 +34,9 @@ impl ArkworksProverSetup {
     /// # Parameters
     /// - `max_log_n`: Maximum log₂ of polynomial size (for n×n matrix with n² = 2^max_log_n)
     pub fn new(max_log_n: usize) -> Self {
+        #[cfg(feature = "cache")]
+        super::invalidate_cache();
+
         Self(ProverSetup::new(max_log_n))
     }
 
