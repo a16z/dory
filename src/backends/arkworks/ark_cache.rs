@@ -91,6 +91,14 @@ pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {
     }));
 }
 
+/// Invalidate the global cache, dropping any prepared points.
+///
+/// # Panics
+/// Panics if the internal `RwLock` is poisoned.
+pub fn invalidate_cache() {
+    *CACHE.write().unwrap() = None;
+}
+
 /// Get a shared reference to the prepared cache.
 ///
 /// Returns `None` if cache has not been initialized.
