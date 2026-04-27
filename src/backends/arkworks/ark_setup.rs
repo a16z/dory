@@ -15,6 +15,7 @@ use super::BN254;
 /// arkworks' CanonicalSerialize and CanonicalDeserialize traits, allowing
 /// easy serialization for users of the arkworks ecosystem.
 #[derive(Clone, Debug)]
+#[repr(transparent)]
 pub struct ArkworksProverSetup(pub ProverSetup<BN254>);
 
 /// Wrapper around `VerifierSetup<BN254>` with arkworks canonical serialization
@@ -23,6 +24,7 @@ pub struct ArkworksProverSetup(pub ProverSetup<BN254>);
 /// arkworks' CanonicalSerialize and CanonicalDeserialize traits, allowing
 /// easy serialization for users of the arkworks ecosystem.
 #[derive(Clone, Debug)]
+#[repr(transparent)]
 pub struct ArkworksVerifierSetup(pub VerifierSetup<BN254>);
 
 impl ArkworksProverSetup {
