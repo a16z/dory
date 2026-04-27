@@ -13,12 +13,15 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::{Add, Mul, Neg, Sub};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[repr(transparent)]
 pub struct ArkG1(pub G1Projective);
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[repr(transparent)]
 pub struct ArkG2(pub G2Projective);
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[repr(transparent)]
 pub struct ArkGT(pub Fq12);
 
 impl Group for ArkG1 {
