@@ -75,7 +75,8 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         {
-            if let Some(cache) = crate::backends::arkworks::ark_cache::get_prepared_cache() {
+            if let Some(cache) = crate::backends::arkworks::ark_cache::get_prepared_cache_for_g2(qs)
+            {
                 return multi_pair_with_prepared(ps_prep, &cache.g2_prepared[..qs.len()]);
             }
         }
@@ -107,7 +108,8 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         {
-            if let Some(cache) = crate::backends::arkworks::ark_cache::get_prepared_cache() {
+            if let Some(cache) = crate::backends::arkworks::ark_cache::get_prepared_cache_for_g1(ps)
+            {
                 let ps_prep: Vec<_> = ps
                     .iter()
                     .enumerate()
@@ -189,7 +191,7 @@ mod pairing_helpers {
         let chunk_size = determine_chunk_size(ps.len());
 
         #[cfg(feature = "cache")]
-        let cache = crate::backends::arkworks::ark_cache::get_prepared_cache();
+        let cache = crate::backends::arkworks::ark_cache::get_prepared_cache_for_g2(qs);
 
         let combined = ps
             .par_chunks(chunk_size)
@@ -253,7 +255,7 @@ mod pairing_helpers {
         let chunk_size = determine_chunk_size(ps.len());
 
         #[cfg(feature = "cache")]
-        let cache = crate::backends::arkworks::ark_cache::get_prepared_cache();
+        let cache = crate::backends::arkworks::ark_cache::get_prepared_cache_for_g1(ps);
 
         let combined = qs
             .par_chunks(chunk_size)

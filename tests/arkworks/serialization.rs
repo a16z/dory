@@ -1,9 +1,16 @@
 //! Proof serialization round-trip tests
 
 use super::*;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use dory_pcs::backends::arkworks::ArkDoryProof;
+use ark_bn254::{Fq12, Fr};
+use ark_ff::{Field as ArkField, PrimeField, Zero};
+use ark_serialize::{
+    CanonicalDeserialize, CanonicalSerialize, Compress as ArkCompress, Validate as ArkValidate,
+};
+use dory_pcs::backends::arkworks::{ArkDoryProof, ArkGT, MAX_SERIALIZED_PROOF_ROUNDS};
 use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::primitives::serialization::{
+    Compress as DoryCompress, DoryDeserialize, Validate as DoryValidate,
+};
 use dory_pcs::{prove, verify, Transparent};
 
 fn make_transparent_proof() -> (
@@ -45,6 +52,45 @@ fn make_transparent_proof() -> (
     .unwrap();
 
     (proof, tier_2, point)
+}
+
+fn serialized_rounds_offset(proof: &ArkDoryProof, compress: ArkCompress) -> usize {
+    CanonicalSerialize::serialized_size(&proof.vmv_message.c, compress)
+        + CanonicalSerialize::serialized_size(&proof.vmv_message.d2, compress)
+        + CanonicalSerialize::serialized_size(&proof.vmv_message.e1, compress)
+}
+
+fn serialized_sigma_offset(proof: &ArkDoryProof, compress: ArkCompress) -> usize {
+    let u32_size = CanonicalSerialize::serialized_size(&0u32, compress);
+    let mut offset = serialized_rounds_offset(proof, compress) + u32_size;
+
+    for msg in &proof.first_messages {
+        offset += CanonicalSerialize::serialized_size(&msg.d1_left, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.d1_right, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.d2_left, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.d2_right, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.e1_beta, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.e2_beta, compress);
+    }
+
+    for msg in &proof.second_messages {
+        offset += CanonicalSerialize::serialized_size(&msg.c_plus, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.c_minus, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.e1_plus, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.e1_minus, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.e2_plus, compress);
+        offset += CanonicalSerialize::serialized_size(&msg.e2_minus, compress);
+    }
+
+    offset += CanonicalSerialize::serialized_size(&proof.final_message.e1, compress);
+    offset += CanonicalSerialize::serialized_size(&proof.final_message.e2, compress);
+    offset + u32_size
+}
+
+fn overwrite_serialized_u32(bytes: &mut [u8], offset: usize, value: u32, compress: ArkCompress) {
+    let mut encoded = Vec::new();
+    CanonicalSerialize::serialize_with_mode(&value, &mut encoded, compress).unwrap();
+    bytes[offset..offset + encoded.len()].copy_from_slice(&encoded);
 }
 
 #[test]
@@ -111,6 +157,117 @@ fn test_transparent_proof_roundtrip_verifies() {
         &mut vt,
     )
     .unwrap();
+}
+
+#[test]
+fn test_arkgt_deserialization_rejects_zero() {
+    let mut bytes = Vec::new();
+    let zero = Fq12::zero();
+    zero.serialize_compressed(&mut bytes).unwrap();
+
+    let dory_result = <ArkGT as DoryDeserialize>::deserialize_with_mode(
+        &bytes[..],
+        DoryCompress::Yes,
+        DoryValidate::Yes,
+    );
+    assert!(
+        dory_result.is_err(),
+        "Dory ArkGT validation must reject zero"
+    );
+
+    let ark_result = <ArkGT as CanonicalDeserialize>::deserialize_with_mode(
+        &bytes[..],
+        ArkCompress::Yes,
+        ArkValidate::Yes,
+    );
+    assert!(
+        ark_result.is_err(),
+        "arkworks ArkGT validation must reject zero"
+    );
+
+    let unchecked = <ArkGT as DoryDeserialize>::deserialize_with_mode(
+        &bytes[..],
+        DoryCompress::Yes,
+        DoryValidate::No,
+    )
+    .unwrap();
+    assert_eq!(unchecked.0, zero);
+}
+
+#[test]
+fn test_arkgt_deserialization_rejects_non_r_torsion() {
+    let non_torsion = Fq12::ONE + Fq12::ONE;
+    assert_ne!(non_torsion.pow(Fr::MODULUS), Fq12::ONE);
+
+    let mut bytes = Vec::new();
+    non_torsion.serialize_compressed(&mut bytes).unwrap();
+
+    let dory_result = <ArkGT as DoryDeserialize>::deserialize_with_mode(
+        &bytes[..],
+        DoryCompress::Yes,
+        DoryValidate::Yes,
+    );
+    assert!(
+        dory_result.is_err(),
+        "Dory ArkGT validation must reject non-r-torsion elements"
+    );
+
+    let ark_result = <ArkGT as CanonicalDeserialize>::deserialize_with_mode(
+        &bytes[..],
+        ArkCompress::Yes,
+        ArkValidate::Yes,
+    );
+    assert!(
+        ark_result.is_err(),
+        "arkworks ArkGT validation must reject non-r-torsion elements"
+    );
+}
+
+#[test]
+fn test_proof_deserialization_rejects_u32_max_rounds() {
+    let (proof, _, _) = make_transparent_proof();
+    let compress = ArkCompress::Yes;
+    let mut bytes = Vec::new();
+    proof.serialize_with_mode(&mut bytes, compress).unwrap();
+
+    let offset = serialized_rounds_offset(&proof, compress);
+    overwrite_serialized_u32(&mut bytes, offset, u32::MAX, compress);
+
+    let result = ArkDoryProof::deserialize_with_mode(&bytes[..], compress, ArkValidate::Yes);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_proof_deserialization_rejects_rounds_over_bound() {
+    let (proof, _, _) = make_transparent_proof();
+    let compress = ArkCompress::Yes;
+    let mut bytes = Vec::new();
+    proof.serialize_with_mode(&mut bytes, compress).unwrap();
+
+    let offset = serialized_rounds_offset(&proof, compress);
+    overwrite_serialized_u32(
+        &mut bytes,
+        offset,
+        (MAX_SERIALIZED_PROOF_ROUNDS as u32) + 1,
+        compress,
+    );
+
+    let result = ArkDoryProof::deserialize_with_mode(&bytes[..], compress, ArkValidate::Yes);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_proof_deserialization_rejects_sigma_round_mismatch() {
+    let (proof, _, _) = make_transparent_proof();
+    let compress = ArkCompress::Yes;
+    let mut bytes = Vec::new();
+    proof.serialize_with_mode(&mut bytes, compress).unwrap();
+
+    let offset = serialized_sigma_offset(&proof, compress);
+    overwrite_serialized_u32(&mut bytes, offset, (proof.sigma as u32) + 1, compress);
+
+    let result = ArkDoryProof::deserialize_with_mode(&bytes[..], compress, ArkValidate::Yes);
+    assert!(result.is_err());
 }
 
 #[cfg(feature = "zk")]

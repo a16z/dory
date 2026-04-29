@@ -5,7 +5,7 @@ use ark_bn254::{Fq12, Fr, G1Projective, G2Projective};
 use ark_ff::UniformRand;
 use dory_pcs::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{create_evaluation_proof, prove, setup, verify, ZK};
+use dory_pcs::{create_evaluation_proof, prove, setup, verify, verify_with_mode, Transparent, ZK};
 
 #[test]
 fn test_zk_full_workflow() {
@@ -218,6 +218,7 @@ fn test_zk_hidden_evaluation() {
     .unwrap();
 
     assert!(proof.y_com.is_some(), "ZK proof should contain y_com");
+    assert!(proof.y_com().is_some(), "ZK y_com accessor should be set");
     assert!(proof.e2.is_some(), "ZK proof should contain e2");
 
     let mut verifier_transcript = fresh_transcript();
@@ -235,6 +236,123 @@ fn test_zk_hidden_evaluation() {
         "ZK hidden evaluation proof verification failed: {:?}",
         result
     );
+}
+
+#[test]
+fn test_explicit_verify_modes_accept_and_reject_cross_mode() {
+    let (prover_setup, verifier_setup) = test_setup_pair(6);
+    let poly = random_polynomial(16);
+    let nu = 2;
+    let sigma = 2;
+    let point = random_point(4);
+
+    let (transparent_commitment, transparent_tier_1, transparent_blind) = poly
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+    let mut transparent_prover_transcript = fresh_transcript();
+    let (transparent_proof, _) =
+        prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+            &poly,
+            &point,
+            transparent_tier_1,
+            transparent_blind,
+            nu,
+            sigma,
+            &prover_setup,
+            &mut transparent_prover_transcript,
+        )
+        .unwrap();
+    let evaluation = poly.evaluate(&point);
+
+    let mut transparent_verifier_transcript = fresh_transcript();
+    assert!(
+        verify_with_mode::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
+            transparent_commitment,
+            evaluation,
+            &point,
+            &transparent_proof,
+            verifier_setup.clone(),
+            &mut transparent_verifier_transcript,
+        )
+        .is_ok()
+    );
+
+    let mut wrong_zk_transcript = fresh_transcript();
+    assert!(
+        verify_with_mode::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
+            transparent_commitment,
+            evaluation,
+            &point,
+            &transparent_proof,
+            verifier_setup.clone(),
+            &mut wrong_zk_transcript,
+        )
+        .is_err(),
+        "ZK verification must reject transparent proofs"
+    );
+
+    let (zk_commitment, zk_tier_1, zk_blind) = poly
+        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+    let mut zk_prover_transcript = fresh_transcript();
+    let (zk_proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
+        &poly,
+        &point,
+        zk_tier_1,
+        zk_blind,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut zk_prover_transcript,
+    )
+    .unwrap();
+
+    let mut zk_verifier_transcript = fresh_transcript();
+    assert!(
+        verify_with_mode::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
+            zk_commitment,
+            evaluation,
+            &point,
+            &zk_proof,
+            verifier_setup.clone(),
+            &mut zk_verifier_transcript,
+        )
+        .is_ok()
+    );
+
+    let mut wrong_transparent_transcript = fresh_transcript();
+    assert!(
+        verify_with_mode::<_, BN254, TestG1Routines, TestG2Routines, _, Transparent>(
+            zk_commitment,
+            evaluation,
+            &point,
+            &zk_proof,
+            verifier_setup.clone(),
+            &mut wrong_transparent_transcript,
+        )
+        .is_err(),
+        "transparent verification must reject ZK proofs"
+    );
+}
+
+#[test]
+fn test_explicit_zk_verification_rejects_partial_zk_proof() {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(256, 4, 4);
+
+    proof.scalar_product_proof = None;
+
+    let mut verifier_transcript = fresh_transcript();
+    let result = verify_with_mode::<_, BN254, TestG1Routines, TestG2Routines, _, ZK>(
+        commitment,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut verifier_transcript,
+    );
+
+    assert!(result.is_err(), "ZK mode must reject partial ZK proofs");
 }
 
 /// Test that tampered e2 in proof is rejected

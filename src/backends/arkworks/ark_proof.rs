@@ -6,6 +6,13 @@
 use super::{ArkG1, ArkG2, ArkGT};
 use crate::proof::DoryProof;
 
+/// Maximum number of reduce-and-fold rounds accepted by default proof deserialization.
+///
+/// This bounds allocation before a verifier setup is available. It is intentionally
+/// conservative for current deployments; callers needing larger proofs should add
+/// an explicitly bounded deserialization entry point tied to their setup.
+pub const MAX_SERIALIZED_PROOF_ROUNDS: usize = 64;
+
 /// Arkworks-specific Dory proof type
 ///
 /// This is a type alias for `DoryProof` specialized to arkworks group types.

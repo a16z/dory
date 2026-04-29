@@ -293,8 +293,8 @@ where
 /// # Errors
 /// Returns `DoryError::InvalidProof` if verification fails, or other variants
 /// if the input parameters are incorrect (e.g., point dimension mismatch).
-#[tracing::instrument(skip_all, name = "verify_evaluation_proof")]
-pub fn verify_evaluation_proof<F, E, M1, M2, T>(
+#[tracing::instrument(skip_all, name = "verify_evaluation_proof_with_mode")]
+pub fn verify_evaluation_proof_with_mode<F, E, M1, M2, T, Mo>(
     commitment: E::GT,
     evaluation: F,
     point: &[F],
@@ -311,48 +311,22 @@ where
     M1: DoryRoutines<E::G1>,
     M2: DoryRoutines<E::G2>,
     T: Transcript<Curve = E>,
+    Mo: Mode,
 {
     let nu = proof.nu;
     let sigma = proof.sigma;
 
-    if point.len() != nu + sigma {
+    if nu > sigma {
+        return Err(DoryError::InvalidProof);
+    }
+
+    let point_dimension = nu.checked_add(sigma).ok_or(DoryError::InvalidProof)?;
+    if point.len() != point_dimension {
         return Err(DoryError::InvalidPointDimension {
-            expected: nu + sigma,
+            expected: point_dimension,
             actual: point.len(),
         });
     }
-
-    let vmv_message = &proof.vmv_message;
-    transcript.append_serde(b"vmv_c", &vmv_message.c);
-    transcript.append_serde(b"vmv_d2", &vmv_message.d2);
-    transcript.append_serde(b"vmv_e1", &vmv_message.e1);
-
-    #[cfg(feature = "zk")]
-    let (e2, is_zk) = match (&proof.e2, &proof.y_com) {
-        (Some(pe2), Some(yc)) => {
-            use crate::reduce_and_fold::{verify_sigma1_proof, verify_sigma2_proof};
-            transcript.append_serde(b"vmv_e2", pe2);
-            transcript.append_serde(b"vmv_y_com", yc);
-            match (&proof.sigma1_proof, &proof.sigma2_proof) {
-                (Some(s1), Some(s2)) => {
-                    verify_sigma1_proof::<E, T>(pe2, yc, s1, &setup, transcript)?;
-                    verify_sigma2_proof::<E, T>(
-                        &vmv_message.e1,
-                        &vmv_message.d2,
-                        s2,
-                        &setup,
-                        transcript,
-                    )?;
-                }
-                _ => return Err(DoryError::InvalidProof),
-            }
-            (*pe2, true)
-        }
-        (None, None) => (setup.g2_0.scale(&evaluation), false),
-        _ => return Err(DoryError::InvalidProof),
-    };
-    #[cfg(not(feature = "zk"))]
-    let (e2, _is_zk) = (setup.g2_0.scale(&evaluation), false);
 
     // Folded-scalar accumulation with per-round coordinates.
     // num_rounds = sigma (we fold column dimensions).
@@ -366,6 +340,41 @@ where
     {
         return Err(DoryError::InvalidProof);
     }
+
+    #[cfg(feature = "zk")]
+    {
+        if Mo::BLINDING {
+            if !proof.zk_fields_present() {
+                return Err(DoryError::InvalidProof);
+            }
+        } else if !proof.zk_fields_absent() {
+            return Err(DoryError::InvalidProof);
+        }
+    }
+
+    let vmv_message = &proof.vmv_message;
+    transcript.append_serde(b"vmv_c", &vmv_message.c);
+    transcript.append_serde(b"vmv_d2", &vmv_message.d2);
+    transcript.append_serde(b"vmv_e1", &vmv_message.e1);
+
+    #[cfg(feature = "zk")]
+    let e2 = if Mo::BLINDING {
+        use crate::reduce_and_fold::{verify_sigma1_proof, verify_sigma2_proof};
+        let pe2 = proof.e2.as_ref().ok_or(DoryError::InvalidProof)?;
+        let yc = proof.y_com.as_ref().ok_or(DoryError::InvalidProof)?;
+        let s1 = proof.sigma1_proof.as_ref().ok_or(DoryError::InvalidProof)?;
+        let s2 = proof.sigma2_proof.as_ref().ok_or(DoryError::InvalidProof)?;
+
+        transcript.append_serde(b"vmv_e2", pe2);
+        transcript.append_serde(b"vmv_y_com", yc);
+        verify_sigma1_proof::<E, T>(pe2, yc, s1, &setup, transcript)?;
+        verify_sigma2_proof::<E, T>(&vmv_message.e1, &vmv_message.d2, s2, &setup, transcript)?;
+        *pe2
+    } else {
+        setup.g2_0.scale(&evaluation)
+    };
+    #[cfg(not(feature = "zk"))]
+    let e2 = setup.g2_0.scale(&evaluation);
 
     // s1 (right/prover): the σ column coordinates in natural order (LSB→MSB).
     // No padding here: the verifier folds across the σ column dimensions.
@@ -417,21 +426,21 @@ where
 
     // In ZK mode: absorb scalar product proof into transcript before deriving d.
     #[cfg(feature = "zk")]
-    let zk_data = if is_zk {
-        if let Some(ref sp) = proof.scalar_product_proof {
-            for (l, v) in [
-                (b"sigma_p1" as &[u8], &sp.p1),
-                (b"sigma_p2", &sp.p2),
-                (b"sigma_q", &sp.q),
-                (b"sigma_r", &sp.r),
-            ] {
-                transcript.append_serde(l, v);
-            }
-            let c = transcript.challenge_scalar(b"sigma_c");
-            Some((sp, c))
-        } else {
-            return Err(DoryError::InvalidProof);
+    let zk_data = if Mo::BLINDING {
+        let sp = proof
+            .scalar_product_proof
+            .as_ref()
+            .ok_or(DoryError::InvalidProof)?;
+        for (l, v) in [
+            (b"sigma_p1" as &[u8], &sp.p1),
+            (b"sigma_p2", &sp.p2),
+            (b"sigma_q", &sp.q),
+            (b"sigma_r", &sp.r),
+        ] {
+            transcript.append_serde(l, v);
         }
+        let c = transcript.challenge_scalar(b"sigma_c");
+        Some((sp, c))
     } else {
         None
     };
@@ -447,4 +456,59 @@ where
     let zk: Option<(&crate::messages::ScalarProductProof<_, _, _, _>, _)> = None;
 
     verifier_state.verify_final(&proof.final_message, &gamma, &d, zk)
+}
+
+/// Verify an evaluation proof with compatibility/autodetect proof-mode handling.
+///
+/// New callers should prefer [`verify_evaluation_proof_with_mode`] so the
+/// expected proof mode is explicit. This function keeps the historical
+/// behavior: proofs with all ZK fields present are verified in ZK mode, proofs
+/// with all ZK fields absent are verified in transparent mode, and partial ZK
+/// field combinations are rejected.
+///
+/// # Errors
+/// Returns `DoryError::InvalidProof` if the proof shape or verification checks
+/// fail, or another `DoryError` if the inputs are malformed.
+#[tracing::instrument(skip_all, name = "verify_evaluation_proof")]
+pub fn verify_evaluation_proof<F, E, M1, M2, T>(
+    commitment: E::GT,
+    evaluation: F,
+    point: &[F],
+    proof: &DoryProof<E::G1, E::G2, E::GT>,
+    setup: VerifierSetup<E>,
+    transcript: &mut T,
+) -> Result<(), DoryError>
+where
+    F: Field,
+    E: PairingCurve,
+    E::G1: Group<Scalar = F>,
+    E::G2: Group<Scalar = F>,
+    E::GT: Group<Scalar = F>,
+    M1: DoryRoutines<E::G1>,
+    M2: DoryRoutines<E::G2>,
+    T: Transcript<Curve = E>,
+{
+    #[cfg(feature = "zk")]
+    {
+        use crate::mode::ZK;
+
+        if proof.zk_fields_present() {
+            return verify_evaluation_proof_with_mode::<F, E, M1, M2, T, ZK>(
+                commitment, evaluation, point, proof, setup, transcript,
+            );
+        }
+        if proof.zk_fields_absent() {
+            return verify_evaluation_proof_with_mode::<F, E, M1, M2, T, crate::mode::Transparent>(
+                commitment, evaluation, point, proof, setup, transcript,
+            );
+        }
+        Err(DoryError::InvalidProof)
+    }
+
+    #[cfg(not(feature = "zk"))]
+    {
+        verify_evaluation_proof_with_mode::<F, E, M1, M2, T, crate::mode::Transparent>(
+            commitment, evaluation, point, proof, setup, transcript,
+        )
+    }
 }

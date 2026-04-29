@@ -11,7 +11,7 @@ use dory_pcs::backends::arkworks::{
 };
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
-use dory_pcs::{prove, setup, verify, ZK};
+use dory_pcs::{prove, setup, verify_zk, ZK};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -43,9 +43,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &prover_setup,
         &mut prover_transcript,
     )?;
+    let _evaluation_hiding_commitment = proof
+        .y_com()
+        .expect("ZK proofs contain an evaluation hiding commitment");
 
     let mut verifier_transcript = Blake2bTranscript::new(b"dory-zk-example");
-    verify::<_, BN254, G1Routines, G2Routines, _>(
+    verify_zk::<_, BN254, G1Routines, G2Routines, _>(
         tier_2,
         evaluation,
         &point,

@@ -21,7 +21,22 @@ pub struct PreparedCache {
     pub g2_prepared: Vec<<Bn254 as Pairing>::G2Prepared>,
 }
 
-static CACHE: RwLock<Option<Arc<PreparedCache>>> = RwLock::new(None);
+#[derive(Debug, Clone)]
+struct CachedPrepared {
+    prepared: Arc<PreparedCache>,
+    g1_vec: Vec<ArkG1>,
+    g2_vec: Vec<ArkG2>,
+}
+
+static CACHE: RwLock<Option<Arc<CachedPrepared>>> = RwLock::new(None);
+
+fn slice_starts_with<T: PartialEq>(cached: &[T], requested: &[T]) -> bool {
+    cached.len() >= requested.len() && &cached[..requested.len()] == requested
+}
+
+fn cache_covers(cached: &CachedPrepared, g1_vec: &[ArkG1], g2_vec: &[ArkG2]) -> bool {
+    slice_starts_with(&cached.g1_vec, g1_vec) && slice_starts_with(&cached.g2_vec, g2_vec)
+}
 
 /// Initialize the global cache with G1 and G2 vectors.
 ///
@@ -52,7 +67,7 @@ pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {
     {
         let read_guard = CACHE.read().unwrap();
         if let Some(ref cache) = *read_guard {
-            if cache.g1_prepared.len() >= g1_vec.len() && cache.g2_prepared.len() >= g2_vec.len() {
+            if cache_covers(cache, g1_vec, g2_vec) {
                 return; // Existing cache is large enough
             }
         }
@@ -63,7 +78,7 @@ pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {
 
     // Double-check after acquiring write lock (another thread may have initialized)
     if let Some(ref cache) = *write_guard {
-        if cache.g1_prepared.len() >= g1_vec.len() && cache.g2_prepared.len() >= g2_vec.len() {
+        if cache_covers(cache, g1_vec, g2_vec) {
             return; // Another thread initialized a sufficient cache
         }
     }
@@ -85,9 +100,13 @@ pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {
         })
         .collect();
 
-    *write_guard = Some(Arc::new(PreparedCache {
-        g1_prepared,
-        g2_prepared,
+    *write_guard = Some(Arc::new(CachedPrepared {
+        prepared: Arc::new(PreparedCache {
+            g1_prepared,
+            g2_prepared,
+        }),
+        g1_vec: g1_vec.to_vec(),
+        g2_vec: g2_vec.to_vec(),
     }));
 }
 
@@ -110,7 +129,23 @@ pub fn invalidate_cache() {
 /// # Returns
 /// Arc-wrapped cache, or `None` if uninitialized.
 pub fn get_prepared_cache() -> Option<Arc<PreparedCache>> {
-    CACHE.read().unwrap().clone()
+    CACHE
+        .read()
+        .unwrap()
+        .as_ref()
+        .map(|cached| cached.prepared.clone())
+}
+
+pub(crate) fn get_prepared_cache_for_g1(g1_vec: &[ArkG1]) -> Option<Arc<PreparedCache>> {
+    CACHE.read().unwrap().as_ref().and_then(|cached| {
+        slice_starts_with(&cached.g1_vec, g1_vec).then(|| cached.prepared.clone())
+    })
+}
+
+pub(crate) fn get_prepared_cache_for_g2(g2_vec: &[ArkG2]) -> Option<Arc<PreparedCache>> {
+    CACHE.read().unwrap().as_ref().and_then(|cached| {
+        slice_starts_with(&cached.g2_vec, g2_vec).then(|| cached.prepared.clone())
+    })
 }
 
 /// Check if cache is initialized.

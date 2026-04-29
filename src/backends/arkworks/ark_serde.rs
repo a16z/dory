@@ -2,6 +2,7 @@
 use crate::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
 use crate::primitives::serialization::{Compress, SerializationError, Valid, Validate};
 use crate::primitives::{DoryDeserialize, DorySerialize};
+use ark_ff::{Field as ArkField, PrimeField, Zero};
 use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Compress as ArkCompress,
     SerializationError as ArkSerializationError, Valid as ArkValid, Validate as ArkValidate,
@@ -183,11 +184,37 @@ impl DoryDeserialize for ArkG2 {
     }
 }
 
+fn ark_gt_in_target_group(inner: &ark_bn254::Fq12) -> bool {
+    !inner.is_zero() && inner.pow(ark_bn254::Fr::MODULUS) == ark_bn254::Fq12::ONE
+}
+
+fn validate_dory_gt(inner: &ark_bn254::Fq12) -> Result<(), SerializationError> {
+    inner
+        .check()
+        .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))?;
+
+    if ark_gt_in_target_group(inner) {
+        Ok(())
+    } else {
+        Err(SerializationError::InvalidData(
+            "invalid BN254 target-group element".to_string(),
+        ))
+    }
+}
+
+fn validate_ark_gt(inner: &ark_bn254::Fq12) -> Result<(), ArkSerializationError> {
+    inner.check()?;
+
+    if ark_gt_in_target_group(inner) {
+        Ok(())
+    } else {
+        Err(ArkSerializationError::InvalidData)
+    }
+}
+
 impl Valid for ArkGT {
     fn check(&self) -> Result<(), SerializationError> {
-        self.0
-            .check()
-            .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))
+        validate_dory_gt(&self.0)
     }
 }
 
@@ -231,9 +258,32 @@ impl DoryDeserialize for ArkGT {
         };
 
         if matches!(validate, Validate::Yes) {
-            inner
-                .check()
-                .map_err(|e| SerializationError::InvalidData(format!("{e:?}")))?;
+            validate_dory_gt(&inner)?;
+        }
+
+        Ok(ArkGT(inner))
+    }
+}
+
+impl ArkValid for ArkGT {
+    fn check(&self) -> Result<(), ArkSerializationError> {
+        validate_ark_gt(&self.0)
+    }
+}
+
+impl CanonicalDeserialize for ArkGT {
+    fn deserialize_with_mode<R: Read>(
+        reader: R,
+        compress: ArkCompress,
+        validate: ArkValidate,
+    ) -> Result<Self, ArkSerializationError> {
+        let inner = match compress {
+            ArkCompress::Yes => ark_bn254::Fq12::deserialize_compressed(reader)?,
+            ArkCompress::No => ark_bn254::Fq12::deserialize_uncompressed(reader)?,
+        };
+
+        if matches!(validate, ArkValidate::Yes) {
+            validate_ark_gt(&inner)?;
         }
 
         Ok(ArkGT(inner))
@@ -241,7 +291,28 @@ impl DoryDeserialize for ArkGT {
 }
 
 // Arkworks-specific Dory proof type
-use super::ArkDoryProof;
+use super::{ArkDoryProof, MAX_SERIALIZED_PROOF_ROUNDS};
+
+fn validate_serialized_proof_shape(
+    num_rounds: usize,
+    nu: usize,
+    sigma: usize,
+) -> Result<(), ArkSerializationError> {
+    let total_dimension = nu
+        .checked_add(sigma)
+        .ok_or(ArkSerializationError::InvalidData)?;
+
+    if num_rounds > MAX_SERIALIZED_PROOF_ROUNDS
+        || nu > sigma
+        || sigma != num_rounds
+        || sigma >= usize::BITS as usize
+        || total_dimension >= usize::BITS as usize
+    {
+        return Err(ArkSerializationError::InvalidData);
+    }
+
+    Ok(())
+}
 
 #[cfg(feature = "zk")]
 mod zk_serde {
@@ -437,6 +508,9 @@ impl CanonicalDeserialize for ArkDoryProof {
         let num_rounds =
             <u32 as CanonicalDeserialize>::deserialize_with_mode(&mut reader, compress, validate)?
                 as usize;
+        if num_rounds > MAX_SERIALIZED_PROOF_ROUNDS {
+            return Err(ArkSerializationError::InvalidData);
+        }
 
         // Deserialize first messages
         let mut first_messages = Vec::with_capacity(num_rounds);
@@ -500,6 +574,8 @@ impl CanonicalDeserialize for ArkDoryProof {
         let sigma =
             <u32 as CanonicalDeserialize>::deserialize_with_mode(&mut reader, compress, validate)?
                 as usize;
+
+        validate_serialized_proof_shape(num_rounds, nu, sigma)?;
 
         Ok(ArkDoryProof {
             vmv_message,

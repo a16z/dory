@@ -53,3 +53,52 @@ pub struct DoryProof<G1: Group, G2, GT> {
     #[cfg(feature = "zk")]
     pub scalar_product_proof: Option<ScalarProductProof<G1, G2, G1::Scalar, GT>>,
 }
+
+impl<G1: Group, G2, GT> DoryProof<G1, G2, GT> {
+    /// Returns `true` when no zero-knowledge-only proof fields are present.
+    pub fn is_transparent(&self) -> bool {
+        #[cfg(feature = "zk")]
+        {
+            self.zk_fields_absent()
+        }
+        #[cfg(not(feature = "zk"))]
+        {
+            true
+        }
+    }
+
+    /// Returns `true` when all zero-knowledge-required proof fields are present.
+    #[cfg(feature = "zk")]
+    pub fn is_zk(&self) -> bool {
+        self.zk_fields_present()
+    }
+
+    /// Returns the proof-owned hiding commitment to the claimed evaluation.
+    ///
+    /// Higher-level protocols that bind an evaluation hiding commitment should
+    /// bind this value from the proof instead of carrying an independent copy.
+    #[cfg(feature = "zk")]
+    pub fn y_com(&self) -> Option<&G1> {
+        self.y_com.as_ref()
+    }
+
+    /// Returns `true` when every zero-knowledge-required field is present.
+    #[cfg(feature = "zk")]
+    pub fn zk_fields_present(&self) -> bool {
+        self.e2.is_some()
+            && self.y_com.is_some()
+            && self.sigma1_proof.is_some()
+            && self.sigma2_proof.is_some()
+            && self.scalar_product_proof.is_some()
+    }
+
+    /// Returns `true` when every zero-knowledge-only field is absent.
+    #[cfg(feature = "zk")]
+    pub fn zk_fields_absent(&self) -> bool {
+        self.e2.is_none()
+            && self.y_com.is_none()
+            && self.sigma1_proof.is_none()
+            && self.sigma2_proof.is_none()
+            && self.scalar_product_proof.is_none()
+    }
+}

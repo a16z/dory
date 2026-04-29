@@ -20,7 +20,11 @@ pub struct ArkG1(pub G1Projective);
 #[repr(transparent)]
 pub struct ArkG2(pub G2Projective);
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+/// BN254 target-group element.
+///
+/// Use checked deserialization for untrusted inputs. Unchecked deserialization
+/// skips zero and r-torsion validation.
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize)]
 #[repr(transparent)]
 pub struct ArkGT(pub Fq12);
 

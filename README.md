@@ -97,7 +97,7 @@ This property enables efficient proof aggregation and batch verification. See `e
 ## Usage
 
 ```rust
-use dory_pcs::{setup, prove, verify, Transparent};
+use dory_pcs::{setup, prove, verify_transparent, Transparent};
 use dory_pcs::backends::arkworks::{
     BN254, G1Routines, G2Routines, ArkworksPolynomial, ArkFr, Blake2bTranscript
 };
@@ -139,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 6. Verify: check that the proof is valid
     let evaluation = polynomial.evaluate(&point);
     let mut verifier_transcript = Blake2bTranscript::new(b"dory-example");
-    verify::<_, BN254, G1Routines, G2Routines, _>(
+    verify_transparent::<_, BN254, G1Routines, G2Routines, _>(
         tier_2,
         evaluation,
         &point,
@@ -152,6 +152,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+`verify_transparent` and `verify_zk` reject proofs for the wrong mode. The older
+`verify` function remains as a compatibility entry point that autodetects the
+mode from the proof shape. In ZK mode, the evaluation hiding commitment is owned
+by the proof; protocols that need to bind it should read `proof.y_com()` after
+proving and bind that value, rather than carrying a separate commitment.
 
 ## Examples
 

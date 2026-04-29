@@ -40,7 +40,7 @@
 //! ### Basic Example
 //!
 //! ```ignore
-//! use dory_pcs::{setup, prove, verify, Transparent};
+//! use dory_pcs::{setup, prove, verify_transparent, Transparent};
 //! use dory_pcs::backends::arkworks::{BN254, G1Routines, G2Routines, Blake2bTranscript};
 //!
 //! // 1. Generate setup (automatically loads from/saves to disk)
@@ -59,7 +59,7 @@
 //!
 //! // 4. Verify
 //! let mut verifier_transcript = Blake2bTranscript::new(b"domain-separation");
-//! verify::<_, BN254, G1Routines, G2Routines, _>(
+//! verify_transparent::<_, BN254, G1Routines, G2Routines, _>(
 //!     tier_2_commitment, evaluation, &point, &proof,
 //!     verifier_setup, &mut verifier_transcript
 //! )?;
@@ -107,7 +107,7 @@ pub mod setup;
 pub mod backends;
 
 pub use error::DoryError;
-pub use evaluation_proof::create_evaluation_proof;
+pub use evaluation_proof::{create_evaluation_proof, verify_evaluation_proof_with_mode};
 pub use messages::{
     FirstReduceMessage, ScalarProductMessage, ScalarProductProof, SecondReduceMessage, VMVMessage,
 };
@@ -302,10 +302,102 @@ where
     )
 }
 
-/// Verify an evaluation proof
+/// Verify an evaluation proof with an explicit expected proof mode.
+///
+/// Transparent verification rejects proofs containing ZK-only fields. ZK
+/// verification rejects proofs missing any required ZK fields.
+///
+/// # Errors
+/// Returns `DoryError::InvalidProof` if the proof mode, dimensions, transcript,
+/// or proof equations are invalid.
+#[tracing::instrument(skip_all, name = "verify_with_mode")]
+pub fn verify_with_mode<F, E, M1, M2, T, Mo>(
+    commitment: E::GT,
+    evaluation: F,
+    point: &[F],
+    proof: &DoryProof<E::G1, E::G2, E::GT>,
+    setup: VerifierSetup<E>,
+    transcript: &mut T,
+) -> Result<(), DoryError>
+where
+    F: Field,
+    E: PairingCurve + Clone,
+    E::G1: Group<Scalar = F>,
+    E::G2: Group<Scalar = F>,
+    E::GT: Group<Scalar = F>,
+    M1: DoryRoutines<E::G1>,
+    M2: DoryRoutines<E::G2>,
+    T: primitives::transcript::Transcript<Curve = E>,
+    Mo: Mode,
+{
+    evaluation_proof::verify_evaluation_proof_with_mode::<F, E, M1, M2, T, Mo>(
+        commitment, evaluation, point, proof, setup, transcript,
+    )
+}
+
+/// Verify a transparent evaluation proof.
+///
+/// # Errors
+/// Returns `DoryError::InvalidProof` if the proof contains ZK-only fields or
+/// fails transparent verification.
+#[tracing::instrument(skip_all, name = "verify_transparent")]
+pub fn verify_transparent<F, E, M1, M2, T>(
+    commitment: E::GT,
+    evaluation: F,
+    point: &[F],
+    proof: &DoryProof<E::G1, E::G2, E::GT>,
+    setup: VerifierSetup<E>,
+    transcript: &mut T,
+) -> Result<(), DoryError>
+where
+    F: Field,
+    E: PairingCurve + Clone,
+    E::G1: Group<Scalar = F>,
+    E::G2: Group<Scalar = F>,
+    E::GT: Group<Scalar = F>,
+    M1: DoryRoutines<E::G1>,
+    M2: DoryRoutines<E::G2>,
+    T: primitives::transcript::Transcript<Curve = E>,
+{
+    verify_with_mode::<F, E, M1, M2, T, Transparent>(
+        commitment, evaluation, point, proof, setup, transcript,
+    )
+}
+
+/// Verify a zero-knowledge evaluation proof.
+///
+/// # Errors
+/// Returns `DoryError::InvalidProof` if any required ZK field is missing or the
+/// ZK verification checks fail.
+#[cfg(feature = "zk")]
+#[tracing::instrument(skip_all, name = "verify_zk")]
+pub fn verify_zk<F, E, M1, M2, T>(
+    commitment: E::GT,
+    evaluation: F,
+    point: &[F],
+    proof: &DoryProof<E::G1, E::G2, E::GT>,
+    setup: VerifierSetup<E>,
+    transcript: &mut T,
+) -> Result<(), DoryError>
+where
+    F: Field,
+    E: PairingCurve + Clone,
+    E::G1: Group<Scalar = F>,
+    E::G2: Group<Scalar = F>,
+    E::GT: Group<Scalar = F>,
+    M1: DoryRoutines<E::G1>,
+    M2: DoryRoutines<E::G2>,
+    T: primitives::transcript::Transcript<Curve = E>,
+{
+    verify_with_mode::<F, E, M1, M2, T, ZK>(commitment, evaluation, point, proof, setup, transcript)
+}
+
+/// Verify an evaluation proof using compatibility/autodetect proof-mode handling.
 ///
 /// Verifies that a committed polynomial evaluates to the claimed value at the given point.
 /// The matrix dimensions (nu, sigma) are extracted from the proof.
+/// New callers should prefer [`verify_with_mode`], [`verify_transparent`], or
+/// `verify_zk` so the expected proof mode is explicit.
 ///
 /// Works with both square and non-square matrix layouts (nu ≤ sigma), and can verify
 /// proofs for homomorphically combined polynomials.
