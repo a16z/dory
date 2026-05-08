@@ -2,6 +2,8 @@
 use crate::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
 use crate::primitives::serialization::{Compress, SerializationError, Valid, Validate};
 use crate::primitives::{DoryDeserialize, DorySerialize};
+use ark_bn254::Bn254;
+use ark_ec::pairing::PairingOutput;
 use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Compress as ArkCompress,
     SerializationError as ArkSerializationError, Valid as ArkValid, Validate as ArkValidate,
@@ -224,9 +226,9 @@ impl DoryDeserialize for ArkGT {
         validate: Validate,
     ) -> Result<Self, SerializationError> {
         let inner = match compress {
-            Compress::Yes => ark_bn254::Fq12::deserialize_compressed(reader)
+            Compress::Yes => PairingOutput::<Bn254>::deserialize_compressed(reader)
                 .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
-            Compress::No => ark_bn254::Fq12::deserialize_uncompressed(reader)
+            Compress::No => PairingOutput::<Bn254>::deserialize_uncompressed(reader)
                 .map_err(|e| SerializationError::InvalidData(format!("{e}")))?,
         };
 

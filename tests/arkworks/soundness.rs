@@ -2,6 +2,7 @@
 
 use super::*;
 use ark_bn254::{Fq12, Fr, G1Projective, G2Projective};
+use ark_ec::pairing::PairingOutput;
 use ark_ff::UniformRand;
 use dory_pcs::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
 use dory_pcs::primitives::poly::Polynomial;
@@ -60,7 +61,7 @@ fn test_soundness_tamper_vmv_c() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.vmv_message.c = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+    proof.vmv_message.c = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -80,7 +81,7 @@ fn test_soundness_tamper_vmv_d2() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.vmv_message.d2 = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+    proof.vmv_message.d2 = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -121,7 +122,7 @@ fn test_soundness_tamper_d1_left() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d1_left = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        proof.first_messages[0].d1_left = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -143,7 +144,8 @@ fn test_soundness_tamper_d1_right() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d1_right = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        proof.first_messages[0].d1_right =
+            ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -165,7 +167,7 @@ fn test_soundness_tamper_d2_left() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d2_left = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        proof.first_messages[0].d2_left = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -187,7 +189,8 @@ fn test_soundness_tamper_d2_right() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.first_messages.is_empty() {
-        proof.first_messages[0].d2_right = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        proof.first_messages[0].d2_right =
+            ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -253,7 +256,7 @@ fn test_soundness_tamper_c_plus() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.second_messages.is_empty() {
-        proof.second_messages[0].c_plus = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        proof.second_messages[0].c_plus = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -275,7 +278,8 @@ fn test_soundness_tamper_c_minus() {
         create_valid_proof_components(256, 4, 4);
 
     if !proof.second_messages.is_empty() {
-        proof.second_messages[0].c_minus = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        proof.second_messages[0].c_minus =
+            ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
     }
 
     let mut verifier_transcript = fresh_transcript();
@@ -521,7 +525,7 @@ fn test_soundness_multi_round_tampering() {
         create_valid_proof_components(256, 4, 4);
 
     if proof.first_messages.len() >= 2 {
-        proof.first_messages[0].d1_left = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        proof.first_messages[0].d1_left = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
         proof.first_messages[1].e2_beta = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
     }
 
@@ -545,7 +549,8 @@ fn test_soundness_last_round_tampering() {
 
     let last_round = proof.first_messages.len().saturating_sub(1);
     if !proof.first_messages.is_empty() {
-        proof.first_messages[last_round].d2_right = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        proof.first_messages[last_round].d2_right =
+            ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
     }
 
     let mut verifier_transcript = fresh_transcript();

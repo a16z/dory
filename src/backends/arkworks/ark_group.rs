@@ -6,7 +6,8 @@
 
 use super::ark_field::ArkFr;
 use crate::primitives::arithmetic::{DoryRoutines, Group};
-use ark_bn254::{Fq12, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_bn254::{Bn254, Fq12, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::{Field as ArkField, One, PrimeField, UniformRand, Zero as ArkZero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -20,9 +21,15 @@ pub struct ArkG1(pub G1Projective);
 #[repr(transparent)]
 pub struct ArkG2(pub G2Projective);
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 #[repr(transparent)]
-pub struct ArkGT(pub Fq12);
+pub struct ArkGT(pub PairingOutput<Bn254>);
+
+impl Default for ArkGT {
+    fn default() -> Self {
+        ArkGT(PairingOutput(Fq12::one()))
+    }
+}
 
 impl Group for ArkG1 {
     type Scalar = ArkFr;
@@ -174,80 +181,77 @@ impl Group for ArkGT {
     type Scalar = ArkFr;
 
     fn identity() -> Self {
-        ArkGT(Fq12::one())
+        ArkGT(PairingOutput(Fq12::one()))
     }
 
     fn add(&self, rhs: &Self) -> Self {
-        ArkGT(self.0 * rhs.0)
+        ArkGT(self.0 + rhs.0)
     }
 
     fn neg(&self) -> Self {
-        ArkGT(ArkField::inverse(&self.0).expect("GT inverse"))
+        ArkGT(PairingOutput(
+            ArkField::inverse(&self.0 .0).expect("GT inverse"),
+        ))
     }
 
     fn scale(&self, k: &Self::Scalar) -> Self {
-        ArkGT(self.0.pow(k.0.into_bigint()))
+        ArkGT(PairingOutput(self.0 .0.pow(k.0.into_bigint())))
     }
 
     fn random() -> Self {
-        ArkGT(Fq12::rand(&mut rand_core::OsRng))
+        ArkGT(Bn254::pairing(
+            G1Affine::rand(&mut rand_core::OsRng),
+            G2Affine::rand(&mut rand_core::OsRng),
+        ))
     }
 }
 
-#[allow(clippy::suspicious_arithmetic_impl)]
 impl Add for ArkGT {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        // GT is a multiplicative group, so group addition is field multiplication
-        ArkGT(self.0 * rhs.0)
+        ArkGT(self.0 + rhs.0)
     }
 }
 
-#[allow(clippy::suspicious_arithmetic_impl)]
 impl Sub for ArkGT {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
-        // GT is a multiplicative group, so group subtraction is multiplication by inverse
-        ArkGT(self.0 * rhs.0.inverse().expect("GT inverse"))
+        ArkGT(self.0 - rhs.0)
     }
 }
 
 impl Neg for ArkGT {
     type Output = Self;
     fn neg(self) -> Self {
-        ArkGT(self.0.inverse().expect("GT inverse"))
+        ArkGT(-self.0)
     }
 }
 
-#[allow(clippy::suspicious_arithmetic_impl)]
 impl<'a> Add<&'a ArkGT> for ArkGT {
     type Output = ArkGT;
     fn add(self, rhs: &'a ArkGT) -> ArkGT {
-        // GT is a multiplicative group, so group addition is field multiplication
-        ArkGT(self.0 * rhs.0)
+        ArkGT(self.0 + rhs.0)
     }
 }
 
-#[allow(clippy::suspicious_arithmetic_impl)]
 impl<'a> Sub<&'a ArkGT> for ArkGT {
     type Output = ArkGT;
     fn sub(self, rhs: &'a ArkGT) -> ArkGT {
-        // GT is a multiplicative group, so group subtraction is multiplication by inverse
-        ArkGT(self.0 * rhs.0.inverse().expect("GT inverse"))
+        ArkGT(self.0 - rhs.0)
     }
 }
 
 impl Mul<ArkGT> for ArkFr {
     type Output = ArkGT;
     fn mul(self, rhs: ArkGT) -> ArkGT {
-        ArkGT(rhs.0.pow(self.0.into_bigint()))
+        ArkGT(PairingOutput(rhs.0 .0.pow(self.0.into_bigint())))
     }
 }
 
 impl<'a> Mul<&'a ArkGT> for ArkFr {
     type Output = ArkGT;
     fn mul(self, rhs: &'a ArkGT) -> ArkGT {
-        ArkGT(rhs.0.pow(self.0.into_bigint()))
+        ArkGT(PairingOutput(rhs.0 .0.pow(self.0.into_bigint())))
     }
 }
 

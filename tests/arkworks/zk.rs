@@ -2,6 +2,7 @@
 
 use super::*;
 use ark_bn254::{Fq12, Fr, G1Projective, G2Projective};
+use ark_ec::pairing::PairingOutput;
 use ark_ff::UniformRand;
 use dory_pcs::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT};
 use dory_pcs::primitives::poly::Polynomial;
@@ -500,7 +501,7 @@ fn test_zk_soundness_tampered_sigma2_a() {
         create_valid_zk_proof_components(256, 4, 4);
 
     if let Some(ref mut s) = proof.sigma2_proof {
-        s.a = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        s.a = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
     }
 
     let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
@@ -529,7 +530,7 @@ fn test_zk_soundness_tampered_sp_p1() {
         create_valid_zk_proof_components(256, 4, 4);
 
     if let Some(ref mut sp) = proof.scalar_product_proof {
-        sp.p1 = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+        sp.p1 = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
     }
 
     let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
@@ -560,7 +561,7 @@ fn test_zk_soundness_tampered_vmv_c() {
     let (verifier_setup, point, commitment, evaluation, mut proof) =
         create_valid_zk_proof_components(256, 4, 4);
 
-    proof.vmv_message.c = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+    proof.vmv_message.c = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
 
     let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
     assert!(result.is_err(), "Should fail with tampered VMV c in ZK");
@@ -571,7 +572,7 @@ fn test_zk_soundness_tampered_vmv_d2() {
     let (verifier_setup, point, commitment, evaluation, mut proof) =
         create_valid_zk_proof_components(256, 4, 4);
 
-    proof.vmv_message.d2 = ArkGT(Fq12::rand(&mut rand::thread_rng()));
+    proof.vmv_message.d2 = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
 
     let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
     assert!(result.is_err(), "Should fail with tampered VMV d2 in ZK");
