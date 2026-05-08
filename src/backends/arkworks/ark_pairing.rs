@@ -135,7 +135,7 @@ mod pairing_helpers {
         let miller_output = Bn254::multi_miller_loop(ps_prep, qs_prep.to_vec());
         let result = Bn254::final_exponentiation(miller_output)
             .expect("Final exponentiation should not fail");
-        ArkGT(result.0)
+        ArkGT(result)
     }
 
     /// Parallel multi-pairing with chunked Miller loops (no caching assumptions)
@@ -176,7 +176,7 @@ mod pairing_helpers {
 
         let result =
             Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
-        ArkGT(result.0)
+        ArkGT(result)
     }
 
     /// Parallel multi-pairing with G2 from setup (uses cache if available)
@@ -240,7 +240,7 @@ mod pairing_helpers {
 
         let result =
             Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
-        ArkGT(result.0)
+        ArkGT(result)
     }
 
     /// Parallel multi-pairing with G1 from setup (uses cache if available)
@@ -304,7 +304,7 @@ mod pairing_helpers {
 
         let result =
             Bn254::final_exponentiation(combined).expect("Final exponentiation should not fail");
-        ArkGT(result.0)
+        ArkGT(result)
     }
 
     /// Optimized multi-pairing dispatch
@@ -350,7 +350,7 @@ impl PairingCurve for BN254 {
     type GT = ArkGT;
 
     fn pair(p: &Self::G1, q: &Self::G2) -> Self::GT {
-        ArkGT(Bn254::pairing(p.0, q.0).0)
+        ArkGT(Bn254::pairing(p.0, q.0))
     }
 
     #[tracing::instrument(skip_all, name = "BN254::multi_pair", fields(len = ps.len()))]
