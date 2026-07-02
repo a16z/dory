@@ -50,7 +50,9 @@ use crate::setup::{ProverSetup, VerifierSetup};
 /// 6. Run max(nu, sigma) rounds of reduce-and-fold (with automatic padding for non-square):
 ///    - First reduce: compute message and apply beta challenge (reduce)
 ///    - Second reduce: compute message and apply alpha challenge (fold)
-/// 7. Compute final scalar product message
+/// 7. Apply Fold-Scalars to the witness (absorbs the point tensors s₁, s₂)
+/// 8. Transparent: reveal the folded witness as the final scalar product message;
+///    ZK: produce a scalar-product Σ-proof for the folded statement instead
 ///
 /// # Parameters
 /// - `polynomial`: Polynomial to prove evaluation for
@@ -224,6 +226,12 @@ where
 
     let gamma = transcript.challenge_scalar(b"gamma");
 
+    // Fold-Scalars (Dory paper §4.1): absorb the folded public scalars s₁, s₂
+    // into the witness. The verifier applies the matching update to its
+    // statement using its own point-derived s1_acc/s2_acc, so this step is
+    // what binds the evaluation point to the final scalar-product argument.
+    prover_state.apply_fold_scalars(&gamma);
+
     #[cfg(feature = "zk")]
     let scalar_product_proof = if Mo::BLINDING {
         Some(prover_state.scalar_product_proof(transcript))
@@ -231,10 +239,18 @@ where
         None
     };
 
-    let final_message = prover_state.compute_final_message::<M1, M2>(&gamma);
+    // Transparent mode reveals the folded witness as the final message; in ZK
+    // mode the scalar-product Σ-proof above replaces it (revealing the folded
+    // witness would break hiding).
+    let final_message = if Mo::BLINDING {
+        None
+    } else {
+        let msg = prover_state.compute_final_message();
+        transcript.append_serde(b"final_e1", &msg.e1);
+        transcript.append_serde(b"final_e2", &msg.e2);
+        Some(msg)
+    };
 
-    transcript.append_serde(b"final_e1", &final_message.e1);
-    transcript.append_serde(b"final_e2", &final_message.e2);
     let _d = transcript.challenge_scalar(b"d");
 
     let proof = DoryProof {
@@ -272,7 +288,9 @@ where
 /// 3. Initialize verifier state with commitment and VMV message
 /// 4. Run max(nu, sigma) rounds of reduce-and-fold verification (with automatic padding)
 /// 5. Derive gamma and d challenges
-/// 6. Verify final scalar product message
+/// 6. Verify the final scalar product relation against the Fold-Scalars-updated
+///    statement (transparent: 4-pairing check of the revealed witness;
+///    ZK: 3-pairing check of the scalar-product Σ-proof)
 ///
 /// # Parameters
 /// - `commitment`: Polynomial commitment (in GT) - can be a homomorphically combined commitment
@@ -415,7 +433,11 @@ where
 
     let gamma = transcript.challenge_scalar(b"gamma");
 
-    // In ZK mode: absorb scalar product proof into transcript before deriving d.
+    // In ZK mode: absorb the scalar product proof into the transcript before
+    // deriving d. Both the commitments (before the challenge c) and the
+    // responses (after c) are absorbed, mirroring the interactive protocol
+    // where the verifier samples the batching challenge d only after
+    // receiving the full proof.
     #[cfg(feature = "zk")]
     let zk_data = if is_zk {
         if let Some(ref sp) = proof.scalar_product_proof {
@@ -428,6 +450,11 @@ where
                 transcript.append_serde(l, v);
             }
             let c = transcript.challenge_scalar(b"sigma_c");
+            transcript.append_serde(b"sigma_e1", &sp.e1);
+            transcript.append_serde(b"sigma_e2", &sp.e2);
+            transcript.append_serde(b"sigma_r1", &sp.r1);
+            transcript.append_serde(b"sigma_r2", &sp.r2);
+            transcript.append_serde(b"sigma_r3", &sp.r3);
             Some((sp, c))
         } else {
             return Err(DoryError::InvalidProof);
@@ -436,9 +463,23 @@ where
         None
     };
 
-    // Shared: absorb final message and derive d.
-    transcript.append_serde(b"final_e1", &proof.final_message.e1);
-    transcript.append_serde(b"final_e2", &proof.final_message.e2);
+    // The clear final message must be present iff the proof is transparent:
+    // transparent proofs reveal the folded witness, ZK proofs must not.
+    #[cfg(feature = "zk")]
+    let expect_final_message = !is_zk;
+    #[cfg(not(feature = "zk"))]
+    let expect_final_message = true;
+
+    let final_message = match (&proof.final_message, expect_final_message) {
+        (Some(msg), true) => {
+            transcript.append_serde(b"final_e1", &msg.e1);
+            transcript.append_serde(b"final_e2", &msg.e2);
+            Some(msg)
+        }
+        (None, false) => None,
+        _ => return Err(DoryError::InvalidProof),
+    };
+
     let d = transcript.challenge_scalar(b"d");
 
     #[cfg(feature = "zk")]
@@ -446,5 +487,5 @@ where
     #[cfg(not(feature = "zk"))]
     let zk: Option<(&crate::messages::ScalarProductProof<_, _, _, _>, _)> = None;
 
-    verifier_state.verify_final(&proof.final_message, &gamma, &d, zk)
+    verifier_state.verify_final(final_message, &gamma, &d, zk)
 }

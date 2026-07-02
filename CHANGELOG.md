@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Fixed a critical soundness bug in ZK mode: the evaluation opening point was
+  not bound by the verifier.** A ZK evaluation proof created for a point `P`
+  verified at *any* point `P'`, letting a malicious prover open a committed
+  polynomial to a forged evaluation at an attacker-chosen point. Transparent
+  mode was unaffected.
+
+  Root cause: the 0.3.0 ZK final check was a collapsed 1-pairing scalar-product
+  argument over the *pre-fold* statement `(C, D₁, D₂)`. The opening point
+  reaches the verifier only through the folded scalars `s1_acc`/`s2_acc`, and
+  that check never read them — it dropped the point-binding terms (transparent
+  Pairs 2 & 3 and the `s1_acc·s2_acc·HT` term) with no zero-knowledge
+  replacement.
+
+  Fix: ZK mode now follows the original Dory construction (eprint 2020/1274,
+  §4.1 Fold-Scalars then §3.1 Scalar-Product). The prover applies the
+  Fold-Scalars reduction to its witness (`v₁ ← v₁ + γ·s₁·H₁`,
+  `v₂ ← v₂ + γ⁻¹·s₂·H₂`, `r_C ← r_C + γ·r_E2 + γ⁻¹·r_E1`) *before* running the
+  scalar-product Σ-argument, so the argument now opens the point-dependent
+  *folded* statement `(C′, D₁′, D₂′)`. The verifier reconstructs `(C′, D₁′, D₂′)`
+  from its own point-derived `s1_acc`/`s2_acc` and the E-accumulators, batched
+  into a 3-pairing check. This pins the point coefficient to the committed
+  witness while the folded coordinates `v₁[0]`/`v₂[0]` stay hidden.
+
+### Changed
+
+- **Breaking (proof format & API):** `DoryProof::final_message` is now
+  `Option<ScalarProductMessage>`. Transparent proofs carry `Some(..)` (the
+  revealed folded witness); ZK proofs carry `None` (revealing it would break
+  hiding — the scalar-product Σ-proof replaces it). ZK proofs from 0.3.0 no
+  longer verify and must be regenerated.
+- ZK final verification is now a 3-pairing check (was a collapsed 1-pairing
+  check). The scalar-product Σ-proof responses `(E₁, E₂, r₁, r₂, r₃)` are now
+  absorbed into the Fiat-Shamir transcript before the batching challenge `d` is
+  drawn, matching the interactive protocol.
+- The fresh final-message blinds `r_final1`/`r_final2` (sampled in
+  `compute_final_message`) are removed; they were an unconstrained degree of
+  freedom that any point-agnostic fix would have left exploitable.
+
+### Added
+
+- `DoryProverState::apply_fold_scalars` implementing the §4.1 Fold-Scalars
+  witness update (used by both transparent and ZK modes).
+- `zk_wrong_point` example and `test_zk_wrong_point_rejected` regression test:
+  a ZK proof for one point must not verify at another.
+- `test_zk_crafted_blind_shift_wrong_point_rejected`: an adversarial wrong-point
+  proof that shifts the Σ-proof blinds by the exact public point deltas (the
+  attack a naive "prove the residual is in the blinding span" fix would accept)
+  is rejected.
+- `test_soundness_missing_final_message` /
+  `test_zk_soundness_unexpected_final_message`: the clear final message must be
+  present iff the proof is transparent.
+
 ## [0.3.0] - 2026-02-27
 
 ### Added

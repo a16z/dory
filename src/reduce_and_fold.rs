@@ -357,46 +357,73 @@ where
         self.num_rounds -= 1;
     }
 
-    /// Compute final scalar product message
+    /// Apply the Fold-Scalars reduction (Dory paper, Section 4.1) to the witness.
     ///
-    /// Applies fold-scalars transformation and returns the final E1, E2 elements.
-    /// Must be called when num_rounds=0 (vectors are size 1).
+    /// Absorbs the public folded scalars into the witness vectors:
     ///
-    /// In ZK mode, E₁ and E₂ are additionally blinded with fresh randomness so
-    /// that the folded vectors `v₁[0]`, `v₂[0]` cannot be recovered from the
-    /// proof.
-    #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
-    pub fn compute_final_message<M1, M2>(
-        &mut self,
-        gamma: &Scalar<E>,
-    ) -> ScalarProductMessage<E::G1, E::G2>
-    where
-        M1: DoryRoutines<E::G1>,
-        M2: DoryRoutines<E::G2>,
-    {
-        debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for final message");
+    /// ```text
+    /// v₁ ← v₁ + (γ·s₁)·H₁,   v₂ ← v₂ + (γ⁻¹·s₂)·H₂,   r_C ← r_C + γ·r_E2 + γ⁻¹·r_E1
+    /// ```
+    ///
+    /// After this step `(v₁, v₂, r_C, r_D1, r_D2)` is a witness for the folded
+    /// statement `(C', D₁', D₂')` that the verifier derives from
+    /// `(C, D₁, D₂, E₁, E₂, s₁, s₂)` — see [`DoryVerifierState::verify_final`].
+    /// This reduction is what binds the evaluation point (via `s₁`, `s₂`) to
+    /// the final scalar-product argument, so it must be applied in both
+    /// transparent and ZK modes.
+    ///
+    /// Must be called when `num_rounds == 0` (vectors are size 1), before
+    /// [`Self::compute_final_message`] or [`Self::scalar_product_proof`].
+    pub fn apply_fold_scalars(&mut self, gamma: &Scalar<E>) {
+        debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for fold-scalars");
         debug_assert_eq!(self.v1.len(), 1, "v1 must have length 1");
         debug_assert_eq!(self.v2.len(), 1, "v2 must have length 1");
 
         let gamma_inv = gamma.inv().expect("gamma must be invertible");
 
-        let r_final1: Scalar<E> = M::sample();
-        let r_final2: Scalar<E> = M::sample();
+        // v₁ ← v₁ + (γ·s₁)·H₁
+        self.v1[0] = self.v1[0] + (*gamma * self.s1[0]) * self.setup.h1;
 
-        // E₁ = v₁ + (γ·s₁ + r_final1)·H₁
-        let gamma_s1 = *gamma * self.s1[0] + r_final1;
-        let e1 = self.v1[0] + gamma_s1 * self.setup.h1;
+        // v₂ ← v₂ + (γ⁻¹·s₂)·H₂
+        self.v2[0] = self.v2[0] + self.setup.h2.scale(&(gamma_inv * self.s2[0]));
 
-        // E₂ = v₂ + (γ⁻¹·s₂ + r_final2)·H₂
-        let gamma_inv_s2 = gamma_inv * self.s2[0] + r_final2;
-        let e2 = self.v2[0] + self.setup.h2.scale(&gamma_inv_s2);
-
+        // r_C ← r_C + γ·r_E2 + γ⁻¹·r_E1
         self.r_c = self.r_c + self.r_e2 * gamma + self.r_e1 * gamma_inv;
-
-        ScalarProductMessage { e1, e2 }
     }
 
-    /// Generate ZK scalar product proof. Must be called BEFORE `compute_final_message`.
+    /// Reveal the folded witness as the final scalar product message
+    /// (transparent mode only).
+    ///
+    /// Must be called after [`Self::apply_fold_scalars`]. The verifier checks
+    /// the revealed pair directly in the transparent 4-pairing final check.
+    /// In ZK mode no final message is sent; the scalar-product Σ-proof
+    /// ([`Self::scalar_product_proof`]) replaces it so that the folded witness
+    /// stays hidden.
+    #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
+    pub fn compute_final_message(&self) -> ScalarProductMessage<E::G1, E::G2> {
+        debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for final message");
+        debug_assert_eq!(self.v1.len(), 1, "v1 must have length 1");
+        debug_assert_eq!(self.v2.len(), 1, "v2 must have length 1");
+
+        ScalarProductMessage {
+            e1: self.v1[0],
+            e2: self.v2[0],
+        }
+    }
+
+    /// Generate the ZK scalar-product argument (Dory paper, Section 3.1).
+    ///
+    /// Must be called AFTER [`Self::apply_fold_scalars`], so that the witness
+    /// `(v₁, v₂, r_C, r_D1, r_D2)` opens the *folded* statement
+    /// `(C', D₁', D₂')` — the statement the verifier reconstructs using its
+    /// own point-derived `s1_acc`/`s2_acc` and the E-accumulators. Running the
+    /// argument on the pre-fold statement would leave the evaluation point
+    /// unbound (the proof would verify at any point).
+    ///
+    /// Appends both the commitments (P₁, P₂, Q, R) and — after the challenge
+    /// `c` — the responses (E₁, E₂, r₁, r₂, r₃) to the transcript: in the
+    /// interactive protocol the verifier samples the batching challenge `d`
+    /// only after receiving the full proof, so `d` must bind the responses.
     #[cfg(feature = "zk")]
     pub fn scalar_product_proof<T: Transcript<Curve = E>>(
         &self,
@@ -422,7 +449,7 @@ where
             transcript.append_serde(label, val);
         }
         let c = transcript.challenge_scalar(b"sigma_c");
-        ScalarProductProof {
+        let proof = ScalarProductProof {
             p1,
             p2,
             q,
@@ -432,7 +459,13 @@ where
             r1: rp1 + c * self.r_d1,
             r2: rp2 + c * self.r_d2,
             r3: rr + c * rq + c * c * self.r_c,
-        }
+        };
+        transcript.append_serde(b"sigma_e1", &proof.e1);
+        transcript.append_serde(b"sigma_e2", &proof.e2);
+        transcript.append_serde(b"sigma_r1", &proof.r1);
+        transcript.append_serde(b"sigma_r2", &proof.r2);
+        transcript.append_serde(b"sigma_r3", &proof.r3);
+        proof
     }
 }
 
@@ -664,8 +697,10 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     ///
     /// Must be called when `num_rounds == 0` after all reduce rounds are complete.
     ///
-    /// When `zk_data` is `None`, performs the transparent 4-pairing check.
-    /// When `zk_data` is `Some((sp, sigma_c))`, performs the ZK 1-pairing check.
+    /// When `zk_data` is `None`, performs the transparent 4-pairing check
+    /// against the revealed final message (`msg` must be `Some`).
+    /// When `zk_data` is `Some((sp, sigma_c))`, performs the ZK 3-pairing check
+    /// against the scalar-product Σ-proof (`msg` must be `None`).
     ///
     /// # Non-optimized Protocol Equations
     ///
@@ -719,16 +754,46 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     /// G2 elements (H₂ vs Γ₂₀). This differs from the original Dory construction
     /// where `D₂ = e(Γ₁·v, H₂)` allowed H₂-sharing.
     ///
-    /// # ZK Mode (1 ML + 1 FE)
+    /// # ZK Mode — Fold-Scalars + Scalar-Product (3 ML + 1 FE)
     ///
-    /// In ZK mode, the scalar product proof replaces the transparent check with a
-    /// Sigma-protocol equation proving knowledge of (v₁, v₂) opening (C, D₁, D₂).
-    /// E-accumulator and VMV binding are handled separately by Sigma₁/Sigma₂ proofs
-    /// verified earlier in the protocol.
+    /// In ZK mode the folded witness is never revealed. The verifier first
+    /// applies the Fold-Scalars reduction (Dory paper §4.1) to its accumulated
+    /// statement, using its *own* point-derived folded scalars `s1_acc`/`s2_acc`
+    /// and the E-accumulators:
+    ///
+    /// ```text
+    /// C'  = C  + (s₁·s₂)·HT + γ·e(H₁, E₂) + γ⁻¹·e(E₁, H₂)
+    /// D₁' = D₁ + (γ·s₁)·e(H₁, Γ₂₀)
+    /// D₂' = D₂ + (γ⁻¹·s₂)·e(Γ₁₀, H₂)
+    /// ```
+    ///
+    /// and then checks the scalar-product Σ-proof (paper §3.1) against the
+    /// *folded* statement:
     ///
     /// ```text
     /// e(sp.e₁ + d·Γ₁₀, sp.e₂ + d⁻¹·Γ₂₀)
-    ///   = χ₀ + sp.r + c·sp.q + c²·C
+    ///   = χ₀ + sp.r + c·sp.q + c²·C'
+    ///     + d·(sp.p₂ + c·D₂') + d⁻¹·(sp.p₁ + c·D₁')
+    ///     − (sp.r₃ + d·sp.r₂ + d⁻¹·sp.r₁)·HT
+    /// ```
+    ///
+    /// This is what binds the opening point in ZK mode: the point reaches the
+    /// verifier only through `s1_acc`/`s2_acc`, and here those values are
+    /// pinned to the committed witness inside `C'`/`D₁'`/`D₂'`. A proof
+    /// generated for a different point yields a different folded statement,
+    /// which the Σ-proof no longer opens. The VMV constraint (Pair 4 of the
+    /// transparent check) is proven by the Sigma₂ proof instead.
+    ///
+    /// To avoid computing `e(H₁, E₂)`, `e(E₁, H₂)`, `e(H₁, Γ₂₀)` and
+    /// `e(Γ₁₀, H₂)` separately, those terms are moved to the left-hand side
+    /// and grouped by their H₁/H₂ slot, giving a single 3-way multi-pairing
+    /// that mirrors Pairs 1–3 of the transparent check:
+    ///
+    /// ```text
+    /// e(sp.e₁ + d·Γ₁₀, sp.e₂ + d⁻¹·Γ₂₀)                    [Pair 1: scalar product]
+    ///   · e(H₁, (−c·γ)·(c·E₂_acc + (d⁻¹·s₁)·Γ₂₀))          [Pair 2: E₂ accumulator]
+    ///   · e((−c·γ⁻¹)·(c·E₁_acc + (d·s₂)·Γ₁₀), H₂)          [Pair 3: E₁ accumulator]
+    ///   = χ₀ + sp.r + c·sp.q + c²·(C + (s₁·s₂)·HT)
     ///     + d·(sp.p₂ + c·D₂) + d⁻¹·(sp.p₁ + c·D₁)
     ///     − (sp.r₃ + d·sp.r₂ + d⁻¹·sp.r₁)·HT
     /// ```
@@ -736,7 +801,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
     #[tracing::instrument(skip_all, name = "DoryVerifierState::verify_final")]
     pub fn verify_final(
         &self,
-        msg: &ScalarProductMessage<E::G1, E::G2>,
+        msg: Option<&ScalarProductMessage<E::G1, E::G2>>,
         gamma: &Scalar<E>,
         d: &Scalar<E>,
         zk_data: Option<(
@@ -757,17 +822,39 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         let d_inv = d.inv().ok_or(DoryError::InvalidProof)?;
 
         if let Some((sp, sigma_c)) = zk_data {
-            // ZK mode: 1 ML + 1 FE
+            // ZK mode: Fold-Scalars + Scalar-Product on the folded statement,
+            // batched into 3 ML + 1 FE (see doc comment above).
+            let gamma_inv = gamma.inv().ok_or(DoryError::InvalidProof)?;
             let c = *sigma_c;
             let c_sq = c * c;
 
-            let lhs = E::pair(
-                &(sp.e1 + self.setup.g1_0.scale(d)),
-                &(sp.e2 + self.setup.g2_0.scale(&d_inv)),
-            );
+            // Pair 1: e(sp.e₁ + d·Γ₁₀, sp.e₂ + d⁻¹·Γ₂₀)
+            let p1_g1 = sp.e1 + self.setup.g1_0.scale(d);
+            let p1_g2 = sp.e2 + self.setup.g2_0.scale(&d_inv);
 
+            // Pair 2: e(H₁, (−c·γ)·(c·E₂_acc + (d⁻¹·s₁)·Γ₂₀))
+            let neg_c_gamma = -(c * *gamma);
+            let p2_g1 = self.setup.h1;
+            let p2_g2 = (self.e2.scale(&c) + self.setup.g2_0.scale(&(d_inv * self.s1_acc)))
+                .scale(&neg_c_gamma);
+
+            // Pair 3: e((−c·γ⁻¹)·(c·E₁_acc + (d·s₂)·Γ₁₀), H₂)
+            let neg_c_gamma_inv = -(c * gamma_inv);
+            let p3_g1 = (self.e1.scale(&c) + self.setup.g1_0.scale(&(*d * self.s2_acc)))
+                .scale(&neg_c_gamma_inv);
+            let p3_g2 = self.setup.h2;
+
+            let lhs = E::multi_pair(&[p1_g1, p2_g1, p3_g1], &[p1_g2, p2_g2, p3_g2]);
+
+            // RHS: χ₀ + sp.r + c·sp.q + c²·(C + (s₁·s₂)·HT)
+            //      + d·(sp.p₂ + c·D₂) + d⁻¹·(sp.p₁ + c·D₁)
+            //      − (sp.r₃ + d·sp.r₂ + d⁻¹·sp.r₁)·HT
+            let s_product = self.s1_acc * self.s2_acc;
             let ht_scalar = sp.r3 + *d * sp.r2 + d_inv * sp.r1;
-            let mut rhs = self.setup.chi[0] + sp.r + sp.q.scale(&c) + self.c.scale(&c_sq);
+            let mut rhs = self.setup.chi[0]
+                + sp.r
+                + sp.q.scale(&c)
+                + (self.c + self.setup.ht.scale(&s_product)).scale(&c_sq);
             rhs = rhs + sp.p2.scale(d) + self.d2.scale(&(*d * c));
             rhs = rhs + sp.p1.scale(&d_inv) + self.d1.scale(&(d_inv * c));
             rhs = rhs - self.setup.ht.scale(&ht_scalar);
@@ -778,6 +865,7 @@ impl<E: PairingCurve> DoryVerifierState<E> {
                 Err(DoryError::InvalidProof)
             }
         } else {
+            let msg = msg.ok_or(DoryError::InvalidProof)?;
             // Transparent mode: 4 ML + 1 FE
             let gamma_inv = gamma.inv().ok_or(DoryError::InvalidProof)?;
             let d_sq = *d * *d;

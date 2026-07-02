@@ -98,6 +98,10 @@ required-features = ["backends", "zk"]
 name = "zk_statistical"
 required-features = ["backends", "zk"]
 
+[[example]]
+name = "zk_wrong_point"
+required-features = ["backends", "zk"]
+
 [[bench]]
 name = "arkworks_proof"
 harness = false

@@ -384,11 +384,32 @@ fn test_soundness_tamper_e2_minus() {
 }
 
 #[test]
+fn test_soundness_missing_final_message() {
+    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
+        create_valid_proof_components(256, 4, 4);
+
+    // Transparent proofs must reveal the folded witness; stripping it must fail.
+    proof.final_message = None;
+
+    let mut verifier_transcript = fresh_transcript();
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+        commitment,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut verifier_transcript,
+    );
+
+    assert!(result.is_err(), "Should fail with missing final message");
+}
+
+#[test]
 fn test_soundness_tamper_final_e1() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.final_message.e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    proof.final_message.as_mut().unwrap().e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -408,7 +429,7 @@ fn test_soundness_tamper_final_e2() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.final_message.e2 = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
+    proof.final_message.as_mut().unwrap().e2 = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -428,8 +449,8 @@ fn test_soundness_tamper_both_final_elements() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
         create_valid_proof_components(256, 4, 4);
 
-    proof.final_message.e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
-    proof.final_message.e2 = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
+    proof.final_message.as_mut().unwrap().e1 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    proof.final_message.as_mut().unwrap().e2 = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
@@ -572,8 +593,8 @@ fn test_soundness_identity_elements() {
         create_valid_proof_components(256, 4, 4);
 
     use dory_pcs::primitives::arithmetic::Group;
-    proof.final_message.e1 = ArkG1::identity();
-    proof.final_message.e2 = ArkG2::identity();
+    proof.final_message.as_mut().unwrap().e1 = ArkG1::identity();
+    proof.final_message.as_mut().unwrap().e2 = ArkG2::identity();
 
     let mut verifier_transcript = fresh_transcript();
     let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(

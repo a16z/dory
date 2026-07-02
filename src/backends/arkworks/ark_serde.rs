@@ -11,7 +11,7 @@ use ark_serialize::{
 use std::io::{Read, Write};
 
 use super::BN254;
-use crate::messages::{FirstReduceMessage, ScalarProductMessage, SecondReduceMessage, VMVMessage};
+use crate::messages::{FirstReduceMessage, SecondReduceMessage, VMVMessage};
 use crate::setup::{ProverSetup, VerifierSetup};
 
 impl Valid for ArkFr {
@@ -245,8 +245,7 @@ impl DoryDeserialize for ArkGT {
 // Arkworks-specific Dory proof type
 use super::ArkDoryProof;
 
-#[cfg(feature = "zk")]
-mod zk_serde {
+mod opt_serde {
     use ark_serialize::{
         CanonicalDeserialize as De, CanonicalSerialize as Ser, Compress, SerializationError, Valid,
         Validate,
@@ -304,10 +303,15 @@ mod zk_serde {
     }
 
     use super::{ArkFr, ArkG1, ArkG2, ArkGT};
-    use crate::messages::{ScalarProductProof, Sigma1Proof, Sigma2Proof};
+    use crate::messages::{ScalarProductMessage, ScalarProductProof};
+    #[cfg(feature = "zk")]
+    use crate::messages::{Sigma1Proof, Sigma2Proof};
 
+    #[cfg(feature = "zk")]
     impl_serde!(Sigma1Proof<ArkG1, ArkG2, ArkFr>, [a1, a2, z1, z2, z3]);
+    #[cfg(feature = "zk")]
     impl_serde!(Sigma2Proof<ArkFr, ArkGT>, [a, z1, z2]);
+    impl_serde!(ScalarProductMessage<ArkG1, ArkG2>, [e1, e2]);
     impl_serde!(ScalarProductProof<ArkG1, ArkG2, ArkFr, ArkGT>, [p1, p2, q, r, e1, e2, r1, r2, r3]);
 }
 
@@ -352,9 +356,8 @@ impl CanonicalSerialize for ArkDoryProof {
             CanonicalSerialize::serialize_with_mode(&msg.e2_minus, &mut writer, compress)?;
         }
 
-        // Serialize final message
-        CanonicalSerialize::serialize_with_mode(&self.final_message.e1, &mut writer, compress)?;
-        CanonicalSerialize::serialize_with_mode(&self.final_message.e2, &mut writer, compress)?;
+        // Serialize final message (present in transparent proofs only)
+        opt_serde::ser_opt(&self.final_message, &mut writer, compress)?;
 
         // Serialize nu and sigma
         CanonicalSerialize::serialize_with_mode(&(self.nu as u32), &mut writer, compress)?;
@@ -362,11 +365,11 @@ impl CanonicalSerialize for ArkDoryProof {
 
         #[cfg(feature = "zk")]
         {
-            zk_serde::ser_opt(&self.e2, &mut writer, compress)?;
-            zk_serde::ser_opt(&self.y_com, &mut writer, compress)?;
-            zk_serde::ser_opt(&self.sigma1_proof, &mut writer, compress)?;
-            zk_serde::ser_opt(&self.sigma2_proof, &mut writer, compress)?;
-            zk_serde::ser_opt(&self.scalar_product_proof, &mut writer, compress)?;
+            opt_serde::ser_opt(&self.e2, &mut writer, compress)?;
+            opt_serde::ser_opt(&self.y_com, &mut writer, compress)?;
+            opt_serde::ser_opt(&self.sigma1_proof, &mut writer, compress)?;
+            opt_serde::ser_opt(&self.sigma2_proof, &mut writer, compress)?;
+            opt_serde::ser_opt(&self.scalar_product_proof, &mut writer, compress)?;
         }
 
         Ok(())
@@ -403,20 +406,19 @@ impl CanonicalSerialize for ArkDoryProof {
             size += CanonicalSerialize::serialized_size(&msg.e2_minus, compress);
         }
 
-        // Final message
-        size += CanonicalSerialize::serialized_size(&self.final_message.e1, compress);
-        size += CanonicalSerialize::serialized_size(&self.final_message.e2, compress);
+        // Final message (present in transparent proofs only)
+        size += opt_serde::size_opt(&self.final_message, compress);
 
         // nu and sigma
         size += 8; // 2 * u32
 
         #[cfg(feature = "zk")]
         {
-            size += zk_serde::size_opt(&self.e2, compress);
-            size += zk_serde::size_opt(&self.y_com, compress);
-            size += zk_serde::size_opt(&self.sigma1_proof, compress);
-            size += zk_serde::size_opt(&self.sigma2_proof, compress);
-            size += zk_serde::size_opt(&self.scalar_product_proof, compress);
+            size += opt_serde::size_opt(&self.e2, compress);
+            size += opt_serde::size_opt(&self.y_com, compress);
+            size += opt_serde::size_opt(&self.sigma1_proof, compress);
+            size += opt_serde::size_opt(&self.sigma2_proof, compress);
+            size += opt_serde::size_opt(&self.scalar_product_proof, compress);
         }
 
         size
@@ -490,10 +492,8 @@ impl CanonicalDeserialize for ArkDoryProof {
             });
         }
 
-        // Deserialize final message
-        let e1 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
-        let e2 = CanonicalDeserialize::deserialize_with_mode(&mut reader, compress, validate)?;
-        let final_message = ScalarProductMessage { e1, e2 };
+        // Deserialize final message (present in transparent proofs only)
+        let final_message = opt_serde::de_opt(&mut reader, compress, validate)?;
 
         // Deserialize nu and sigma
         let nu =
@@ -511,15 +511,15 @@ impl CanonicalDeserialize for ArkDoryProof {
             nu,
             sigma,
             #[cfg(feature = "zk")]
-            e2: zk_serde::de_opt(&mut reader, compress, validate)?,
+            e2: opt_serde::de_opt(&mut reader, compress, validate)?,
             #[cfg(feature = "zk")]
-            y_com: zk_serde::de_opt(&mut reader, compress, validate)?,
+            y_com: opt_serde::de_opt(&mut reader, compress, validate)?,
             #[cfg(feature = "zk")]
-            sigma1_proof: zk_serde::de_opt(&mut reader, compress, validate)?,
+            sigma1_proof: opt_serde::de_opt(&mut reader, compress, validate)?,
             #[cfg(feature = "zk")]
-            sigma2_proof: zk_serde::de_opt(&mut reader, compress, validate)?,
+            sigma2_proof: opt_serde::de_opt(&mut reader, compress, validate)?,
             #[cfg(feature = "zk")]
-            scalar_product_proof: zk_serde::de_opt(&mut reader, compress, validate)?,
+            scalar_product_proof: opt_serde::de_opt(&mut reader, compress, validate)?,
         })
     }
 }

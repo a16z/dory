@@ -28,8 +28,12 @@ pub struct DoryProof<G1: Group, G2, GT> {
     /// Second reduce messages for each round (nu rounds total)
     pub second_messages: Vec<SecondReduceMessage<G1, G2, GT>>,
 
-    /// Final scalar product message
-    pub final_message: ScalarProductMessage<G1, G2>,
+    /// Final scalar product message revealing the folded witness.
+    ///
+    /// `Some` in transparent mode. `None` in ZK mode, where revealing the
+    /// folded witness would break hiding: the scalar-product Σ-proof
+    /// (`scalar_product_proof`) replaces it.
+    pub final_message: Option<ScalarProductMessage<G1, G2>>,
 
     /// Log₂ of number of rows in the coefficient matrix
     pub nu: usize,
