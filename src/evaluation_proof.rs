@@ -3,7 +3,8 @@
 //! Implements the full proof generation and verification by:
 //! 1. Computing VMV message (C, D2, E1)
 //! 2. Running max(nu, sigma) rounds of inner product protocol (reduce and fold)
-//! 3. Producing final scalar product message
+//! 3. Producing the final scalar product message (transparent) or the
+//!    scalar-product Σ-proof (ZK)
 //!
 //! ## Matrix Layout
 //!
@@ -32,7 +33,8 @@ use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 use crate::primitives::poly::MultilinearLagrange;
 use crate::primitives::transcript::Transcript;
 use crate::proof::DoryProof;
-use crate::reduce_and_fold::{DoryProverState, DoryVerifierState};
+use crate::proof::ProofMode;
+use crate::reduce_and_fold::{DoryProverState, DoryVerifierState, FinalCheck};
 use crate::setup::{ProverSetup, VerifierSetup};
 
 /// Create evaluation proof for a polynomial at a point
@@ -66,7 +68,8 @@ use crate::setup::{ProverSetup, VerifierSetup};
 /// - `transcript`: Fiat-Shamir transcript for challenge generation
 ///
 /// # Returns
-/// Complete Dory proof containing VMV message, reduce messages, and final message
+/// Complete Dory proof containing the VMV message, reduce messages, and the
+/// final message (transparent) or Σ-proofs (ZK)
 ///
 /// # Errors
 /// Returns error if dimensions are invalid (nu > sigma) or protocol fails
@@ -271,6 +274,15 @@ where
         #[cfg(feature = "zk")]
         scalar_product_proof,
     };
+    // Hard assert (release builds included): a malformed shape here is a
+    // library bug, and the ZK failure mode — emitting the clear folded
+    // witness alongside the Σ-proofs — would leak what the proof must hide.
+    // Failing loudly beats shipping a leaky proof, and the check is a few
+    // Option reads against seconds of proving work.
+    assert!(
+        proof.mode().is_ok(),
+        "prover constructed a malformed proof shape"
+    );
     #[cfg(feature = "zk")]
     return Ok((proof, zk_r_y));
     #[cfg(not(feature = "zk"))]
@@ -289,8 +301,9 @@ where
 /// 4. Run max(nu, sigma) rounds of reduce-and-fold verification (with automatic padding)
 /// 5. Derive gamma and d challenges
 /// 6. Verify the final scalar product relation against the Fold-Scalars-updated
-///    statement (transparent: 4-pairing check of the revealed witness;
-///    ZK: 3-pairing check of the scalar-product Σ-proof)
+///    statement, with the VMV constraint batched in at the d² slot — a single
+///    4-pairing check in both modes (transparent: revealed witness + direct VMV
+///    pair; ZK: scalar-product Σ-proof + batched Σ₂ proof)
 ///
 /// # Parameters
 /// - `commitment`: Polynomial commitment (in GT) - can be a homomorphically combined commitment
@@ -340,37 +353,51 @@ where
         });
     }
 
+    // nu and sigma are untrusted proof fields; the layout constraint nu ≤
+    // sigma (which `create_evaluation_proof` enforces) must be re-validated
+    // here, both for soundness of the layout and because nu is used below to
+    // slice buffers of length sigma — the verifier must reject, never panic,
+    // on malformed input.
+    if nu > sigma {
+        return Err(DoryError::InvalidSize {
+            expected: sigma,
+            actual: nu,
+        });
+    }
+
+    // Single shape gate: a proof must be fully transparent or fully ZK;
+    // mix-and-match shapes are rejected before anything is absorbed, and all
+    // optional fields are only ever read through the returned mode.
+    let mode = proof.mode()?;
+
     let vmv_message = &proof.vmv_message;
     transcript.append_serde(b"vmv_c", &vmv_message.c);
     transcript.append_serde(b"vmv_d2", &vmv_message.d2);
     transcript.append_serde(b"vmv_e1", &vmv_message.e1);
 
+    // ZK mode: the Σ₁ proof is checked here; the Σ₂ proof (VMV constraint) is
+    // only absorbed here — its check is batched into the final multi-pairing
+    // (verify_final), so it is carried to the end together with its challenge.
     #[cfg(feature = "zk")]
-    let (e2, is_zk) = match (&proof.e2, &proof.y_com) {
-        (Some(pe2), Some(yc)) => {
-            use crate::reduce_and_fold::{verify_sigma1_proof, verify_sigma2_proof};
-            transcript.append_serde(b"vmv_e2", pe2);
-            transcript.append_serde(b"vmv_y_com", yc);
-            match (&proof.sigma1_proof, &proof.sigma2_proof) {
-                (Some(s1), Some(s2)) => {
-                    verify_sigma1_proof::<E, T>(pe2, yc, s1, &setup, transcript)?;
-                    verify_sigma2_proof::<E, T>(
-                        &vmv_message.e1,
-                        &vmv_message.d2,
-                        s2,
-                        &setup,
-                        transcript,
-                    )?;
-                }
-                _ => return Err(DoryError::InvalidProof),
-            }
-            (*pe2, true)
+    let (e2, zk_final) = match mode {
+        ProofMode::Zk {
+            e2,
+            y_com,
+            sigma1,
+            sigma2,
+            scalar_product,
+        } => {
+            use crate::reduce_and_fold::{absorb_sigma2_proof, verify_sigma1_proof};
+            transcript.append_serde(b"vmv_e2", e2);
+            transcript.append_serde(b"vmv_y_com", y_com);
+            verify_sigma1_proof::<E, T>(e2, y_com, sigma1, &setup, transcript)?;
+            let sigma2_c = absorb_sigma2_proof::<E, T>(sigma2, transcript);
+            (*e2, Some((scalar_product, sigma2, sigma2_c)))
         }
-        (None, None) => (setup.g2_0.scale(&evaluation), false),
-        _ => return Err(DoryError::InvalidProof),
+        ProofMode::Transparent(..) => (setup.g2_0.scale(&evaluation), None),
     };
     #[cfg(not(feature = "zk"))]
-    let (e2, _is_zk) = (setup.g2_0.scale(&evaluation), false);
+    let e2 = setup.g2_0.scale(&evaluation);
 
     // Folded-scalar accumulation with per-round coordinates.
     // num_rounds = sigma (we fold column dimensions).
@@ -433,59 +460,35 @@ where
 
     let gamma = transcript.challenge_scalar(b"gamma");
 
-    // In ZK mode: absorb the scalar product proof into the transcript before
-    // deriving d. Both the commitments (before the challenge c) and the
-    // responses (after c) are absorbed, mirroring the interactive protocol
-    // where the verifier samples the batching challenge d only after
-    // receiving the full proof.
+    // ZK mode: absorb the scalar product proof into the transcript before
+    // deriving d, mirroring the interactive protocol where the verifier
+    // samples the batching challenge d only after receiving the full proof.
     #[cfg(feature = "zk")]
-    let zk_data = if is_zk {
-        if let Some(ref sp) = proof.scalar_product_proof {
-            for (l, v) in [
-                (b"sigma_p1" as &[u8], &sp.p1),
-                (b"sigma_p2", &sp.p2),
-                (b"sigma_q", &sp.q),
-                (b"sigma_r", &sp.r),
-            ] {
-                transcript.append_serde(l, v);
-            }
-            let c = transcript.challenge_scalar(b"sigma_c");
-            transcript.append_serde(b"sigma_e1", &sp.e1);
-            transcript.append_serde(b"sigma_e2", &sp.e2);
-            transcript.append_serde(b"sigma_r1", &sp.r1);
-            transcript.append_serde(b"sigma_r2", &sp.r2);
-            transcript.append_serde(b"sigma_r3", &sp.r3);
-            Some((sp, c))
-        } else {
-            return Err(DoryError::InvalidProof);
-        }
-    } else {
-        None
+    if let Some((sp, sigma2, sigma2_c)) = zk_final {
+        use crate::reduce_and_fold::absorb_scalar_product_proof;
+        let sigma_c = absorb_scalar_product_proof::<E, T>(sp, transcript);
+        let d = transcript.challenge_scalar(b"d");
+        return verifier_state.verify_final(
+            FinalCheck::Zk {
+                scalar_product: sp,
+                sigma_c,
+                sigma2,
+                sigma2_c,
+            },
+            &gamma,
+            &d,
+        );
+    }
+
+    // Transparent mode: the revealed folded witness is the final message.
+    let msg = match mode {
+        ProofMode::Transparent(msg, _) => msg,
+        #[cfg(feature = "zk")]
+        ProofMode::Zk { .. } => return Err(DoryError::InvalidProof),
     };
-
-    // The clear final message must be present iff the proof is transparent:
-    // transparent proofs reveal the folded witness, ZK proofs must not.
-    #[cfg(feature = "zk")]
-    let expect_final_message = !is_zk;
-    #[cfg(not(feature = "zk"))]
-    let expect_final_message = true;
-
-    let final_message = match (&proof.final_message, expect_final_message) {
-        (Some(msg), true) => {
-            transcript.append_serde(b"final_e1", &msg.e1);
-            transcript.append_serde(b"final_e2", &msg.e2);
-            Some(msg)
-        }
-        (None, false) => None,
-        _ => return Err(DoryError::InvalidProof),
-    };
-
+    transcript.append_serde(b"final_e1", &msg.e1);
+    transcript.append_serde(b"final_e2", &msg.e2);
     let d = transcript.challenge_scalar(b"d");
 
-    #[cfg(feature = "zk")]
-    let zk = zk_data.as_ref().map(|(sp, c)| (*sp, c));
-    #[cfg(not(feature = "zk"))]
-    let zk: Option<(&crate::messages::ScalarProductProof<_, _, _, _>, _)> = None;
-
-    verifier_state.verify_final(final_message, &gamma, &d, zk)
+    verifier_state.verify_final(FinalCheck::Transparent(msg), &gamma, &d)
 }

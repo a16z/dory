@@ -80,6 +80,9 @@ pub struct Sigma1Proof<G1, G2, F> {
 }
 
 /// Σ-protocol 2: proves e(E1, Γ2,fin) - D2 = e(H1, t1·Γ2,fin + t2·H2).
+///
+/// Checked as part of the final batched multi-pairing (at the `d²` slot); its
+/// responses `(z₁, z₂)` are transcript-bound before the batching challenge `d`.
 #[cfg(feature = "zk")]
 #[derive(Clone, Debug, PartialEq)]
 #[allow(missing_docs)]

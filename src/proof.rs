@@ -3,8 +3,9 @@
 //! A Dory proof consists of:
 //! - VMV message (PCS transform)
 //! - Multiple rounds of reduce messages (log n rounds)
-//! - Final scalar product message
+//! - Final scalar product message (transparent) or Σ-proofs (ZK)
 
+use crate::error::DoryError;
 use crate::messages::*;
 use crate::primitives::arithmetic::Group;
 
@@ -56,4 +57,96 @@ pub struct DoryProof<G1: Group, G2, GT> {
     /// ZK scalar product proof: (C, D₁, D₂) consistency with blinded vectors
     #[cfg(feature = "zk")]
     pub scalar_product_proof: Option<ScalarProductProof<G1, G2, G1::Scalar, GT>>,
+}
+
+/// A [`DoryProof`] classified by mode, carrying references to the fields that
+/// mode guarantees (see [`DoryProof::mode`]).
+pub enum ProofMode<'a, G1: Group, G2, GT> {
+    /// Transparent proof: reveals the folded witness as the clear final
+    /// message and carries no ZK fields. (The phantom ties down `GT`, which
+    /// only the ZK variant otherwise uses.)
+    Transparent(
+        &'a ScalarProductMessage<G1, G2>,
+        core::marker::PhantomData<fn() -> GT>,
+    ),
+    /// ZK proof: carries every blinding field and Σ-proof, and no clear final
+    /// message.
+    #[cfg(feature = "zk")]
+    Zk {
+        /// Blinded E₂ from the VMV message.
+        e2: &'a G2,
+        /// Pedersen commitment to the claimed evaluation.
+        y_com: &'a G1,
+        /// Σ₁ proof: E₂ and y_com commit to the same y.
+        sigma1: &'a Sigma1Proof<G1, G2, G1::Scalar>,
+        /// Σ₂ proof: VMV constraint (batched into the final check).
+        sigma2: &'a Sigma2Proof<G1::Scalar, GT>,
+        /// Scalar-product Σ-proof over the folded statement.
+        scalar_product: &'a ScalarProductProof<G1, G2, G1::Scalar, GT>,
+    },
+}
+
+// Manual impls: the derives would needlessly require G1/G2/GT: Copy even
+// though the variants hold only references.
+impl<G1: Group, G2, GT> Clone for ProofMode<'_, G1, G2, GT> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<G1: Group, G2, GT> Copy for ProofMode<'_, G1, G2, GT> {}
+
+impl<G1: Group, G2, GT> DoryProof<G1, G2, GT> {
+    /// Classify this proof by shape, rejecting mix-and-match proofs.
+    ///
+    /// A proof must be *fully* transparent — clear final message present, no
+    /// ZK fields — or *fully* ZK — every ZK field present, no clear final
+    /// message. Anything in between is malformed: extra fields would either be
+    /// ignored by verification (making the proof bytes malleable — two
+    /// distinct serialized proofs for one statement) or reveal data a ZK proof
+    /// must hide.
+    ///
+    /// This is the single enforcement point of that invariant;
+    /// `verify_evaluation_proof` calls it before reading any optional field,
+    /// and the returned [`ProofMode`] hands out references to exactly the
+    /// fields the shape guarantees.
+    ///
+    /// # Errors
+    /// Returns [`DoryError::InvalidProof`] for any mixed or incomplete shape.
+    pub fn mode(&self) -> Result<ProofMode<'_, G1, G2, GT>, DoryError> {
+        #[cfg(feature = "zk")]
+        {
+            if let (Some(e2), Some(y_com), Some(sigma1), Some(sigma2), Some(scalar_product)) = (
+                &self.e2,
+                &self.y_com,
+                &self.sigma1_proof,
+                &self.sigma2_proof,
+                &self.scalar_product_proof,
+            ) {
+                return if self.final_message.is_none() {
+                    Ok(ProofMode::Zk {
+                        e2,
+                        y_com,
+                        sigma1,
+                        sigma2,
+                        scalar_product,
+                    })
+                } else {
+                    Err(DoryError::InvalidProof)
+                };
+            }
+            // Not fully ZK: every ZK field must then be absent.
+            if self.e2.is_some()
+                || self.y_com.is_some()
+                || self.sigma1_proof.is_some()
+                || self.sigma2_proof.is_some()
+                || self.scalar_product_proof.is_some()
+            {
+                return Err(DoryError::InvalidProof);
+            }
+        }
+        self.final_message
+            .as_ref()
+            .map(|msg| ProofMode::Transparent(msg, core::marker::PhantomData))
+            .ok_or(DoryError::InvalidProof)
+    }
 }

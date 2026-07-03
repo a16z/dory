@@ -404,6 +404,113 @@ fn test_soundness_missing_final_message() {
     assert!(result.is_err(), "Should fail with missing final message");
 }
 
+/// The verifier must reject — not panic on — proofs claiming nu > sigma: nu
+/// and sigma are untrusted proof fields, and nu is used to slice point-derived
+/// buffers of length sigma. This crafted layout passes the point-dimension and
+/// message-count checks and previously panicked the verifier.
+#[test]
+fn test_soundness_nu_exceeds_sigma_rejected() {
+    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
+        create_valid_proof_components(256, 4, 4);
+
+    // One round-message pair with nu + sigma still matching the point length.
+    proof.first_messages.truncate(1);
+    proof.second_messages.truncate(1);
+    proof.nu = 7;
+    proof.sigma = 1;
+
+    let mut verifier_transcript = fresh_transcript();
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+        commitment,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut verifier_transcript,
+    );
+
+    assert!(
+        result.is_err(),
+        "nu > sigma must be rejected with an error, never a panic"
+    );
+}
+
+/// Mixed-shape proofs must be rejected outright: a valid transparent proof
+/// carrying a stray ZK field would otherwise verify with the field silently
+/// ignored, making the proof bytes malleable (two distinct serialized proofs
+/// for the same statement).
+#[cfg(feature = "zk")]
+#[test]
+fn test_soundness_transparent_proof_with_stray_sigma1() {
+    use dory_pcs::Sigma1Proof;
+
+    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
+        create_valid_proof_components(256, 4, 4);
+
+    let mut rng = rand::thread_rng();
+    proof.sigma1_proof = Some(Sigma1Proof {
+        a1: ArkG2(G2Projective::rand(&mut rng)),
+        a2: ArkG1(G1Projective::rand(&mut rng)),
+        z1: ArkFr(Fr::rand(&mut rng)),
+        z2: ArkFr(Fr::rand(&mut rng)),
+        z3: ArkFr(Fr::rand(&mut rng)),
+    });
+
+    let mut verifier_transcript = fresh_transcript();
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+        commitment,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut verifier_transcript,
+    );
+
+    assert!(
+        result.is_err(),
+        "Transparent proof with a stray sigma1 proof must be rejected"
+    );
+}
+
+/// Same as above for a stray scalar-product Σ-proof — before the up-front
+/// shape check this field was ignored on the transparent path.
+#[cfg(feature = "zk")]
+#[test]
+fn test_soundness_transparent_proof_with_stray_scalar_product_proof() {
+    use dory_pcs::ScalarProductProof;
+
+    let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =
+        create_valid_proof_components(256, 4, 4);
+
+    let mut rng = rand::thread_rng();
+    proof.scalar_product_proof = Some(ScalarProductProof {
+        p1: ArkGT(PairingOutput(Fq12::rand(&mut rng))),
+        p2: ArkGT(PairingOutput(Fq12::rand(&mut rng))),
+        q: ArkGT(PairingOutput(Fq12::rand(&mut rng))),
+        r: ArkGT(PairingOutput(Fq12::rand(&mut rng))),
+        e1: ArkG1(G1Projective::rand(&mut rng)),
+        e2: ArkG2(G2Projective::rand(&mut rng)),
+        r1: ArkFr(Fr::rand(&mut rng)),
+        r2: ArkFr(Fr::rand(&mut rng)),
+        r3: ArkFr(Fr::rand(&mut rng)),
+    });
+
+    let mut verifier_transcript = fresh_transcript();
+    let result = verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+        commitment,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup,
+        &mut verifier_transcript,
+    );
+
+    assert!(
+        result.is_err(),
+        "Transparent proof with a stray scalar-product proof must be rejected"
+    );
+}
+
 #[test]
 fn test_soundness_tamper_final_e1() {
     let (_, verifier_setup, _, point, commitment, evaluation, mut proof) =

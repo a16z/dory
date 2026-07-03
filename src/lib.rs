@@ -119,8 +119,8 @@ pub use mode::{Mode, Transparent};
 use primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 pub use primitives::poly::{MultilinearLagrange, Polynomial};
 use primitives::serialization::{DoryDeserialize, DorySerialize};
-pub use proof::DoryProof;
-pub use reduce_and_fold::{DoryProverState, DoryVerifierState};
+pub use proof::{DoryProof, ProofMode};
+pub use reduce_and_fold::{DoryProverState, DoryVerifierState, FinalCheck};
 pub use setup::{ProverSetup, VerifierSetup};
 
 /// Generate or load prover and verifier setups from disk
@@ -248,7 +248,8 @@ where
 /// - `transcript`: Fiat-Shamir transcript
 ///
 /// # Returns
-/// The evaluation proof containing VMV message, reduce messages, and final message
+/// The evaluation proof containing the VMV message, reduce messages, and the
+/// final message (transparent) or Σ-proofs (ZK)
 ///
 /// # Homomorphic Properties
 /// Proofs can be created for homomorphically combined polynomials. If you have
