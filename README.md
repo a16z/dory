@@ -25,21 +25,21 @@ Add `dory-pcs` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dory-pcs = "0.3"
+dory-pcs = "0.4"
 ```
 
 Or with specific features:
 
 ```toml
 [dependencies]
-dory-pcs = { version = "0.3", features = ["backends", "disk-persistence"] }
+dory-pcs = { version = "0.4", features = ["backends", "disk-persistence"] }
 ```
 
 For maximum performance with all optimizations:
 
 ```toml
 [dependencies]
-dory-pcs = { version = "0.3", features = ["backends", "cache", "parallel", "disk-persistence"] }
+dory-pcs = { version = "0.4", features = ["backends", "cache", "parallel", "disk-persistence"] }
 ```
 
 ## Architecture
