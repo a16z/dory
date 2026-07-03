@@ -143,13 +143,11 @@ fn collect_full_zk_proof_stats(proof: &ArkDoryProof, tracker: &mut BucketTracker
         );
     }
 
-    tracker.record(
-        "zk_final_e1",
-        bucket_from_serializable(&proof.final_message.e1),
-    );
-    tracker.record(
-        "zk_final_e2",
-        bucket_from_serializable(&proof.final_message.e2),
+    // ZK proofs must not reveal the folded witness: the clear final message is
+    // omitted entirely (the scalar-product Σ-proof below replaces it).
+    assert!(
+        proof.final_message.is_none(),
+        "ZK proof must not carry a clear final message"
     );
 
     if let Some(ref sigma1) = proof.sigma1_proof {

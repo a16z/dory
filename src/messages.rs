@@ -56,7 +56,9 @@ pub struct VMVMessage<G1, GT> {
 
 /// Final scalar product message (Section 3.1)
 ///
-/// Contains E₁, E₂ for the final pairing verification
+/// Contains E₁, E₂ for the final pairing verification. Sent in transparent
+/// mode only: it reveals the (fold-scalars-updated) witness, so in ZK mode it
+/// is replaced by [`ScalarProductProof`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarProductMessage<G1, G2> {
     /// E₁ - final G1 element
@@ -78,6 +80,9 @@ pub struct Sigma1Proof<G1, G2, F> {
 }
 
 /// Σ-protocol 2: proves e(E1, Γ2,fin) - D2 = e(H1, t1·Γ2,fin + t2·H2).
+///
+/// Checked as part of the final batched multi-pairing (at the `d²` slot); its
+/// responses `(z₁, z₂)` are transcript-bound before the batching challenge `d`.
 #[cfg(feature = "zk")]
 #[derive(Clone, Debug, PartialEq)]
 #[allow(missing_docs)]
@@ -87,7 +92,10 @@ pub struct Sigma2Proof<F, GT> {
     pub z2: F,
 }
 
-/// ZK scalar product proof: proves (C, D1, D2) are consistent with blinded v1, v2.
+/// ZK scalar product proof (Dory paper, Section 3.1).
+///
+/// Proves knowledge of a hidden witness (v₁, v₂, r_C, r_D1, r_D2) opening the
+/// *fold-scalars-updated* statement (C′, D₁′, D₂′)
 #[derive(Clone, Debug, PartialEq)]
 #[allow(missing_docs)]
 pub struct ScalarProductProof<G1, G2, F, GT> {

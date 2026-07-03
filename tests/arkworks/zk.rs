@@ -392,6 +392,17 @@ fn verify_tampered_zk_proof(
     )
 }
 
+/// Harness for single-field tamper regression tests: create an honest ZK
+/// proof, apply one prover-side mutation, and require verification to fail.
+/// Uses a small (16, 2, 2) instance — tamper detection is size-independent.
+fn assert_zk_tamper_rejected(what: &str, tamper: impl FnOnce(&mut DoryProof<ArkG1, ArkG2, ArkGT>)) {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(16, 2, 2);
+    tamper(&mut proof);
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(result.is_err(), "Should fail with tampered {what}");
+}
+
 #[test]
 fn test_zk_soundness_missing_sigma1_proof() {
     let (verifier_setup, point, commitment, evaluation, mut proof) =
@@ -483,6 +494,27 @@ fn test_zk_soundness_tampered_sigma1_a1() {
 }
 
 #[test]
+fn test_zk_soundness_tampered_sigma1_a2() {
+    assert_zk_tamper_rejected("sigma1 a2", |p| {
+        p.sigma1_proof.as_mut().unwrap().a2 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_sigma1_z2() {
+    assert_zk_tamper_rejected("sigma1 z2", |p| {
+        p.sigma1_proof.as_mut().unwrap().z2 = ArkFr(Fr::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_sigma1_z3() {
+    assert_zk_tamper_rejected("sigma1 z3", |p| {
+        p.sigma1_proof.as_mut().unwrap().z3 = ArkFr(Fr::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
 fn test_zk_soundness_tampered_sigma2_z1() {
     let (verifier_setup, point, commitment, evaluation, mut proof) =
         create_valid_zk_proof_components(256, 4, 4);
@@ -506,6 +538,21 @@ fn test_zk_soundness_tampered_sigma2_a() {
 
     let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
     assert!(result.is_err(), "Should fail with tampered sigma2 a");
+}
+
+/// z₂ scales HT at the d² slot of the batched final check (the direction the
+/// Σ₂ check contributes alongside z₁'s Γ₂₀ direction); it must be bound.
+#[test]
+fn test_zk_soundness_tampered_sigma2_z2() {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(256, 4, 4);
+
+    if let Some(ref mut s) = proof.sigma2_proof {
+        s.z2 = ArkFr(Fr::rand(&mut rand::thread_rng()));
+    }
+
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(result.is_err(), "Should fail with tampered sigma2 z2");
 }
 
 #[test]
@@ -553,6 +600,106 @@ fn test_zk_soundness_tampered_sp_r3() {
     assert!(
         result.is_err(),
         "Should fail with tampered scalar product r3"
+    );
+}
+
+/// Complete per-component coverage of the batched final equation: every
+/// remaining scalar-product proof field, one at a time. e2 enters Pair 1's G2
+/// slot; p2/q/r enter the RHS commitment terms; r1/r2 enter the merged
+/// HT scalar (r₃ + d·r₂ + d⁻¹·r₁) alongside r3 above.
+#[test]
+fn test_zk_soundness_tampered_sp_e2() {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(256, 4, 4);
+
+    if let Some(ref mut sp) = proof.scalar_product_proof {
+        sp.e2 = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
+    }
+
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(
+        result.is_err(),
+        "Should fail with tampered scalar product e2"
+    );
+}
+
+#[test]
+fn test_zk_soundness_tampered_sp_p2() {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(256, 4, 4);
+
+    if let Some(ref mut sp) = proof.scalar_product_proof {
+        sp.p2 = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    }
+
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(
+        result.is_err(),
+        "Should fail with tampered scalar product p2"
+    );
+}
+
+#[test]
+fn test_zk_soundness_tampered_sp_q() {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(256, 4, 4);
+
+    if let Some(ref mut sp) = proof.scalar_product_proof {
+        sp.q = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    }
+
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(
+        result.is_err(),
+        "Should fail with tampered scalar product q"
+    );
+}
+
+#[test]
+fn test_zk_soundness_tampered_sp_r() {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(256, 4, 4);
+
+    if let Some(ref mut sp) = proof.scalar_product_proof {
+        sp.r = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    }
+
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(
+        result.is_err(),
+        "Should fail with tampered scalar product r"
+    );
+}
+
+#[test]
+fn test_zk_soundness_tampered_sp_r1() {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(256, 4, 4);
+
+    if let Some(ref mut sp) = proof.scalar_product_proof {
+        sp.r1 = ArkFr(Fr::rand(&mut rand::thread_rng()));
+    }
+
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(
+        result.is_err(),
+        "Should fail with tampered scalar product r1"
+    );
+}
+
+#[test]
+fn test_zk_soundness_tampered_sp_r2() {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(256, 4, 4);
+
+    if let Some(ref mut sp) = proof.scalar_product_proof {
+        sp.r2 = ArkFr(Fr::rand(&mut rand::thread_rng()));
+    }
+
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(
+        result.is_err(),
+        "Should fail with tampered scalar product r2"
     );
 }
 
@@ -609,4 +756,477 @@ fn test_zk_soundness_tampered_y_com() {
 
     let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
     assert!(result.is_err(), "Should fail with tampered y_com in ZK");
+}
+
+// ---------------------------------------------------------------------------
+// Reduce-round message tampering
+//
+// Every field of every round message feeds a verifier accumulator in
+// `process_round`; tampering any single one must break the final check.
+// First-message fields are tampered in the first round (corrupting every
+// downstream challenge), second-message fields in the last round (the
+// least-propagation case, exercising the final check most directly).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_d1_left() {
+    assert_zk_tamper_rejected("first message d1_left", |p| {
+        p.first_messages[0].d1_left = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_d1_right() {
+    assert_zk_tamper_rejected("first message d1_right", |p| {
+        p.first_messages[0].d1_right = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_d2_left() {
+    assert_zk_tamper_rejected("first message d2_left", |p| {
+        p.first_messages[0].d2_left = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_d2_right() {
+    assert_zk_tamper_rejected("first message d2_right", |p| {
+        p.first_messages[0].d2_right = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_e1_beta() {
+    assert_zk_tamper_rejected("first message e1_beta", |p| {
+        p.first_messages[0].e1_beta = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_e2_beta() {
+    assert_zk_tamper_rejected("first message e2_beta", |p| {
+        p.first_messages[0].e2_beta = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_c_plus() {
+    assert_zk_tamper_rejected("second message c_plus", |p| {
+        p.second_messages.last_mut().unwrap().c_plus =
+            ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_c_minus() {
+    assert_zk_tamper_rejected("second message c_minus", |p| {
+        p.second_messages.last_mut().unwrap().c_minus =
+            ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_e1_plus() {
+    assert_zk_tamper_rejected("second message e1_plus", |p| {
+        p.second_messages.last_mut().unwrap().e1_plus =
+            ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_e1_minus() {
+    assert_zk_tamper_rejected("second message e1_minus", |p| {
+        p.second_messages.last_mut().unwrap().e1_minus =
+            ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_e2_plus() {
+    assert_zk_tamper_rejected("second message e2_plus", |p| {
+        p.second_messages.last_mut().unwrap().e2_plus =
+            ArkG2(G2Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_e2_minus() {
+    assert_zk_tamper_rejected("second message e2_minus", |p| {
+        p.second_messages.last_mut().unwrap().e2_minus =
+            ArkG2(G2Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Proof-shape tampering: dimensions and round-message counts
+// ---------------------------------------------------------------------------
+
+/// `nu` and `sigma` are untrusted proof fields; any perturbation must be
+/// rejected — via point-dimension mismatch, layout violation, or round-count
+/// mismatch.
+#[test]
+fn test_zk_soundness_tampered_dimensions() {
+    // nu shrunk: nu + sigma no longer matches the point length.
+    assert_zk_tamper_rejected("nu (point-dimension mismatch)", |p| p.nu -= 1);
+    // Sum preserved, nu ≤ sigma preserved, but rounds no longer match sigma.
+    assert_zk_tamper_rejected("nu/sigma split (round-count mismatch)", |p| {
+        p.nu -= 1;
+        p.sigma += 1;
+    });
+    // Sum preserved but the layout constraint nu ≤ sigma is violated.
+    assert_zk_tamper_rejected("nu > sigma layout", |p| {
+        p.nu += 1;
+        p.sigma -= 1;
+    });
+}
+
+/// The number of round-message pairs must match sigma exactly.
+#[test]
+fn test_zk_soundness_tampered_round_message_count() {
+    assert_zk_tamper_rejected("truncated round messages", |p| {
+        p.first_messages.pop();
+        p.second_messages.pop();
+    });
+    assert_zk_tamper_rejected("extra round messages", |p| {
+        let (f, s) = (p.first_messages[0].clone(), p.second_messages[0].clone());
+        p.first_messages.push(f);
+        p.second_messages.push(s);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Opening-point binding regression tests
+//
+// Regression tests for the ZK soundness fix: the evaluation point reaches the
+// verifier only through the folded scalars s1_acc/s2_acc, and the ZK final
+// check must bind them (via the Fold-Scalars-updated statement, Dory paper
+// §4.1 + §3.1). Before the fix the ZK final check never read them, so a proof
+// created for one point verified at every point.
+// ---------------------------------------------------------------------------
+
+/// Primary regression: an honest ZK proof created for `point` must NOT verify
+/// at any other point.
+#[test]
+fn test_zk_wrong_point_rejected() {
+    for (nu, sigma) in [(1usize, 1usize), (2, 2), (2, 3)] {
+        let size = 1 << (nu + sigma);
+        let (verifier_setup, point, commitment, evaluation, proof) =
+            create_valid_zk_proof_components(size, nu, sigma);
+
+        // Sanity: the honest point verifies.
+        assert!(
+            verify_tampered_zk_proof(
+                commitment,
+                evaluation,
+                &point,
+                &proof,
+                verifier_setup.clone()
+            )
+            .is_ok(),
+            "honest ZK proof must verify at its own point (nu={nu}, sigma={sigma})"
+        );
+
+        // A proof for `point` must not verify at a shifted point.
+        let mut wrong_point = point.clone();
+        wrong_point[0] = wrong_point[0] + ArkFr::one();
+        assert!(
+            verify_tampered_zk_proof(
+                commitment,
+                evaluation,
+                &wrong_point,
+                &proof,
+                verifier_setup.clone()
+            )
+            .is_err(),
+            "ZK proof accepted at a shifted point (nu={nu}, sigma={sigma})"
+        );
+
+        // Nor at an unrelated random point.
+        let random_pt = random_point(nu + sigma);
+        assert!(
+            verify_tampered_zk_proof(commitment, evaluation, &random_pt, &proof, verifier_setup)
+                .is_err(),
+            "ZK proof accepted at a random point (nu={nu}, sigma={sigma})"
+        );
+    }
+}
+
+/// Replay the verifier's Fiat-Shamir transcript over an honest ZK proof and
+/// return the per-round `alpha` challenges together with `gamma`, the
+/// scalar-product challenge `sigma_c`, and the batching challenge `d`.
+/// Mirrors the append/challenge sequence of `verify_evaluation_proof` (which
+/// the honest `fresh_transcript` domain makes reproducible).
+fn replay_zk_transcript(
+    proof: &DoryProof<ArkG1, ArkG2, ArkGT>,
+) -> (Vec<ArkFr>, ArkFr, ArkFr, ArkFr) {
+    use dory_pcs::primitives::transcript::Transcript;
+
+    let mut t = fresh_transcript();
+    t.append_serde(b"vmv_c", &proof.vmv_message.c);
+    t.append_serde(b"vmv_d2", &proof.vmv_message.d2);
+    t.append_serde(b"vmv_e1", &proof.vmv_message.e1);
+
+    t.append_serde(b"vmv_e2", proof.e2.as_ref().unwrap());
+    t.append_serde(b"vmv_y_com", proof.y_com.as_ref().unwrap());
+
+    let s1p = proof.sigma1_proof.as_ref().unwrap();
+    t.append_serde(b"sigma1_a1", &s1p.a1);
+    t.append_serde(b"sigma1_a2", &s1p.a2);
+    let _ = t.challenge_scalar(b"sigma1_c");
+
+    let s2p = proof.sigma2_proof.as_ref().unwrap();
+    t.append_serde(b"sigma2_a", &s2p.a);
+    let _ = t.challenge_scalar(b"sigma2_c");
+    t.append_serde(b"sigma2_z1", &s2p.z1);
+    t.append_serde(b"sigma2_z2", &s2p.z2);
+
+    let mut alphas = Vec::new();
+    for (first, second) in proof.first_messages.iter().zip(&proof.second_messages) {
+        t.append_serde(b"d1_left", &first.d1_left);
+        t.append_serde(b"d1_right", &first.d1_right);
+        t.append_serde(b"d2_left", &first.d2_left);
+        t.append_serde(b"d2_right", &first.d2_right);
+        t.append_serde(b"e1_beta", &first.e1_beta);
+        t.append_serde(b"e2_beta", &first.e2_beta);
+        let _beta = t.challenge_scalar(b"beta");
+
+        t.append_serde(b"c_plus", &second.c_plus);
+        t.append_serde(b"c_minus", &second.c_minus);
+        t.append_serde(b"e1_plus", &second.e1_plus);
+        t.append_serde(b"e1_minus", &second.e1_minus);
+        t.append_serde(b"e2_plus", &second.e2_plus);
+        t.append_serde(b"e2_minus", &second.e2_minus);
+        alphas.push(t.challenge_scalar(b"alpha"));
+    }
+
+    let gamma = t.challenge_scalar(b"gamma");
+
+    let sp = proof.scalar_product_proof.as_ref().unwrap();
+    t.append_serde(b"sigma_p1", &sp.p1);
+    t.append_serde(b"sigma_p2", &sp.p2);
+    t.append_serde(b"sigma_q", &sp.q);
+    t.append_serde(b"sigma_r", &sp.r);
+    let sigma_c = t.challenge_scalar(b"sigma_c");
+    t.append_serde(b"sigma_e1", &sp.e1);
+    t.append_serde(b"sigma_e2", &sp.e2);
+    t.append_serde(b"sigma_r1", &sp.r1);
+    t.append_serde(b"sigma_r2", &sp.r2);
+    t.append_serde(b"sigma_r3", &sp.r3);
+    let d = t.challenge_scalar(b"d");
+
+    (alphas, gamma, sigma_c, d)
+}
+
+/// Fold the evaluation-point tensors with the round challenges, mirroring the
+/// `s1_acc`/`s2_acc` accumulation in `DoryVerifierState::process_round`
+/// (coordinates consumed MSB-first).
+fn fold_point_scalars(
+    point: &[ArkFr],
+    nu: usize,
+    sigma: usize,
+    alphas: &[ArkFr],
+) -> (ArkFr, ArkFr) {
+    let one = ArkFr::one();
+    let s1_coords = &point[..sigma];
+    let mut s2_coords = vec![ArkFr::zero(); sigma];
+    s2_coords[..nu].copy_from_slice(&point[sigma..sigma + nu]);
+
+    let mut s1_acc = one;
+    let mut s2_acc = one;
+    for (round, alpha) in alphas.iter().enumerate() {
+        let idx = sigma - 1 - round;
+        let alpha_inv = alpha.inv().unwrap();
+        let (y_t, x_t) = (s1_coords[idx], s2_coords[idx]);
+        s1_acc = s1_acc * (*alpha * (one - y_t) + y_t);
+        s2_acc = s2_acc * (alpha_inv * (one - x_t) + x_t);
+    }
+    (s1_acc, s2_acc)
+}
+
+/// Advisory-§5-style crafted attack: a correct fix must *constrain* the
+/// blinding of the final scalar-product responses, not merely prove knowledge
+/// of free coefficients. Starting from an honest proof for `point`, shift the
+/// Σ-proof responses along the blinding directions by exactly the public
+/// wrong-point deltas:
+///
+/// ```text
+/// E₁σ += δ₁·H₁,  δ₁ = c·γ·(s1_acc(P') − s1_acc(P))
+/// E₂σ += δ₂·H₂,  δ₂ = c·γ⁻¹·(s2_acc(P') − s2_acc(P))
+/// r₃  += c²·(s1s2_acc(P') − s1s2_acc(P)) − δ₁·δ₂
+/// ```
+///
+/// These shifts cancel the point-dependent `e(H₁,Γ₂₀)`, `e(Γ₁₀,H₂)` and `HT`
+/// components of the verification difference — the exact degrees of freedom a
+/// naive "prove the residual lies in the blinding span" fix would leave free.
+/// The fixed check entangles the responses with the hidden folded witness:
+/// the shift additionally perturbs Pair 1 by `δ₁·e(H₁, E₂σ) + δ₂·e(E₁σ, H₂)`,
+/// which no proof element absorbed after the challenge `c` can cancel. The
+/// crafted proof must therefore be rejected.
+#[test]
+fn test_zk_crafted_blind_shift_wrong_point_rejected() {
+    use dory_pcs::primitives::arithmetic::Group;
+
+    let (verifier_setup, point, commitment, evaluation, proof) =
+        create_valid_zk_proof_components(16, 2, 2);
+
+    // Honest baseline verifies.
+    assert!(verify_tampered_zk_proof(
+        commitment,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup.clone()
+    )
+    .is_ok());
+
+    // Shift both a column coordinate (feeds s1_acc) and a row coordinate
+    // (feeds s2_acc) so both cancellation directions (B3 and B4) are exercised.
+    let (nu, sigma) = (proof.nu, proof.sigma);
+    let mut wrong_point = point.clone();
+    wrong_point[0] = wrong_point[0] + ArkFr::one();
+    wrong_point[sigma] = wrong_point[sigma] + ArkFr::one();
+
+    // Recover the Fiat-Shamir challenges the verifier will derive (the
+    // shifted responses are only absorbed after sigma_c, so the challenges
+    // used below are unchanged by the crafting).
+    let (alphas, gamma, sigma_c, _d) = replay_zk_transcript(&proof);
+    let (s1_h, s2_h) = fold_point_scalars(&point, nu, sigma, &alphas);
+    let (s1_w, s2_w) = fold_point_scalars(&wrong_point, nu, sigma, &alphas);
+
+    let gamma_inv = gamma.inv().unwrap();
+    let delta1 = sigma_c * gamma * (s1_w - s1_h);
+    let delta2 = sigma_c * gamma_inv * (s2_w - s2_h);
+    let rho3 = sigma_c * sigma_c * (s1_w * s2_w - s1_h * s2_h) - delta1 * delta2;
+    assert!(
+        !delta1.is_zero() && !delta2.is_zero(),
+        "attack deltas must be non-trivial"
+    );
+
+    let mut crafted = proof.clone();
+    let sp = crafted.scalar_product_proof.as_mut().unwrap();
+    sp.e1 = sp.e1 + verifier_setup.h1.scale(&delta1);
+    sp.e2 = sp.e2 + verifier_setup.h2.scale(&delta2);
+    sp.r3 = sp.r3 + rho3;
+
+    // The crafted proof must be rejected at the wrong point...
+    assert!(
+        verify_tampered_zk_proof(
+            commitment,
+            evaluation,
+            &wrong_point,
+            &crafted,
+            verifier_setup.clone()
+        )
+        .is_err(),
+        "crafted blind-shift proof accepted at the wrong point"
+    );
+
+    // ...and, being tampered, at the honest point as well.
+    assert!(
+        verify_tampered_zk_proof(commitment, evaluation, &point, &crafted, verifier_setup).is_err(),
+        "crafted blind-shift proof accepted at the honest point"
+    );
+}
+
+/// Batching-soundness regression for the Σ₂-into-final-check batching: the Σ₂
+/// responses `(z₁, z₂)` must be absorbed into the transcript before the
+/// batching challenge `d` is drawn.
+///
+/// If they were not, they would be free variables of the batched final
+/// equation, choosable *after* `d` is known. They scale exactly `e(H₁, Γ₂₀)`
+/// (via `z₁`) and `HT` (via `z₂`) at the `d²` slot — precisely the two
+/// directions in which the final check shifts when an honest proof for `P` is
+/// verified at a wrong point `P'` that changes `s1_acc` but not `s2_acc`:
+///
+/// ```text
+/// z₁ += c·γ·d⁻¹·Δs₁ / d²      cancels the Pair 2 e(H₁, Γ₂₀) residual
+/// z₂ += c²·Δs₁·s₂ / d²        cancels the RHS (s₁·s₂)·HT residual
+/// ```
+///
+/// Because `d` binds `(z₁, z₂)`, an attacker must compute these shifts against
+/// a stale `d`; the verifier re-derives a different `d` from the shifted
+/// responses and the crafted proof must be rejected.
+#[test]
+fn test_zk_crafted_sigma2_response_shift_wrong_point_rejected() {
+    let (verifier_setup, point, commitment, evaluation, proof) =
+        create_valid_zk_proof_components(16, 2, 2);
+
+    // Honest baseline verifies.
+    assert!(verify_tampered_zk_proof(
+        commitment,
+        evaluation,
+        &point,
+        &proof,
+        verifier_setup.clone()
+    )
+    .is_ok());
+
+    // Shift only a column coordinate: s1_acc changes, s2_acc does not, so the
+    // wrong-point residual lies entirely in span{e(H₁, Γ₂₀), HT} — the exact
+    // span the Σ₂ responses control.
+    let (nu, sigma) = (proof.nu, proof.sigma);
+    let mut wrong_point = point.clone();
+    wrong_point[0] = wrong_point[0] + ArkFr::one();
+
+    let (alphas, gamma, sigma_c, d) = replay_zk_transcript(&proof);
+    let (s1_h, s2_h) = fold_point_scalars(&point, nu, sigma, &alphas);
+    let (s1_w, s2_w) = fold_point_scalars(&wrong_point, nu, sigma, &alphas);
+    assert_eq!(s2_h, s2_w, "row folding must be unaffected");
+    let delta_s1 = s1_w - s1_h;
+    assert!(!delta_s1.is_zero(), "attack delta must be non-trivial");
+
+    let d_inv = d.inv().unwrap();
+    let d_sq_inv = (d * d).inv().unwrap();
+    let dz1 = sigma_c * gamma * d_inv * delta_s1 * d_sq_inv;
+    let dz2 = sigma_c * sigma_c * delta_s1 * s2_h * d_sq_inv;
+
+    let mut crafted = proof.clone();
+    let s2p = crafted.sigma2_proof.as_mut().unwrap();
+    s2p.z1 = s2p.z1 + dz1;
+    s2p.z2 = s2p.z2 + dz2;
+
+    // The crafted proof must be rejected at the wrong point...
+    assert!(
+        verify_tampered_zk_proof(
+            commitment,
+            evaluation,
+            &wrong_point,
+            &crafted,
+            verifier_setup.clone()
+        )
+        .is_err(),
+        "crafted Σ₂-response-shift proof accepted at the wrong point"
+    );
+
+    // ...and, being tampered, at the honest point as well.
+    assert!(
+        verify_tampered_zk_proof(commitment, evaluation, &point, &crafted, verifier_setup).is_err(),
+        "crafted Σ₂-response-shift proof accepted at the honest point"
+    );
+}
+
+/// ZK proofs must not carry a clear final message: a proof that includes one
+/// is malformed and must be rejected outright.
+#[test]
+fn test_zk_soundness_unexpected_final_message() {
+    use dory_pcs::ScalarProductMessage;
+
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(16, 2, 2);
+
+    assert!(
+        proof.final_message.is_none(),
+        "ZK proofs must not contain a clear final message"
+    );
+    proof.final_message = Some(ScalarProductMessage {
+        e1: ArkG1(G1Projective::rand(&mut rand::thread_rng())),
+        e2: ArkG2(G2Projective::rand(&mut rand::thread_rng())),
+    });
+
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(
+        result.is_err(),
+        "Should fail when a ZK proof carries a clear final message"
+    );
 }
