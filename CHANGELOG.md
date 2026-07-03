@@ -94,10 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validating the full field shape in one place and handing out references to
   exactly the fields that shape guarantees.
 - Shape and per-component regression tests: stray ZK fields on a transparent
-  proof are rejected (`test_soundness_transparent_proof_with_stray_*`); every
-  scalar-product and Σ₂ proof component is individually tamper-tested against
-  the batched final check; `test_soundness_nu_exceeds_sigma_rejected` pins the
-  nu > sigma rejection.
+  proof are rejected (`test_soundness_transparent_proof_with_stray_*`);
+  `test_soundness_nu_exceeds_sigma_rejected` pins the nu > sigma rejection;
+  and every prover-controlled component of a ZK proof is individually
+  tamper-tested — all VMV, reduce-round, Σ₁, Σ₂, and scalar-product proof
+  fields, the blinded `e2`/`y_com`, the `nu`/`sigma` dimensions, and the
+  round-message counts.
 
 ### Removed
 

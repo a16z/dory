@@ -230,9 +230,7 @@ where
     let gamma = transcript.challenge_scalar(b"gamma");
 
     // Fold-Scalars (Dory paper §4.1): absorb the folded public scalars s₁, s₂
-    // into the witness. The verifier applies the matching update to its
-    // statement using its own point-derived s1_acc/s2_acc, so this step is
-    // what binds the evaluation point to the final scalar-product argument.
+    // into the witness.
     prover_state.apply_fold_scalars(&gamma);
 
     #[cfg(feature = "zk")]
@@ -243,8 +241,7 @@ where
     };
 
     // Transparent mode reveals the folded witness as the final message; in ZK
-    // mode the scalar-product Σ-proof above replaces it (revealing the folded
-    // witness would break hiding).
+    // mode the scalar-product Σ-proof above replaces it.
     let final_message = if Mo::BLINDING {
         None
     } else {
@@ -274,11 +271,6 @@ where
         #[cfg(feature = "zk")]
         scalar_product_proof,
     };
-    // Hard assert (release builds included): a malformed shape here is a
-    // library bug, and the ZK failure mode — emitting the clear folded
-    // witness alongside the Σ-proofs — would leak what the proof must hide.
-    // Failing loudly beats shipping a leaky proof, and the check is a few
-    // Option reads against seconds of proving work.
     assert!(
         proof.mode().is_ok(),
         "prover constructed a malformed proof shape"
@@ -353,11 +345,6 @@ where
         });
     }
 
-    // nu and sigma are untrusted proof fields; the layout constraint nu ≤
-    // sigma (which `create_evaluation_proof` enforces) must be re-validated
-    // here, both for soundness of the layout and because nu is used below to
-    // slice buffers of length sigma — the verifier must reject, never panic,
-    // on malformed input.
     if nu > sigma {
         return Err(DoryError::InvalidSize {
             expected: sigma,
@@ -461,8 +448,7 @@ where
     let gamma = transcript.challenge_scalar(b"gamma");
 
     // ZK mode: absorb the scalar product proof into the transcript before
-    // deriving d, mirroring the interactive protocol where the verifier
-    // samples the batching challenge d only after receiving the full proof.
+    // deriving d
     #[cfg(feature = "zk")]
     if let Some((sp, sigma2, sigma2_c)) = zk_final {
         use crate::reduce_and_fold::absorb_scalar_product_proof;

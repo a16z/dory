@@ -8,6 +8,7 @@
 use crate::error::DoryError;
 use crate::messages::*;
 use crate::primitives::arithmetic::Group;
+use std::marker::PhantomData;
 
 /// A complete Dory evaluation proof
 ///
@@ -61,16 +62,14 @@ pub struct DoryProof<G1: Group, G2, GT> {
 
 /// A [`DoryProof`] classified by mode, carrying references to the fields that
 /// mode guarantees (see [`DoryProof::mode`]).
+#[derive(Clone, Copy)]
 pub enum ProofMode<'a, G1: Group, G2, GT> {
     /// Transparent proof: reveals the folded witness as the clear final
-    /// message and carries no ZK fields. (The phantom ties down `GT`, which
-    /// only the ZK variant otherwise uses.)
-    Transparent(
-        &'a ScalarProductMessage<G1, G2>,
-        core::marker::PhantomData<fn() -> GT>,
-    ),
-    /// ZK proof: carries every blinding field and Σ-proof, and no clear final
-    /// message.
+    /// message and carries no ZK fields. (The phantom borrow ties down `GT`,
+    /// which only the ZK variant otherwise uses, keeping the enum's generics —
+    /// and auto traits — identical across feature flags.)
+    Transparent(&'a ScalarProductMessage<G1, G2>, PhantomData<&'a GT>),
+    /// ZK proof: carries every blinding field and Σ-proof
     #[cfg(feature = "zk")]
     Zk {
         /// Blinded E₂ from the VMV message.
@@ -85,15 +84,6 @@ pub enum ProofMode<'a, G1: Group, G2, GT> {
         scalar_product: &'a ScalarProductProof<G1, G2, G1::Scalar, GT>,
     },
 }
-
-// Manual impls: the derives would needlessly require G1/G2/GT: Copy even
-// though the variants hold only references.
-impl<G1: Group, G2, GT> Clone for ProofMode<'_, G1, G2, GT> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<G1: Group, G2, GT> Copy for ProofMode<'_, G1, G2, GT> {}
 
 impl<G1: Group, G2, GT> DoryProof<G1, G2, GT> {
     /// Classify this proof by shape, rejecting mix-and-match proofs.
@@ -146,7 +136,7 @@ impl<G1: Group, G2, GT> DoryProof<G1, G2, GT> {
         }
         self.final_message
             .as_ref()
-            .map(|msg| ProofMode::Transparent(msg, core::marker::PhantomData))
+            .map(|msg| ProofMode::Transparent(msg, PhantomData))
             .ok_or(DoryError::InvalidProof)
     }
 }

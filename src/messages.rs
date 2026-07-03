@@ -95,9 +95,7 @@ pub struct Sigma2Proof<F, GT> {
 /// ZK scalar product proof (Dory paper, Section 3.1).
 ///
 /// Proves knowledge of a hidden witness (v₁, v₂, r_C, r_D1, r_D2) opening the
-/// *fold-scalars-updated* statement (C′, D₁′, D₂′), which the verifier derives
-/// from its own point-derived folded scalars and the E-accumulators. This is
-/// what binds the evaluation point in ZK mode.
+/// *fold-scalars-updated* statement (C′, D₁′, D₂′)
 #[derive(Clone, Debug, PartialEq)]
 #[allow(missing_docs)]
 pub struct ScalarProductProof<G1, G2, F, GT> {

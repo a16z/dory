@@ -111,19 +111,11 @@ pub struct DoryVerifierState<E: PairingCurve> {
     setup: VerifierSetup<E>,
 }
 
-/// The final protocol message checked by [`DoryVerifierState::verify_final`],
-/// one variant per mode.
-///
-/// Passing this as a single value (rather than two independently optional
-/// parameters) makes the mode invariant structural: exactly one of the
-/// revealed folded witness or the Σ-proof is provided.
+/// The final protocol message checked by [`DoryVerifierState::verify_final`]
 pub enum FinalCheck<'a, E: PairingCurve> {
     /// Transparent mode: the revealed folded witness `(E₁, E₂)`.
     Transparent(&'a ScalarProductMessage<E::G1, E::G2>),
     /// ZK mode: the scalar-product Σ-proof (Dory paper §3.1) and the Σ₂ proof
-    /// of the VMV constraint, with their Fiat-Shamir challenges; the folded
-    /// witness stays hidden. Both proofs are checked by a single batched
-    /// multi-pairing.
     #[cfg(feature = "zk")]
     Zk {
         /// Σ-proof for the scalar-product relation over the folded statement.
@@ -421,12 +413,6 @@ where
 
     /// Reveal the folded witness as the final scalar product message
     /// (transparent mode only).
-    ///
-    /// Must be called after [`Self::apply_fold_scalars`]. The verifier checks
-    /// the revealed pair directly in the transparent 4-pairing final check.
-    /// In ZK mode no final message is sent; the scalar-product Σ-proof
-    /// ([`Self::scalar_product_proof`]) replaces it so that the folded witness
-    /// stays hidden.
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_final_message")]
     pub fn compute_final_message(&self) -> ScalarProductMessage<E::G1, E::G2> {
         debug_assert_eq!(self.num_rounds, 0, "num_rounds must be 0 for final message");
@@ -444,14 +430,7 @@ where
     /// Must be called AFTER [`Self::apply_fold_scalars`], so that the witness
     /// `(v₁, v₂, r_C, r_D1, r_D2)` opens the *folded* statement
     /// `(C', D₁', D₂')` — the statement the verifier reconstructs using its
-    /// own point-derived `s1_acc`/`s2_acc` and the E-accumulators. Running the
-    /// argument on the pre-fold statement would leave the evaluation point
-    /// unbound (the proof would verify at any point).
-    ///
-    /// Appends both the commitments (P₁, P₂, Q, R) and — after the challenge
-    /// `c` — the responses (E₁, E₂, r₁, r₂, r₃) to the transcript: in the
-    /// interactive protocol the verifier samples the batching challenge `d`
-    /// only after receiving the full proof, so `d` must bind the responses.
+    /// own point-derived `s1_acc`/`s2_acc` and the E-accumulators.
     #[cfg(feature = "zk")]
     pub fn scalar_product_proof<T: Transcript<Curve = E>>(
         &self,

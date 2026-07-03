@@ -392,6 +392,17 @@ fn verify_tampered_zk_proof(
     )
 }
 
+/// Harness for single-field tamper regression tests: create an honest ZK
+/// proof, apply one prover-side mutation, and require verification to fail.
+/// Uses a small (16, 2, 2) instance — tamper detection is size-independent.
+fn assert_zk_tamper_rejected(what: &str, tamper: impl FnOnce(&mut DoryProof<ArkG1, ArkG2, ArkGT>)) {
+    let (verifier_setup, point, commitment, evaluation, mut proof) =
+        create_valid_zk_proof_components(16, 2, 2);
+    tamper(&mut proof);
+    let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
+    assert!(result.is_err(), "Should fail with tampered {what}");
+}
+
 #[test]
 fn test_zk_soundness_missing_sigma1_proof() {
     let (verifier_setup, point, commitment, evaluation, mut proof) =
@@ -480,6 +491,27 @@ fn test_zk_soundness_tampered_sigma1_a1() {
 
     let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
     assert!(result.is_err(), "Should fail with tampered sigma1 a1");
+}
+
+#[test]
+fn test_zk_soundness_tampered_sigma1_a2() {
+    assert_zk_tamper_rejected("sigma1 a2", |p| {
+        p.sigma1_proof.as_mut().unwrap().a2 = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_sigma1_z2() {
+    assert_zk_tamper_rejected("sigma1 z2", |p| {
+        p.sigma1_proof.as_mut().unwrap().z2 = ArkFr(Fr::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_sigma1_z3() {
+    assert_zk_tamper_rejected("sigma1 z3", |p| {
+        p.sigma1_proof.as_mut().unwrap().z3 = ArkFr(Fr::rand(&mut rand::thread_rng()));
+    });
 }
 
 #[test]
@@ -724,6 +756,143 @@ fn test_zk_soundness_tampered_y_com() {
 
     let result = verify_tampered_zk_proof(commitment, evaluation, &point, &proof, verifier_setup);
     assert!(result.is_err(), "Should fail with tampered y_com in ZK");
+}
+
+// ---------------------------------------------------------------------------
+// Reduce-round message tampering
+//
+// Every field of every round message feeds a verifier accumulator in
+// `process_round`; tampering any single one must break the final check.
+// First-message fields are tampered in the first round (corrupting every
+// downstream challenge), second-message fields in the last round (the
+// least-propagation case, exercising the final check most directly).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_d1_left() {
+    assert_zk_tamper_rejected("first message d1_left", |p| {
+        p.first_messages[0].d1_left = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_d1_right() {
+    assert_zk_tamper_rejected("first message d1_right", |p| {
+        p.first_messages[0].d1_right = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_d2_left() {
+    assert_zk_tamper_rejected("first message d2_left", |p| {
+        p.first_messages[0].d2_left = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_d2_right() {
+    assert_zk_tamper_rejected("first message d2_right", |p| {
+        p.first_messages[0].d2_right = ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_e1_beta() {
+    assert_zk_tamper_rejected("first message e1_beta", |p| {
+        p.first_messages[0].e1_beta = ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_first_msg_e2_beta() {
+    assert_zk_tamper_rejected("first message e2_beta", |p| {
+        p.first_messages[0].e2_beta = ArkG2(G2Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_c_plus() {
+    assert_zk_tamper_rejected("second message c_plus", |p| {
+        p.second_messages.last_mut().unwrap().c_plus =
+            ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_c_minus() {
+    assert_zk_tamper_rejected("second message c_minus", |p| {
+        p.second_messages.last_mut().unwrap().c_minus =
+            ArkGT(PairingOutput(Fq12::rand(&mut rand::thread_rng())));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_e1_plus() {
+    assert_zk_tamper_rejected("second message e1_plus", |p| {
+        p.second_messages.last_mut().unwrap().e1_plus =
+            ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_e1_minus() {
+    assert_zk_tamper_rejected("second message e1_minus", |p| {
+        p.second_messages.last_mut().unwrap().e1_minus =
+            ArkG1(G1Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_e2_plus() {
+    assert_zk_tamper_rejected("second message e2_plus", |p| {
+        p.second_messages.last_mut().unwrap().e2_plus =
+            ArkG2(G2Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+#[test]
+fn test_zk_soundness_tampered_second_msg_e2_minus() {
+    assert_zk_tamper_rejected("second message e2_minus", |p| {
+        p.second_messages.last_mut().unwrap().e2_minus =
+            ArkG2(G2Projective::rand(&mut rand::thread_rng()));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Proof-shape tampering: dimensions and round-message counts
+// ---------------------------------------------------------------------------
+
+/// `nu` and `sigma` are untrusted proof fields; any perturbation must be
+/// rejected — via point-dimension mismatch, layout violation, or round-count
+/// mismatch.
+#[test]
+fn test_zk_soundness_tampered_dimensions() {
+    // nu shrunk: nu + sigma no longer matches the point length.
+    assert_zk_tamper_rejected("nu (point-dimension mismatch)", |p| p.nu -= 1);
+    // Sum preserved, nu ≤ sigma preserved, but rounds no longer match sigma.
+    assert_zk_tamper_rejected("nu/sigma split (round-count mismatch)", |p| {
+        p.nu -= 1;
+        p.sigma += 1;
+    });
+    // Sum preserved but the layout constraint nu ≤ sigma is violated.
+    assert_zk_tamper_rejected("nu > sigma layout", |p| {
+        p.nu += 1;
+        p.sigma -= 1;
+    });
+}
+
+/// The number of round-message pairs must match sigma exactly.
+#[test]
+fn test_zk_soundness_tampered_round_message_count() {
+    assert_zk_tamper_rejected("truncated round messages", |p| {
+        p.first_messages.pop();
+        p.second_messages.pop();
+    });
+    assert_zk_tamper_rejected("extra round messages", |p| {
+        let (f, s) = (p.first_messages[0].clone(), p.second_messages[0].clone());
+        p.first_messages.push(f);
+        p.second_messages.push(s);
+    });
 }
 
 // ---------------------------------------------------------------------------
