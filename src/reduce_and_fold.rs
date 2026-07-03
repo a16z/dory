@@ -503,13 +503,11 @@ where
 /// field of the proof. Returns `c` for [`FinalCheck::Zk`], where the proof is
 /// checked as part of the batched final multi-pairing.
 #[cfg(feature = "zk")]
-pub fn absorb_scalar_product_proof<E, T>(
+pub fn absorb_scalar_product_proof<E: PairingCurve, T: Transcript<Curve = E>>(
     proof: &ScalarProductProof<E::G1, E::G2, Scalar<E>, E::GT>,
     transcript: &mut T,
 ) -> Scalar<E>
 where
-    E: PairingCurve,
-    T: Transcript<Curve = E>,
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
     E::GT: Group<Scalar = Scalar<E>>,
@@ -636,13 +634,11 @@ where
 /// Returns `c₂` for [`FinalCheck::Zk`], where the proof is checked as part of
 /// the batched final multi-pairing (see [`DoryVerifierState::verify_final`]).
 #[cfg(feature = "zk")]
-pub fn absorb_sigma2_proof<E, T>(
+pub fn absorb_sigma2_proof<E: PairingCurve, T: Transcript<Curve = E>>(
     proof: &Sigma2Proof<Scalar<E>, E::GT>,
     transcript: &mut T,
 ) -> Scalar<E>
 where
-    E: PairingCurve,
-    T: Transcript<Curve = E>,
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
     E::GT: Group<Scalar = Scalar<E>>,
@@ -903,114 +899,119 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         );
 
         let d_inv = d.inv().ok_or(DoryError::InvalidProof)?;
-        let gamma_inv = gamma.inv().ok_or(DoryError::InvalidProof)?;
-        let d_sq = *d * *d;
-        let s_product = self.s1_acc * self.s2_acc;
 
-        match check {
-            #[cfg(feature = "zk")]
-            FinalCheck::Zk {
-                scalar_product: sp,
-                sigma_c: c,
-                sigma2,
-                sigma2_c: c2,
-            } => {
-                // ZK mode: Fold-Scalars + Scalar-Product on the folded statement,
-                // with the Σ₂ (VMV) check batched in at the d² slot — a single
-                // 4 ML + 1 FE multi-pairing (see doc comment above). Relative to
-                // the documented equation, scalar coefficients are distributed
-                // onto each base so every group element is scaled exactly once.
-                let c_sq = c * c;
-                let neg_c_gamma = -(c * *gamma);
-                let neg_c_gamma_inv = -(c * gamma_inv);
+        #[cfg(feature = "zk")]
+        if let FinalCheck::Zk {
+            scalar_product: sp,
+            sigma_c: c,
+            sigma2,
+            sigma2_c: c2,
+        } = check
+        {
+            // ZK mode: Fold-Scalars + Scalar-Product on the folded statement,
+            // with the Σ₂ (VMV) check batched in at the d² slot — a single
+            // 4 ML + 1 FE multi-pairing (see doc comment above). Relative to
+            // the documented equation, scalar coefficients are distributed
+            // onto each base so every group element is scaled exactly once.
+            let gamma_inv = gamma.inv().ok_or(DoryError::InvalidProof)?;
+            let d_sq = *d * *d;
+            let s_product = self.s1_acc * self.s2_acc;
+            let c_sq = c * c;
+            let neg_c_gamma = -(c * *gamma);
+            let neg_c_gamma_inv = -(c * gamma_inv);
 
-                // Pair 1: e(sp.e₁ + d·Γ₁₀, sp.e₂ + d⁻¹·Γ₂₀)
-                let p1_g1 = sp.e1 + self.setup.g1_0.scale(d);
-                let p1_g2 = sp.e2 + self.setup.g2_0.scale(&d_inv);
+            // Pair 1: e(sp.e₁ + d·Γ₁₀, sp.e₂ + d⁻¹·Γ₂₀)
+            let p1_g1 = sp.e1 + self.setup.g1_0.scale(d);
+            let p1_g2 = sp.e2 + self.setup.g2_0.scale(&d_inv);
 
-                // Pair 2: e(H₁, (−c·γ)·(c·E₂_acc + (d⁻¹·s₁)·Γ₂₀) + d²·(z₁·Γ₂₀ + z₂·H₂))
-                //       = e(H₁, (−c²·γ)·E₂_acc + (−c·γ·d⁻¹·s₁ + d²·z₁)·Γ₂₀ + (d²·z₂)·H₂)
-                let p2_g1 = self.setup.h1;
-                let p2_g2 = self.e2.scale(&(neg_c_gamma * c))
-                    + self
-                        .setup
-                        .g2_0
-                        .scale(&(neg_c_gamma * d_inv * self.s1_acc + d_sq * sigma2.z1))
-                    + self.setup.h2.scale(&(d_sq * sigma2.z2));
+            // Pair 2: e(H₁, (−c·γ)·(c·E₂_acc + (d⁻¹·s₁)·Γ₂₀) + d²·(z₁·Γ₂₀ + z₂·H₂))
+            //       = e(H₁, (−c²·γ)·E₂_acc + (−c·γ·d⁻¹·s₁ + d²·z₁)·Γ₂₀ + (d²·z₂)·H₂)
+            let p2_g1 = self.setup.h1;
+            let p2_g2 = self.e2.scale(&(neg_c_gamma * c))
+                + self
+                    .setup
+                    .g2_0
+                    .scale(&(neg_c_gamma * d_inv * self.s1_acc + d_sq * sigma2.z1))
+                + self.setup.h2.scale(&(d_sq * sigma2.z2));
 
-                // Pair 3: e((−c·γ⁻¹)·(c·E₁_acc + (d·s₂)·Γ₁₀), H₂)
-                //       = e((−c²·γ⁻¹)·E₁_acc + (−c·γ⁻¹·d·s₂)·Γ₁₀, H₂)
-                let p3_g1 = self.e1.scale(&(neg_c_gamma_inv * c))
-                    + self.setup.g1_0.scale(&(neg_c_gamma_inv * *d * self.s2_acc));
-                let p3_g2 = self.setup.h2;
+            // Pair 3: e((−c·γ⁻¹)·(c·E₁_acc + (d·s₂)·Γ₁₀), H₂)
+            //       = e((−c²·γ⁻¹)·E₁_acc + (−c·γ⁻¹·d·s₂)·Γ₁₀, H₂)
+            let p3_g1 = self.e1.scale(&(neg_c_gamma_inv * c))
+                + self.setup.g1_0.scale(&(neg_c_gamma_inv * *d * self.s2_acc));
+            let p3_g2 = self.setup.h2;
 
-                // Pair 4: e((−d²·c₂)·E₁_init, Γ₂₀) — batched Σ₂ (VMV constraint)
-                let p4_g1 = self.e1_init.scale(&-(d_sq * c2));
-                let p4_g2 = self.setup.g2_0;
+            // Pair 4: e((−d²·c₂)·E₁_init, Γ₂₀) — batched Σ₂ (VMV constraint)
+            let p4_g1 = self.e1_init.scale(&-(d_sq * c2));
+            let p4_g2 = self.setup.g2_0;
 
-                let lhs =
-                    E::multi_pair(&[p1_g1, p2_g1, p3_g1, p4_g1], &[p1_g2, p2_g2, p3_g2, p4_g2]);
+            let lhs = E::multi_pair(&[p1_g1, p2_g1, p3_g1, p4_g1], &[p1_g2, p2_g2, p3_g2, p4_g2]);
 
-                // RHS: χ₀ + sp.r + c·sp.q + c²·(C + (s₁·s₂)·HT)
-                //      + d·(sp.p₂ + c·D₂) + d⁻¹·(sp.p₁ + c·D₁)
-                //      − (sp.r₃ + d·sp.r₂ + d⁻¹·sp.r₁)·HT
-                //      + d²·(A − c₂·D₂_init)
-                // with the two HT terms merged into one exponentiation.
-                let ht_scalar = sp.r3 + *d * sp.r2 + d_inv * sp.r1;
-                let mut rhs = self.setup.chi[0]
-                    + sp.r
-                    + sp.q.scale(&c)
-                    + self.c.scale(&c_sq)
-                    + self.setup.ht.scale(&(c_sq * s_product - ht_scalar));
-                rhs = rhs + sp.p2.scale(d) + self.d2.scale(&(*d * c));
-                rhs = rhs + sp.p1.scale(&d_inv) + self.d1.scale(&(d_inv * c));
-                rhs = rhs + (sigma2.a - self.d2_init.scale(&c2)).scale(&d_sq);
+            // RHS: χ₀ + sp.r + c·sp.q + c²·(C + (s₁·s₂)·HT)
+            //      + d·(sp.p₂ + c·D₂) + d⁻¹·(sp.p₁ + c·D₁)
+            //      − (sp.r₃ + d·sp.r₂ + d⁻¹·sp.r₁)·HT
+            //      + d²·(A − c₂·D₂_init)
+            // with the two HT terms merged into one exponentiation.
+            let ht_scalar = sp.r3 + *d * sp.r2 + d_inv * sp.r1;
+            let mut rhs = self.setup.chi[0]
+                + sp.r
+                + sp.q.scale(&c)
+                + self.c.scale(&c_sq)
+                + self.setup.ht.scale(&(c_sq * s_product - ht_scalar));
+            rhs = rhs + sp.p2.scale(d) + self.d2.scale(&(*d * c));
+            rhs = rhs + sp.p1.scale(&d_inv) + self.d1.scale(&(d_inv * c));
+            rhs = rhs + (sigma2.a - self.d2_init.scale(&c2)).scale(&d_sq);
 
-                if lhs == rhs {
-                    Ok(())
-                } else {
-                    Err(DoryError::InvalidProof)
-                }
+            return if lhs == rhs {
+                Ok(())
+            } else {
+                Err(DoryError::InvalidProof)
+            };
+        }
+
+        // With `zk` off, `FinalCheck` has a single variant and this pattern is
+        // irrefutable; with `zk` on, the `Zk` arm above has already returned.
+        #[allow(irrefutable_let_patterns)]
+        if let FinalCheck::Transparent(msg) = check {
+            // Transparent mode: 4 ML + 1 FE
+            let gamma_inv = gamma.inv().ok_or(DoryError::InvalidProof)?;
+            let d_sq = *d * *d;
+            let neg_gamma = -*gamma;
+            let neg_gamma_inv = -gamma_inv;
+
+            let s_product = self.s1_acc * self.s2_acc;
+            let rhs = self.c
+                + self.setup.ht.scale(&s_product)
+                + self.setup.chi[0]
+                + self.d2.scale(d)
+                + self.d1.scale(&d_inv)
+                + self.d2_init.scale(&d_sq);
+
+            // Pair 1: e(E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
+            let p1_g1 = msg.e1 + self.setup.g1_0.scale(d);
+            let p1_g2 = msg.e2 + self.setup.g2_0.scale(&d_inv);
+
+            // Pair 2: e(H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))
+            let p2_g1 = self.setup.h1;
+            let p2_g2 = (self.e2 + self.setup.g2_0.scale(&(d_inv * self.s1_acc))).scale(&neg_gamma);
+
+            // Pair 3: e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀), H₂)
+            let p3_g1 =
+                (self.e1 + self.setup.g1_0.scale(&(*d * self.s2_acc))).scale(&neg_gamma_inv);
+            let p3_g2 = self.setup.h2;
+
+            // Pair 4: e(d²·E₁_init, Γ₂₀) — deferred VMV check
+            let p4_g1 = self.e1_init.scale(&d_sq);
+            let p4_g2 = self.setup.g2_0;
+
+            let lhs = E::multi_pair(&[p1_g1, p2_g1, p3_g1, p4_g1], &[p1_g2, p2_g2, p3_g2, p4_g2]);
+
+            if lhs == rhs {
+                Ok(())
+            } else {
+                Err(DoryError::InvalidProof)
             }
-            FinalCheck::Transparent(msg) => {
-                // Transparent mode: 4 ML + 1 FE
-                let neg_gamma = -*gamma;
-                let neg_gamma_inv = -gamma_inv;
-
-                let rhs = self.c
-                    + self.setup.ht.scale(&s_product)
-                    + self.setup.chi[0]
-                    + self.d2.scale(d)
-                    + self.d1.scale(&d_inv)
-                    + self.d2_init.scale(&d_sq);
-
-                // Pair 1: e(E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
-                let p1_g1 = msg.e1 + self.setup.g1_0.scale(d);
-                let p1_g2 = msg.e2 + self.setup.g2_0.scale(&d_inv);
-
-                // Pair 2: e(H₁, (-γ)·(E₂_acc + (d⁻¹·s₁)·Γ₂₀))
-                let p2_g1 = self.setup.h1;
-                let p2_g2 =
-                    (self.e2 + self.setup.g2_0.scale(&(d_inv * self.s1_acc))).scale(&neg_gamma);
-
-                // Pair 3: e((-γ⁻¹)·(E₁_acc + (d·s₂)·Γ₁₀), H₂)
-                let p3_g1 =
-                    (self.e1 + self.setup.g1_0.scale(&(*d * self.s2_acc))).scale(&neg_gamma_inv);
-                let p3_g2 = self.setup.h2;
-
-                // Pair 4: e(d²·E₁_init, Γ₂₀) — deferred VMV check
-                let p4_g1 = self.e1_init.scale(&d_sq);
-                let p4_g2 = self.setup.g2_0;
-
-                let lhs =
-                    E::multi_pair(&[p1_g1, p2_g1, p3_g1, p4_g1], &[p1_g2, p2_g2, p3_g2, p4_g2]);
-
-                if lhs == rhs {
-                    Ok(())
-                } else {
-                    Err(DoryError::InvalidProof)
-                }
-            }
+        } else {
+            Err(DoryError::InvalidProof)
         }
     }
 }
