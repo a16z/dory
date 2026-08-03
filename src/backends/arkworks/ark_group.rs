@@ -20,9 +20,53 @@ use rayon::prelude::*;
 #[repr(transparent)]
 pub struct ArkG1(pub G1Projective);
 
+impl ArkG1 {
+    /// Returns the wrapped `ark_bn254::G1Projective`.
+    #[inline]
+    pub fn into_inner(self) -> G1Projective {
+        self.0
+    }
+}
+
+impl From<G1Projective> for ArkG1 {
+    #[inline]
+    fn from(value: G1Projective) -> Self {
+        ArkG1(value)
+    }
+}
+
+impl From<ArkG1> for G1Projective {
+    #[inline]
+    fn from(value: ArkG1) -> Self {
+        value.0
+    }
+}
+
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 #[repr(transparent)]
 pub struct ArkG2(pub G2Projective);
+
+impl ArkG2 {
+    /// Returns the wrapped `ark_bn254::G2Projective`.
+    #[inline]
+    pub fn into_inner(self) -> G2Projective {
+        self.0
+    }
+}
+
+impl From<G2Projective> for ArkG2 {
+    #[inline]
+    fn from(value: G2Projective) -> Self {
+        ArkG2(value)
+    }
+}
+
+impl From<ArkG2> for G2Projective {
+    #[inline]
+    fn from(value: ArkG2) -> Self {
+        value.0
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 #[repr(transparent)]
@@ -489,5 +533,20 @@ mod tests {
     #[test]
     fn g2_routines_match_naive() {
         routines_match_naive::<ArkG2, G2Routines>(17);
+    }
+
+    #[test]
+    fn wrapper_conversions_round_trip() {
+        let fr = ArkFr::random();
+        assert_eq!(ArkFr::from(fr.into_inner()), fr);
+        assert_eq!(ArkFr::from(ark_bn254::Fr::from(fr)), fr);
+
+        let g1 = ArkG1::random();
+        assert_eq!(ArkG1::from(g1.into_inner()), g1);
+        assert_eq!(ArkG1::from(G1Projective::from(g1)), g1);
+
+        let g2 = ArkG2::random();
+        assert_eq!(ArkG2::from(g2.into_inner()), g2);
+        assert_eq!(ArkG2::from(G2Projective::from(g2)), g2);
     }
 }

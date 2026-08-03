@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Safe conversions between the arkworks wrappers and their inner types:
+  `into_inner()` plus `From` impls in both directions for
+  `ArkFr`/`ark_bn254::Fr`, `ArkG1`/`G1Projective`, and `ArkG2`/`G2Projective`.
+
 ### Changed
 
 - Faster arkworks `DoryRoutines`: `msm` converts bases to affine with a single

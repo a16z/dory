@@ -12,6 +12,28 @@ use ark_std::ops::{Add, Mul, Neg, Sub};
 #[repr(transparent)]
 pub struct ArkFr(pub Fr);
 
+impl ArkFr {
+    /// Returns the wrapped `ark_bn254::Fr`.
+    #[inline]
+    pub fn into_inner(self) -> Fr {
+        self.0
+    }
+}
+
+impl From<Fr> for ArkFr {
+    #[inline]
+    fn from(value: Fr) -> Self {
+        ArkFr(value)
+    }
+}
+
+impl From<ArkFr> for Fr {
+    #[inline]
+    fn from(value: ArkFr) -> Self {
+        value.0
+    }
+}
+
 impl Field for ArkFr {
     fn zero() -> Self {
         ArkFr(Fr::from(0u64))
