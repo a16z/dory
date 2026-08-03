@@ -15,12 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Faster arkworks `DoryRoutines`: `msm` converts bases to affine with a single
-  batched inversion (`normalize_batch`) instead of one inversion per point, and
-  `fixed_base_vector_scalar_mul`, `fixed_scalar_mul_bases_then_add`,
-  `fixed_scalar_mul_vs_then_add`, and `fold_field_vectors` are parallelized
-  under the `parallel` feature. Group results are unchanged, so commitments and
-  proofs are byte-identical.
+- Faster arkworks `DoryRoutines`: when MSM bases are not already normalized
+  (e.g. folded vectors mid reduce-round), `msm` converts them to affine with a
+  single batched inversion (`normalize_batch`) instead of one field inversion
+  per point; already-normalized bases (setup generators) keep the
+  inversion-free per-element path. `fixed_base_vector_scalar_mul`,
+  `fixed_scalar_mul_bases_then_add`, `fixed_scalar_mul_vs_then_add`, and
+  `fold_field_vectors` are parallelized under the `parallel` feature. Group
+  results are unchanged, so commitments and proofs are byte-identical.
 
 ## [0.4.0] - 2026-07-03
 

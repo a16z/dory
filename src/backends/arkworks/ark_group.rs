@@ -302,6 +302,26 @@ impl<'a> Mul<&'a ArkGT> for ArkFr {
     }
 }
 
+/// Converts projective bases to affine for an MSM.
+///
+/// Already-normalized bases (`z` is one, e.g. fresh setup generators) and
+/// identities convert with no field inversions, so they take the per-element
+/// path. Anything else (e.g. folded vectors mid reduce-round) pays one batched
+/// inversion for the whole slice instead of one inversion per point.
+macro_rules! msm_bases_to_affine {
+    ($proj:ty, $bases:expr) => {{
+        if $bases
+            .iter()
+            .all(|b| b.0.z.is_one() || ArkZero::is_zero(&b.0))
+        {
+            $bases.iter().map(|b| b.0.into_affine()).collect()
+        } else {
+            let proj: Vec<$proj> = $bases.iter().map(|b| b.0).collect();
+            <$proj>::normalize_batch(&proj)
+        }
+    }};
+}
+
 /// `[base * scalars[0], base * scalars[1], ...]`, parallelized when the
 /// `parallel` feature is enabled.
 fn fixed_base_scalar_muls<G: Group>(base: &G, scalars: &[G::Scalar]) -> Vec<G> {
@@ -387,10 +407,7 @@ impl DoryRoutines<ArkG1> for G1Routines {
             return ArkG1::identity();
         }
 
-        // One batched inversion for the whole slice instead of one field
-        // inversion per point (`into_affine`).
-        let bases_proj: Vec<G1Projective> = bases.iter().map(|b| b.0).collect();
-        let bases_affine = G1Projective::normalize_batch(&bases_proj);
+        let bases_affine: Vec<G1Affine> = msm_bases_to_affine!(G1Projective, bases);
         let scalars_fr: Vec<ark_bn254::Fr> = scalars.iter().map(|s| s.0).collect();
 
         ArkG1(G1Projective::msm_unchecked(&bases_affine, &scalars_fr))
@@ -428,10 +445,7 @@ impl DoryRoutines<ArkG2> for G2Routines {
             return ArkG2::identity();
         }
 
-        // One batched inversion for the whole slice instead of one field
-        // inversion per point (`into_affine`).
-        let bases_proj: Vec<G2Projective> = bases.iter().map(|b| b.0).collect();
-        let bases_affine = G2Projective::normalize_batch(&bases_proj);
+        let bases_affine: Vec<G2Affine> = msm_bases_to_affine!(G2Projective, bases);
         let scalars_fr: Vec<ark_bn254::Fr> = scalars.iter().map(|s| s.0).collect();
 
         ArkG2(G2Projective::msm_unchecked(&bases_affine, &scalars_fr))
@@ -469,10 +483,15 @@ mod tests {
 
     /// Random fixtures with an identity point and a zero scalar mixed in:
     /// those exercise the batch-normalization (point at infinity) and MSM
-    /// bucket edge cases that purely random inputs miss.
+    /// bucket edge cases that purely random inputs miss. Odd-index bases are
+    /// re-scaled so they are not affine-normalized (`z` is not one), forcing
+    /// `msm` onto the batch-inversion path (`G::random()` yields `z` = one).
     fn fixtures<G: Group<Scalar = ArkFr>>(len: usize) -> (Vec<G>, Vec<ArkFr>) {
         let mut bases: Vec<G> = (0..len).map(|_| G::random()).collect();
         let mut scalars: Vec<ArkFr> = (0..len).map(|_| ArkFr::random()).collect();
+        for base in bases.iter_mut().skip(1).step_by(2) {
+            *base = base.scale(&ArkFr::random());
+        }
         bases[len / 2] = G::identity();
         scalars[len / 3] = ArkFr::zero();
         (bases, scalars)
@@ -486,7 +505,14 @@ mod tests {
         let (bases, scalars) = fixtures::<G>(len);
         let scalar = ArkFr::random();
 
+        // Mixed-z bases take the batch-normalization path.
         assert_eq!(R::msm(&bases, &scalars), naive_msm(&bases, &scalars));
+        // Already-normalized bases take the per-element path.
+        let normalized: Vec<G> = (0..len).map(|_| G::random()).collect();
+        assert_eq!(
+            R::msm(&normalized, &scalars),
+            naive_msm(&normalized, &scalars)
+        );
         assert_eq!(R::msm(&[], &[]), G::identity());
 
         let expected: Vec<G> = scalars.iter().map(|s| bases[0].scale(s)).collect();
