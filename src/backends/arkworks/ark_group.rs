@@ -5,13 +5,16 @@
 #![allow(clippy::missing_panics_doc)]
 
 use super::ark_field::ArkFr;
-use crate::primitives::arithmetic::{DoryRoutines, Group};
+use crate::primitives::arithmetic::{DoryRoutines, Field, Group};
 use ark_bn254::{Bn254, Fq12, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::{Field as ArkField, One, PrimeField, UniformRand, Zero as ArkZero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::{Add, Mul, Neg, Sub};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 #[repr(transparent)]
@@ -255,6 +258,76 @@ impl<'a> Mul<&'a ArkGT> for ArkFr {
     }
 }
 
+/// `[base * scalars[0], base * scalars[1], ...]`, parallelized when the
+/// `parallel` feature is enabled.
+fn fixed_base_scalar_muls<G: Group>(base: &G, scalars: &[G::Scalar]) -> Vec<G> {
+    #[cfg(feature = "parallel")]
+    {
+        scalars.par_iter().map(|s| base.scale(s)).collect()
+    }
+    #[cfg(not(feature = "parallel"))]
+    {
+        scalars.iter().map(|s| base.scale(s)).collect()
+    }
+}
+
+/// `vs[i] = vs[i] + scalar * bases[i]`, parallelized when the `parallel`
+/// feature is enabled.
+fn add_scaled_bases<G: Group>(bases: &[G], vs: &mut [G], scalar: &G::Scalar) {
+    assert_eq!(bases.len(), vs.len(), "Lengths must match");
+
+    #[cfg(feature = "parallel")]
+    {
+        vs.par_iter_mut()
+            .zip(bases.par_iter())
+            .for_each(|(v, base)| *v = v.add(&base.scale(scalar)));
+    }
+    #[cfg(not(feature = "parallel"))]
+    {
+        for (v, base) in vs.iter_mut().zip(bases.iter()) {
+            *v = v.add(&base.scale(scalar));
+        }
+    }
+}
+
+/// `vs[i] = scalar * vs[i] + addends[i]`, parallelized when the `parallel`
+/// feature is enabled.
+fn scale_vs_then_add<G: Group>(vs: &mut [G], addends: &[G], scalar: &G::Scalar) {
+    assert_eq!(vs.len(), addends.len(), "Lengths must match");
+
+    #[cfg(feature = "parallel")]
+    {
+        vs.par_iter_mut()
+            .zip(addends.par_iter())
+            .for_each(|(v, addend)| *v = v.scale(scalar).add(addend));
+    }
+    #[cfg(not(feature = "parallel"))]
+    {
+        for (v, addend) in vs.iter_mut().zip(addends.iter()) {
+            *v = v.scale(scalar).add(addend);
+        }
+    }
+}
+
+/// `left[i] = left[i] * scalar + right[i]`, parallelized when the `parallel`
+/// feature is enabled.
+fn fold_scalars<F: Field>(left: &mut [F], right: &[F], scalar: &F) {
+    assert_eq!(left.len(), right.len(), "Lengths must match");
+
+    #[cfg(feature = "parallel")]
+    {
+        left.par_iter_mut()
+            .zip(right.par_iter())
+            .for_each(|(l, r)| *l = *l * *scalar + *r);
+    }
+    #[cfg(not(feature = "parallel"))]
+    {
+        for (l, r) in left.iter_mut().zip(right.iter()) {
+            *l = *l * *scalar + *r;
+        }
+    }
+}
+
 pub struct G1Routines;
 
 impl DoryRoutines<ArkG1> for G1Routines {
@@ -270,30 +343,29 @@ impl DoryRoutines<ArkG1> for G1Routines {
             return ArkG1::identity();
         }
 
-        let bases_affine: Vec<G1Affine> = bases.iter().map(|b| b.0.into_affine()).collect();
+        // One batched inversion for the whole slice instead of one field
+        // inversion per point (`into_affine`).
+        let bases_proj: Vec<G1Projective> = bases.iter().map(|b| b.0).collect();
+        let bases_affine = G1Projective::normalize_batch(&bases_proj);
         let scalars_fr: Vec<ark_bn254::Fr> = scalars.iter().map(|s| s.0).collect();
 
-        ArkG1(G1Projective::msm(&bases_affine, &scalars_fr).expect("MSM failed"))
+        ArkG1(G1Projective::msm_unchecked(&bases_affine, &scalars_fr))
     }
 
     fn fixed_base_vector_scalar_mul(base: &ArkG1, scalars: &[ArkFr]) -> Vec<ArkG1> {
-        scalars.iter().map(|s| base.scale(s)).collect()
+        fixed_base_scalar_muls(base, scalars)
     }
 
     fn fixed_scalar_mul_bases_then_add(bases: &[ArkG1], vs: &mut [ArkG1], scalar: &ArkFr) {
-        assert_eq!(bases.len(), vs.len(), "Lengths must match");
-
-        for (v, base) in vs.iter_mut().zip(bases.iter()) {
-            *v = v.add(&base.scale(scalar));
-        }
+        add_scaled_bases(bases, vs, scalar);
     }
 
     fn fixed_scalar_mul_vs_then_add(vs: &mut [ArkG1], addends: &[ArkG1], scalar: &ArkFr) {
-        assert_eq!(vs.len(), addends.len(), "Lengths must match");
+        scale_vs_then_add(vs, addends, scalar);
+    }
 
-        for (v, addend) in vs.iter_mut().zip(addends.iter()) {
-            *v = v.scale(scalar).add(addend);
-        }
+    fn fold_field_vectors(left: &mut [ArkFr], right: &[ArkFr], scalar: &ArkFr) {
+        fold_scalars(left, right, scalar);
     }
 }
 
@@ -312,29 +384,110 @@ impl DoryRoutines<ArkG2> for G2Routines {
             return ArkG2::identity();
         }
 
-        let bases_affine: Vec<G2Affine> = bases.iter().map(|b| b.0.into_affine()).collect();
+        // One batched inversion for the whole slice instead of one field
+        // inversion per point (`into_affine`).
+        let bases_proj: Vec<G2Projective> = bases.iter().map(|b| b.0).collect();
+        let bases_affine = G2Projective::normalize_batch(&bases_proj);
         let scalars_fr: Vec<ark_bn254::Fr> = scalars.iter().map(|s| s.0).collect();
 
-        ArkG2(G2Projective::msm(&bases_affine, &scalars_fr).expect("MSM failed"))
+        ArkG2(G2Projective::msm_unchecked(&bases_affine, &scalars_fr))
     }
 
     fn fixed_base_vector_scalar_mul(base: &ArkG2, scalars: &[ArkFr]) -> Vec<ArkG2> {
-        scalars.iter().map(|s| base.scale(s)).collect()
+        fixed_base_scalar_muls(base, scalars)
     }
 
     fn fixed_scalar_mul_bases_then_add(bases: &[ArkG2], vs: &mut [ArkG2], scalar: &ArkFr) {
-        assert_eq!(bases.len(), vs.len(), "Lengths must match");
-
-        for (v, base) in vs.iter_mut().zip(bases.iter()) {
-            *v = v.add(&base.scale(scalar));
-        }
+        add_scaled_bases(bases, vs, scalar);
     }
 
     fn fixed_scalar_mul_vs_then_add(vs: &mut [ArkG2], addends: &[ArkG2], scalar: &ArkFr) {
-        assert_eq!(vs.len(), addends.len(), "Lengths must match");
+        scale_vs_then_add(vs, addends, scalar);
+    }
 
-        for (v, addend) in vs.iter_mut().zip(addends.iter()) {
-            *v = v.scale(scalar).add(addend);
+    fn fold_field_vectors(left: &mut [ArkFr], right: &[ArkFr], scalar: &ArkFr) {
+        fold_scalars(left, right, scalar);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn naive_msm<G: Group>(bases: &[G], scalars: &[G::Scalar]) -> G {
+        bases
+            .iter()
+            .zip(scalars.iter())
+            .fold(G::identity(), |acc, (base, scalar)| {
+                acc.add(&base.scale(scalar))
+            })
+    }
+
+    /// Random fixtures with an identity point and a zero scalar mixed in:
+    /// those exercise the batch-normalization (point at infinity) and MSM
+    /// bucket edge cases that purely random inputs miss.
+    fn fixtures<G: Group<Scalar = ArkFr>>(len: usize) -> (Vec<G>, Vec<ArkFr>) {
+        let mut bases: Vec<G> = (0..len).map(|_| G::random()).collect();
+        let mut scalars: Vec<ArkFr> = (0..len).map(|_| ArkFr::random()).collect();
+        bases[len / 2] = G::identity();
+        scalars[len / 3] = ArkFr::zero();
+        (bases, scalars)
+    }
+
+    fn routines_match_naive<G, R>(len: usize)
+    where
+        G: Group<Scalar = ArkFr> + std::fmt::Debug,
+        R: DoryRoutines<G>,
+    {
+        let (bases, scalars) = fixtures::<G>(len);
+        let scalar = ArkFr::random();
+
+        assert_eq!(R::msm(&bases, &scalars), naive_msm(&bases, &scalars));
+        assert_eq!(R::msm(&[], &[]), G::identity());
+
+        let expected: Vec<G> = scalars.iter().map(|s| bases[0].scale(s)).collect();
+        assert_eq!(
+            R::fixed_base_vector_scalar_mul(&bases[0], &scalars),
+            expected
+        );
+        let expected: Vec<G> = scalars.iter().map(|s| G::identity().scale(s)).collect();
+        assert_eq!(
+            R::fixed_base_vector_scalar_mul(&G::identity(), &scalars),
+            expected
+        );
+        assert_eq!(R::fixed_base_vector_scalar_mul(&bases[0], &[]), vec![]);
+
+        let (mut vs, _) = fixtures::<G>(len);
+        let mut expected = vs.clone();
+        R::fixed_scalar_mul_bases_then_add(&bases, &mut vs, &scalar);
+        for (v, base) in expected.iter_mut().zip(bases.iter()) {
+            *v = v.add(&base.scale(&scalar));
         }
+        assert_eq!(vs, expected);
+
+        R::fixed_scalar_mul_vs_then_add(&mut vs, &bases, &scalar);
+        for (v, addend) in expected.iter_mut().zip(bases.iter()) {
+            *v = v.scale(&scalar).add(addend);
+        }
+        assert_eq!(vs, expected);
+
+        let right: Vec<ArkFr> = (0..len).map(|_| ArkFr::random()).collect();
+        let mut left: Vec<ArkFr> = (0..len).map(|_| ArkFr::random()).collect();
+        let mut expected = left.clone();
+        R::fold_field_vectors(&mut left, &right, &scalar);
+        for (l, r) in expected.iter_mut().zip(right.iter()) {
+            *l = *l * scalar + *r;
+        }
+        assert_eq!(left, expected);
+    }
+
+    #[test]
+    fn g1_routines_match_naive() {
+        routines_match_naive::<ArkG1, G1Routines>(33);
+    }
+
+    #[test]
+    fn g2_routines_match_naive() {
+        routines_match_naive::<ArkG2, G2Routines>(17);
     }
 }

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Faster arkworks `DoryRoutines`: `msm` converts bases to affine with a single
+  batched inversion (`normalize_batch`) instead of one inversion per point, and
+  `fixed_base_vector_scalar_mul`, `fixed_scalar_mul_bases_then_add`,
+  `fixed_scalar_mul_vs_then_add`, and `fold_field_vectors` are parallelized
+  under the `parallel` feature. Group results are unchanged, so commitments and
+  proofs are byte-identical.
+
 ## [0.4.0] - 2026-07-03
 
 ### Security
