@@ -255,6 +255,28 @@ impl<'a> Mul<&'a ArkGT> for ArkFr {
     }
 }
 
+/// left\[i\] = left\[i\] * scalar + right\[i\], parallelized when the `parallel`
+/// feature is enabled.
+fn fold_field_vectors_impl(left: &mut [ArkFr], right: &[ArkFr], scalar: &ArkFr) {
+    assert_eq!(left.len(), right.len(), "Lengths must match");
+
+    #[cfg(feature = "parallel")]
+    {
+        use rayon::prelude::*;
+        // Per-element work is a single field mul-add (~tens of ns); without a
+        // minimum split length, rayon overhead dominates the short vectors of
+        // the late reduce-fold rounds.
+        left.par_iter_mut()
+            .zip(right.par_iter())
+            .with_min_len(1 << 10)
+            .for_each(|(l, r)| *l = *l * *scalar + *r);
+    }
+    #[cfg(not(feature = "parallel"))]
+    for (l, r) in left.iter_mut().zip(right.iter()) {
+        *l = *l * *scalar + *r;
+    }
+}
+
 pub struct G1Routines;
 
 impl DoryRoutines<ArkG1> for G1Routines {
@@ -270,19 +292,43 @@ impl DoryRoutines<ArkG1> for G1Routines {
             return ArkG1::identity();
         }
 
-        let bases_affine: Vec<G1Affine> = bases.iter().map(|b| b.0.into_affine()).collect();
+        // Already-normalized bases (z = 1, e.g. setup generators) convert for
+        // free via `into_affine`'s short-circuit; otherwise one shared
+        // Montgomery batch inversion replaces one field inversion per point.
+        let bases_affine: Vec<G1Affine> = if bases.iter().all(|b| b.0.z.is_one()) {
+            bases.iter().map(|b| b.0.into_affine()).collect()
+        } else {
+            let bases_proj: Vec<G1Projective> = bases.iter().map(|b| b.0).collect();
+            G1Projective::normalize_batch(&bases_proj)
+        };
         let scalars_fr: Vec<ark_bn254::Fr> = scalars.iter().map(|s| s.0).collect();
 
         ArkG1(G1Projective::msm(&bases_affine, &scalars_fr).expect("MSM failed"))
     }
 
     fn fixed_base_vector_scalar_mul(base: &ArkG1, scalars: &[ArkFr]) -> Vec<ArkG1> {
-        scalars.iter().map(|s| base.scale(s)).collect()
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            scalars.par_iter().map(|s| base.scale(s)).collect()
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            scalars.iter().map(|s| base.scale(s)).collect()
+        }
     }
 
     fn fixed_scalar_mul_bases_then_add(bases: &[ArkG1], vs: &mut [ArkG1], scalar: &ArkFr) {
         assert_eq!(bases.len(), vs.len(), "Lengths must match");
 
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            vs.par_iter_mut()
+                .zip(bases.par_iter())
+                .for_each(|(v, base)| *v = v.add(&base.scale(scalar)));
+        }
+        #[cfg(not(feature = "parallel"))]
         for (v, base) in vs.iter_mut().zip(bases.iter()) {
             *v = v.add(&base.scale(scalar));
         }
@@ -291,9 +337,21 @@ impl DoryRoutines<ArkG1> for G1Routines {
     fn fixed_scalar_mul_vs_then_add(vs: &mut [ArkG1], addends: &[ArkG1], scalar: &ArkFr) {
         assert_eq!(vs.len(), addends.len(), "Lengths must match");
 
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            vs.par_iter_mut()
+                .zip(addends.par_iter())
+                .for_each(|(v, addend)| *v = v.scale(scalar).add(addend));
+        }
+        #[cfg(not(feature = "parallel"))]
         for (v, addend) in vs.iter_mut().zip(addends.iter()) {
             *v = v.scale(scalar).add(addend);
         }
+    }
+
+    fn fold_field_vectors(left: &mut [ArkFr], right: &[ArkFr], scalar: &ArkFr) {
+        fold_field_vectors_impl(left, right, scalar);
     }
 }
 
@@ -312,19 +370,43 @@ impl DoryRoutines<ArkG2> for G2Routines {
             return ArkG2::identity();
         }
 
-        let bases_affine: Vec<G2Affine> = bases.iter().map(|b| b.0.into_affine()).collect();
+        // Already-normalized bases (z = 1, e.g. setup generators) convert for
+        // free via `into_affine`'s short-circuit; otherwise one shared
+        // Montgomery batch inversion replaces one field inversion per point.
+        let bases_affine: Vec<G2Affine> = if bases.iter().all(|b| b.0.z.is_one()) {
+            bases.iter().map(|b| b.0.into_affine()).collect()
+        } else {
+            let bases_proj: Vec<G2Projective> = bases.iter().map(|b| b.0).collect();
+            G2Projective::normalize_batch(&bases_proj)
+        };
         let scalars_fr: Vec<ark_bn254::Fr> = scalars.iter().map(|s| s.0).collect();
 
         ArkG2(G2Projective::msm(&bases_affine, &scalars_fr).expect("MSM failed"))
     }
 
     fn fixed_base_vector_scalar_mul(base: &ArkG2, scalars: &[ArkFr]) -> Vec<ArkG2> {
-        scalars.iter().map(|s| base.scale(s)).collect()
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            scalars.par_iter().map(|s| base.scale(s)).collect()
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            scalars.iter().map(|s| base.scale(s)).collect()
+        }
     }
 
     fn fixed_scalar_mul_bases_then_add(bases: &[ArkG2], vs: &mut [ArkG2], scalar: &ArkFr) {
         assert_eq!(bases.len(), vs.len(), "Lengths must match");
 
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            vs.par_iter_mut()
+                .zip(bases.par_iter())
+                .for_each(|(v, base)| *v = v.add(&base.scale(scalar)));
+        }
+        #[cfg(not(feature = "parallel"))]
         for (v, base) in vs.iter_mut().zip(bases.iter()) {
             *v = v.add(&base.scale(scalar));
         }
@@ -333,8 +415,20 @@ impl DoryRoutines<ArkG2> for G2Routines {
     fn fixed_scalar_mul_vs_then_add(vs: &mut [ArkG2], addends: &[ArkG2], scalar: &ArkFr) {
         assert_eq!(vs.len(), addends.len(), "Lengths must match");
 
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            vs.par_iter_mut()
+                .zip(addends.par_iter())
+                .for_each(|(v, addend)| *v = v.scale(scalar).add(addend));
+        }
+        #[cfg(not(feature = "parallel"))]
         for (v, addend) in vs.iter_mut().zip(addends.iter()) {
             *v = v.scale(scalar).add(addend);
         }
+    }
+
+    fn fold_field_vectors(left: &mut [ArkFr], right: &[ArkFr], scalar: &ArkFr) {
+        fold_field_vectors_impl(left, right, scalar);
     }
 }
