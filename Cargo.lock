@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "dory-pcs"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "ark-bn254",
  "ark-ec",
