@@ -73,7 +73,7 @@
 //!
 //! let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 //! init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
-//! // Subsequent operations will automatically use cached prepared points
+//! // Operations on this setup will automatically use cached prepared points.
 //! ```
 //!
 //! ### Examples
@@ -144,7 +144,8 @@ pub use setup::{ProverSetup, VerifierSetup};
 ///
 /// # Performance
 /// To enable prepared point caching (~20-30% speedup), use the `cache` feature and call
-/// `init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec)` after setup.
+/// `init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec)` after each setup that should
+/// receive the optimization.
 ///
 /// # Panics
 /// Panics if the setup file exists on disk but is corrupted or cannot be deserialized.

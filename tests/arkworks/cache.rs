@@ -56,7 +56,6 @@ fn cache_initialization() {
 #[cfg(feature = "cache")]
 #[test]
 fn cache_smart_reinit() {
-    // Initialize with small size
     let g1_small: Vec<ArkG1> = (0..5).map(|_| ArkG1::random()).collect();
     let g2_small: Vec<ArkG2> = (0..5).map(|_| ArkG2::random()).collect();
     ark_cache::init_cache(&g1_small, &g2_small);
@@ -64,19 +63,62 @@ fn cache_smart_reinit() {
     let cache = ark_cache::get_prepared_cache().unwrap();
     let small_len = cache.g1_prepared.len();
 
-    // Re-init with same size — should be a no-op (reuses existing)
     ark_cache::init_cache(&g1_small, &g2_small);
     let cache = ark_cache::get_prepared_cache().unwrap();
     assert_eq!(cache.g1_prepared.len(), small_len);
 
-    // Re-init with larger size — should replace cache
-    let g1_large: Vec<ArkG1> = (0..20).map(|_| ArkG1::random()).collect();
-    let g2_large: Vec<ArkG2> = (0..20).map(|_| ArkG2::random()).collect();
+    let mut g1_large = g1_small.clone();
+    let mut g2_large = g2_small.clone();
+    g1_large.extend((0..15).map(|_| ArkG1::random()));
+    g2_large.extend((0..15).map(|_| ArkG2::random()));
     ark_cache::init_cache(&g1_large, &g2_large);
 
     let cache = ark_cache::get_prepared_cache().unwrap();
     assert_eq!(cache.g1_prepared.len(), 20);
     assert_eq!(cache.g2_prepared.len(), 20);
+
+    ark_cache::init_cache(&g1_small, &g2_small);
+    let prefix_cache = ark_cache::get_prepared_cache().unwrap();
+    assert!(std::sync::Arc::ptr_eq(&cache, &prefix_cache));
+}
+
+#[cfg(feature = "cache")]
+#[test]
+fn cache_reinitializes_for_different_generators_of_the_same_size() {
+    let first_g1: Vec<ArkG1> = (0..8).map(|_| ArkG1::random()).collect();
+    let first_g2: Vec<ArkG2> = (0..8).map(|_| ArkG2::random()).collect();
+    let second_g1: Vec<ArkG1> = (0..8).map(|_| ArkG1::random()).collect();
+    let second_g2: Vec<ArkG2> = (0..8).map(|_| ArkG2::random()).collect();
+
+    ark_cache::init_cache(&first_g1, &first_g2);
+    let first_cache = ark_cache::get_prepared_cache().unwrap();
+
+    ark_cache::init_cache(&second_g1, &second_g2);
+    let second_cache = ark_cache::get_prepared_cache().unwrap();
+
+    assert!(!std::sync::Arc::ptr_eq(&first_cache, &second_cache));
+}
+
+#[cfg(feature = "cache")]
+#[test]
+fn cached_pairings_reject_generators_from_another_setup() {
+    let cached_g1: Vec<ArkG1> = (0..8).map(|_| ArkG1::random()).collect();
+    let cached_g2: Vec<ArkG2> = (0..8).map(|_| ArkG2::random()).collect();
+    let other_g1: Vec<ArkG1> = (0..8).map(|_| ArkG1::random()).collect();
+    let other_g2: Vec<ArkG2> = (0..8).map(|_| ArkG2::random()).collect();
+    let variable_g1: Vec<ArkG1> = (0..8).map(|_| ArkG1::random()).collect();
+    let variable_g2: Vec<ArkG2> = (0..8).map(|_| ArkG2::random()).collect();
+
+    ark_cache::init_cache(&cached_g1, &cached_g2);
+
+    assert_eq!(
+        BN254::multi_pair_g2_setup(&variable_g1, &other_g2),
+        BN254::multi_pair(&variable_g1, &other_g2)
+    );
+    assert_eq!(
+        BN254::multi_pair_g1_setup(&other_g1, &variable_g2),
+        BN254::multi_pair(&other_g1, &variable_g2)
+    );
 }
 
 #[cfg(feature = "cache")]

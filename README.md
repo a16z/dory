@@ -214,6 +214,9 @@ This implementation is optimized for performance:
   use dory_pcs::backends::arkworks::init_cache;
   init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
   ```
+  Call `init_cache` for every setup that should receive the optimization. Matching
+  generator prefixes reuse the current cache; other setups replace it. Pairing
+  operations fall back to uncached preparation if another setup is cached.
 
 - **Parallelization** (optional `parallel` feature): Uses Rayon for parallel multi-scalar multiplications and multi-pairings, providing significant speedup on multi-core systems.
 

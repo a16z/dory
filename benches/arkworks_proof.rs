@@ -35,11 +35,7 @@ fn setup_benchmark_data() -> (
 
     // Initialize cache with setup generators for optimized pairings
     #[cfg(feature = "cache")]
-    {
-        if !dory_pcs::backends::arkworks::is_cached() {
-            init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
-        }
-    }
+    init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
 
     // Create polynomial with 2^26 coefficients (nu=13, sigma=13)
     let poly_size = 1 << 26; // 67,108,864 coefficients
@@ -140,13 +136,9 @@ fn bench_end_to_end(c: &mut Criterion) {
     let max_log_n = 26;
     let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
-    // Initialize cache once
+    // Initialize cache with setup generators for optimized pairings
     #[cfg(feature = "cache")]
-    {
-        if !dory_pcs::backends::arkworks::is_cached() {
-            init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
-        }
-    }
+    init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec);
 
     c.bench_function("end_to_end_2^26_coefficients", |b| {
         b.iter(|| {
