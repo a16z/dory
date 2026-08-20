@@ -10,6 +10,7 @@
 use super::ark_group::{ArkG1, ArkG2};
 use ark_bn254::{Bn254, G1Affine, G2Affine};
 use ark_ec::pairing::Pairing;
+use rayon::prelude::*;
 use std::sync::{Arc, RwLock};
 
 /// Global cache for prepared points
@@ -58,32 +59,37 @@ pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {
         }
     }
 
-    // Slow path: need to initialize or grow the cache
+    // Prepare outside the write lock: point preparation is expensive and
+    // readers can keep using the old cache until the replacement is ready.
+    let (g1_prepared, g2_prepared) = rayon::join(
+        || {
+            g1_vec
+                .par_iter()
+                .map(|g| {
+                    let affine: G1Affine = g.0.into();
+                    affine.into()
+                })
+                .collect()
+        },
+        || {
+            g2_vec
+                .par_iter()
+                .map(|g| {
+                    let affine: G2Affine = g.0.into();
+                    affine.into()
+                })
+                .collect()
+        },
+    );
+
     let mut write_guard = CACHE.write().unwrap();
 
-    // Double-check after acquiring write lock (another thread may have initialized)
+    // Double-check after acquiring the write lock (another thread may have initialized).
     if let Some(ref cache) = *write_guard {
         if cache.g1_prepared.len() >= g1_vec.len() && cache.g2_prepared.len() >= g2_vec.len() {
-            return; // Another thread initialized a sufficient cache
+            return;
         }
     }
-
-    // Prepare the new cache
-    let g1_prepared: Vec<<Bn254 as Pairing>::G1Prepared> = g1_vec
-        .iter()
-        .map(|g| {
-            let affine: G1Affine = g.0.into();
-            affine.into()
-        })
-        .collect();
-
-    let g2_prepared: Vec<<Bn254 as Pairing>::G2Prepared> = g2_vec
-        .iter()
-        .map(|g| {
-            let affine: G2Affine = g.0.into();
-            affine.into()
-        })
-        .collect();
 
     *write_guard = Some(Arc::new(PreparedCache {
         g1_prepared,
