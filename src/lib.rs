@@ -127,6 +127,8 @@ pub use setup::{ProverSetup, VerifierSetup};
 ///
 /// Creates or loads the transparent setup parameters for Dory PCS.
 /// First attempts to load from disk; if not found, generates new setup and saves to disk.
+/// If another process saves a setup first, this returns that one instead, so concurrent
+/// processes that start without a setup file all use the same setup.
 ///
 /// Supports polynomials up to 2^max_log_n coefficients arranged as 2^ν × 2^σ matrices
 /// where ν + σ = max_log_n and ν ≤ σ (flexible matrix layouts including square and non-square).
@@ -176,8 +178,12 @@ where
         let prover_setup = ProverSetup::new(max_log_n);
         let verifier_setup = prover_setup.to_verifier_setup();
 
-        // Save to disk
-        setup::save_setup(&prover_setup, &verifier_setup, max_log_n);
+        // Another process may have saved its own setup since the load above.
+        // Keep the first one saved, so that every process uses the same one.
+        if !setup::save_setup_if_absent(&prover_setup, &verifier_setup, max_log_n) {
+            return setup::load_setup::<E>(max_log_n)
+                .unwrap_or_else(|e| panic!("Failed to load setup from disk: {e}"));
+        }
 
         (prover_setup, verifier_setup)
     }
