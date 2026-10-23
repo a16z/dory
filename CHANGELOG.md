@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The prepared-point cache (`cache` feature) no longer pairs against the
+  wrong points. The setup multi-pairings used the cached prepared points
+  for any input of no greater length, without checking that the input was
+  the cached points. So a cache built from another setup, or from a larger
+  setup generated separately, gave wrong pairings. An input longer than
+  the cache panicked. The cache now keeps the points it prepared. It serves
+  an input only when the input is a prefix of those points, and otherwise
+  the pairing prepares the input itself. `init_cache` replaces a cache that
+  does not cover its input, instead of keeping any cache at least as large.
+  Under `cargo test`, the cache tests no longer break the proofs that later
+  tests verify in the same process.
+
+### Added
+
+- `PreparedCache::g1_prepared_for` and `PreparedCache::g2_prepared_for`
+  return the prepared form of a prefix of the cached points.
+
+### Changed
+
+- **Breaking:** `PreparedCache` has private fields, so code outside the
+  crate can no longer construct it with a struct literal. `init_cache`
+  builds it.
+
 ## [0.4.2] - 2026-08-20
 
 ### Changed
