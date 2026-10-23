@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** the `Transcript` trait is positional. `append_serde` takes no
+  label, and `challenge_scalar` takes a `Challenge` role instead of a label.
+  The role exposes `bad_values()` and `width()`, so a transcript can draw
+  `β`, `α` and `d` as short scalars without inferring them from labels or
+  from draw position.
+- **Breaking:** the trait drops `append_bytes`, `append_field`,
+  `append_group` and `reset`, which Dory never called. `Blake2bTranscript`
+  keeps `new`, `reset` and an unlabeled `append_bytes` as inherent methods.
+- `Blake2bTranscript` no longer absorbs labels, so its challenges, and so
+  its proofs, differ from 0.4.2. It still draws every challenge at full
+  width.
+
+### Added
+
+- `tests/arkworks/draw_schedule.rs` pins the draw order in both modes, the
+  absorbs between draws, and each role's width and bad-value count.
+
 ## [0.4.2] - 2026-08-20
 
 ### Changed
