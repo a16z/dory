@@ -25,12 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `PreparedCache::g1_prepared_for` and `PreparedCache::g2_prepared_for`
   return the prepared form of a prefix of the cached points.
+- `PreparedCache::g1_len` and `PreparedCache::g2_len` return the number of
+  cached points.
 
 ### Changed
 
-- **Breaking:** `PreparedCache` has private fields, so code outside the
-  crate can no longer construct it with a struct literal. `init_cache`
-  builds it.
+- **Breaking:** all of `PreparedCache`'s fields are private, including
+  `g1_prepared` and `g2_prepared`. Read prepared points through
+  `g1_prepared_for` and `g2_prepared_for`, which check that the input is a
+  prefix of the cached points, and read the cache size through `g1_len` and
+  `g2_len`. Code outside the crate can no longer construct a
+  `PreparedCache` with a struct literal. `init_cache` builds it.
 
 ## [0.4.2] - 2026-08-20
 

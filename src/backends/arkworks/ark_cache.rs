@@ -15,13 +15,16 @@ use ark_ec::pairing::Pairing;
 use rayon::prelude::*;
 use std::sync::{Arc, RwLock};
 
-/// Global cache for prepared points
+/// Global cache for prepared points.
+///
+/// The prepared points are reachable only through
+/// [`g1_prepared_for`](Self::g1_prepared_for) and
+/// [`g2_prepared_for`](Self::g2_prepared_for), which check that the caller's
+/// points are the ones that were prepared.
 #[derive(Debug, Clone)]
 pub struct PreparedCache {
-    /// Prepared G1 points for efficient pairing operations
-    pub g1_prepared: Vec<<Bn254 as Pairing>::G1Prepared>,
-    /// Prepared G2 points for efficient pairing operations
-    pub g2_prepared: Vec<<Bn254 as Pairing>::G2Prepared>,
+    g1_prepared: Vec<<Bn254 as Pairing>::G1Prepared>,
+    g2_prepared: Vec<<Bn254 as Pairing>::G2Prepared>,
     g1: Vec<ArkG1>,
     g2: Vec<ArkG2>,
 }
@@ -29,6 +32,16 @@ pub struct PreparedCache {
 impl PreparedCache {
     fn covers(&self, g1: &[ArkG1], g2: &[ArkG2]) -> bool {
         is_prefix(&self.g1, g1) && is_prefix(&self.g2, g2)
+    }
+
+    /// The number of cached G1 points.
+    pub fn g1_len(&self) -> usize {
+        self.g1.len()
+    }
+
+    /// The number of cached G2 points.
+    pub fn g2_len(&self) -> usize {
+        self.g2.len()
     }
 
     /// The prepared form of `g1`, if `g1` is a prefix of the cached G1 points.
