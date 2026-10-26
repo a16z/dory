@@ -4,8 +4,10 @@
 //! across multiple pairing operations. Prepared points skip the affine conversion
 //! and preprocessing steps, providing ~20-30% speedup for repeated pairings.
 //!
-//! The cache supports smart re-initialization: if a larger setup is needed,
-//! the cache is automatically replaced. Smaller or equal setups reuse the existing cache.
+//! The cache remembers the points it prepared. A lookup returns prepared
+//! points only for a prefix of those points, so a stale cache, or one built
+//! from another setup, falls back to preparing the caller's points instead
+//! of pairing against the wrong ones.
 
 use super::ark_group::{ArkG1, ArkG2};
 use ark_bn254::{Bn254, G1Affine, G2Affine};
@@ -13,25 +15,61 @@ use ark_ec::pairing::Pairing;
 use rayon::prelude::*;
 use std::sync::{Arc, RwLock};
 
-/// Global cache for prepared points
+/// Global cache for prepared points.
+///
+/// The prepared points are reachable only through
+/// [`g1_prepared_for`](Self::g1_prepared_for) and
+/// [`g2_prepared_for`](Self::g2_prepared_for), which check that the caller's
+/// points are the ones that were prepared.
 #[derive(Debug, Clone)]
 pub struct PreparedCache {
-    /// Prepared G1 points for efficient pairing operations
-    pub g1_prepared: Vec<<Bn254 as Pairing>::G1Prepared>,
-    /// Prepared G2 points for efficient pairing operations
-    pub g2_prepared: Vec<<Bn254 as Pairing>::G2Prepared>,
+    g1_prepared: Vec<<Bn254 as Pairing>::G1Prepared>,
+    g2_prepared: Vec<<Bn254 as Pairing>::G2Prepared>,
+    g1: Vec<ArkG1>,
+    g2: Vec<ArkG2>,
+}
+
+impl PreparedCache {
+    fn covers(&self, g1: &[ArkG1], g2: &[ArkG2]) -> bool {
+        is_prefix(&self.g1, g1) && is_prefix(&self.g2, g2)
+    }
+
+    /// The number of cached G1 points.
+    pub fn g1_len(&self) -> usize {
+        self.g1.len()
+    }
+
+    /// The number of cached G2 points.
+    pub fn g2_len(&self) -> usize {
+        self.g2.len()
+    }
+
+    /// The prepared form of `g1`, if `g1` is a prefix of the cached G1 points.
+    pub fn g1_prepared_for(&self, g1: &[ArkG1]) -> Option<&[<Bn254 as Pairing>::G1Prepared]> {
+        is_prefix(&self.g1, g1).then(|| &self.g1_prepared[..g1.len()])
+    }
+
+    /// The prepared form of `g2`, if `g2` is a prefix of the cached G2 points.
+    pub fn g2_prepared_for(&self, g2: &[ArkG2]) -> Option<&[<Bn254 as Pairing>::G2Prepared]> {
+        is_prefix(&self.g2, g2).then(|| &self.g2_prepared[..g2.len()])
+    }
+}
+
+/// Whether `points` is a prefix of `cached`. Comparing projective points
+/// costs a few field multiplications each, far less than preparing them.
+fn is_prefix<P: PartialEq + Sync>(cached: &[P], points: &[P]) -> bool {
+    cached
+        .get(..points.len())
+        .is_some_and(|cached| cached.par_iter().zip(points).all(|(a, b)| a == b))
 }
 
 static CACHE: RwLock<Option<Arc<PreparedCache>>> = RwLock::new(None);
 
 /// Initialize the global cache with G1 and G2 vectors.
 ///
-/// This function implements smart re-initialization:
-/// - If the cache doesn't exist, it creates one
-/// - If the cache exists but is too small, it replaces it with a larger one
-/// - If the cache exists and is large enough, it does nothing (reuses existing)
-///
-/// This allows multiple proofs with different setup sizes to run in the same process.
+/// If `g1_vec` and `g2_vec` are prefixes of the cached points, this does
+/// nothing. Otherwise it replaces the cache, whether the cache is smaller or
+/// was built from other points.
 ///
 /// # Arguments
 /// * `g1_vec` - Vector of G1 points to prepare and cache
@@ -52,10 +90,11 @@ pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {
     // Fast path: check if existing cache is sufficient (read lock only)
     {
         let read_guard = CACHE.read().unwrap();
-        if let Some(ref cache) = *read_guard {
-            if cache.g1_prepared.len() >= g1_vec.len() && cache.g2_prepared.len() >= g2_vec.len() {
-                return; // Existing cache is large enough
-            }
+        if read_guard
+            .as_ref()
+            .is_some_and(|cache| cache.covers(g1_vec, g2_vec))
+        {
+            return;
         }
     }
 
@@ -85,15 +124,18 @@ pub fn init_cache(g1_vec: &[ArkG1], g2_vec: &[ArkG2]) {
     let mut write_guard = CACHE.write().unwrap();
 
     // Double-check after acquiring the write lock (another thread may have initialized).
-    if let Some(ref cache) = *write_guard {
-        if cache.g1_prepared.len() >= g1_vec.len() && cache.g2_prepared.len() >= g2_vec.len() {
-            return;
-        }
+    if write_guard
+        .as_ref()
+        .is_some_and(|cache| cache.covers(g1_vec, g2_vec))
+    {
+        return;
     }
 
     *write_guard = Some(Arc::new(PreparedCache {
         g1_prepared,
         g2_prepared,
+        g1: g1_vec.to_vec(),
+        g2: g2_vec.to_vec(),
     }));
 }
 
