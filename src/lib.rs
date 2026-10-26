@@ -245,7 +245,9 @@ where
 /// - `nu`: Log₂ of number of rows (constraint: nu ≤ sigma for non-square matrices)
 /// - `sigma`: Log₂ of number of columns
 /// - `setup`: Prover setup
-/// - `transcript`: Fiat-Shamir transcript
+/// - `transcript`: Fiat-Shamir transcript. It must already have absorbed the
+///   commitment, the evaluation, `point`, `nu` and `sigma`: Dory does not absorb
+///   them. See [`primitives::transcript`](crate::primitives::transcript#binding-the-statement).
 ///
 /// # Returns
 /// The evaluation proof containing the VMV message, reduce messages, and the
@@ -317,7 +319,9 @@ where
 /// - `point`: Evaluation point (length must equal proof.nu + proof.sigma)
 /// - `proof`: Evaluation proof to verify (contains nu and sigma)
 /// - `setup`: Verifier setup
-/// - `transcript`: Fiat-Shamir transcript
+/// - `transcript`: Fiat-Shamir transcript. It must already have absorbed
+///   `commitment`, `evaluation`, `point`, `nu` and `sigma`, in the prover's order:
+///   Dory does not absorb them. See [`primitives::transcript`](crate::primitives::transcript#binding-the-statement).
 ///
 /// # Returns
 /// `Ok(())` if proof is valid, `Err(DoryError)` otherwise

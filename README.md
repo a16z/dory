@@ -96,13 +96,42 @@ This property enables efficient proof aggregation and batch verification. See `e
 
 ## Usage
 
+> [!WARNING]
+> **Dory does not absorb the statement into the transcript.** `prove` and
+> `verify` absorb only the proof messages. They do not absorb the
+> commitment, the claimed evaluation, the evaluation point, or the
+> `nu`/`sigma` split. You MUST absorb all of them into the transcript before
+> calling `prove` or `verify`, in the same order on both sides, unless an
+> outer protocol has already bound the transcript to them. Otherwise a
+> prover can choose the commitment or the evaluation after seeing the
+> challenges, and `verify` can accept a false evaluation claim. The example
+> below does this in `bind_statement`. See the `primitives::transcript`
+> module documentation for details.
+
 ```rust
 use dory_pcs::{setup, prove, verify, Transparent};
 use dory_pcs::backends::arkworks::{
-    BN254, G1Routines, G2Routines, ArkworksPolynomial, ArkFr, Blake2bTranscript
+    BN254, G1Routines, G2Routines, ArkworksPolynomial, ArkFr, ArkGT, Blake2bTranscript
 };
 use dory_pcs::primitives::arithmetic::Field;
 use dory_pcs::primitives::poly::Polynomial;
+use dory_pcs::primitives::transcript::Transcript;
+
+/// Absorbs the statement. Dory does not, so the prover and the verifier must.
+fn bind_statement(
+    transcript: &mut Blake2bTranscript<BN254>,
+    commitment: &ArkGT,
+    evaluation: &ArkFr,
+    point: &[ArkFr],
+    nu: usize,
+    sigma: usize,
+) {
+    transcript.append_serde(commitment);
+    transcript.append_serde(evaluation);
+    transcript.append_serde(&point.to_vec());
+    transcript.append_serde(&nu);
+    transcript.append_serde(&sigma);
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Generate setup for polynomials up to 2^10 coefficients
@@ -123,8 +152,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tier_2, row_commitments, commit_blind) = polynomial
         .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
 
-    // 5. Create evaluation proof using row commitments
+    // 5. Bind the statement, then create the evaluation proof using row commitments
+    let evaluation = polynomial.evaluate(&point);
     let mut prover_transcript = Blake2bTranscript::new(b"dory-example");
+    bind_statement(&mut prover_transcript, &tier_2, &evaluation, &point, nu, sigma);
     let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
         &polynomial,
         &point,
@@ -136,9 +167,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut prover_transcript,
     )?;
 
-    // 6. Verify: check that the proof is valid
-    let evaluation = polynomial.evaluate(&point);
+    // 6. Verify: bind the same statement, then check that the proof is valid
     let mut verifier_transcript = Blake2bTranscript::new(b"dory-example");
+    bind_statement(&mut verifier_transcript, &tier_2, &evaluation, &point, nu, sigma);
     verify::<_, BN254, G1Routines, G2Routines, _>(
         tier_2,
         evaluation,

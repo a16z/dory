@@ -1,5 +1,25 @@
 //! Transcript trait for Fiat-Shamir transformations
 //!
+//! # Binding the statement
+//!
+//! **Warning: Dory does not absorb the statement.** It absorbs only the
+//! prover's messages. It does not absorb the commitment, the claimed
+//! evaluation, the evaluation point, or the `nu`/`sigma` split (the verifier
+//! reads `nu` and `sigma` from the proof). The caller MUST absorb all of
+//! them into the transcript before calling [`prove`](crate::prove) or
+//! [`verify`](crate::verify), in the same order on both sides, unless the
+//! transcript is already bound to them (for example, by an outer protocol
+//! that absorbed them earlier).
+//!
+//! Without that binding, Dory's challenges do not depend on the statement.
+//! A prover can then pick the commitment or the claimed evaluation after
+//! seeing the challenges, and [`verify`](crate::verify) can accept an
+//! evaluation claim that is false. The bad-value counts in
+//! [`Challenge::bad_values`] assume the statement is fixed before Dory's
+//! first draw.
+//!
+//! # Positional absorbs
+//!
 //! Dory's transcript use is positional. The verifier fixes the order, the
 //! type and the serialized length of every absorbed message from the
 //! statement and the proof shape (`nu`, `sigma`, the mode), so the trait
@@ -63,8 +83,11 @@ pub enum ChallengeWidth {
     /// before the next absorb. A full-width draw's set is larger than
     /// `2^b`, so its bad values cost no more than this draw's.
     ///
-    /// The value 0 can be drawn. The verifier rejects it, because it inverts
-    /// the challenge. A transcript may always draw full width instead.
+    /// The value 0 can be drawn. Dory inverts `β`, `α`, `γ` and `d`, so a
+    /// zero challenge cannot complete a proof: the verifier rejects it with
+    /// [`DoryError::InvalidProof`](crate::DoryError::InvalidProof), and the
+    /// prover panics on a zero `β`, `α` or `γ`. A transcript may always draw
+    /// full width instead.
     Short {
         /// Bad values charged to this draw's squeeze run.
         loss: u64,
@@ -127,6 +150,11 @@ pub type TranscriptScalar<T> = <<<T as Transcript>::Curve as PairingCurve>::G1 a
 
 /// Transcript to standardize Fiat-Shamir across different transcript
 /// implementations.
+///
+/// Dory absorbs only the prover's messages. Before calling
+/// [`prove`](crate::prove) or [`verify`](crate::verify), the caller must
+/// absorb the commitment, the evaluation, the point, `nu` and `sigma`. See
+/// the [module documentation](crate::primitives::transcript#binding-the-statement).
 pub trait Transcript {
     /// The pairing curve whose scalars the transcript draws.
     type Curve: PairingCurve;

@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Blake2bTranscript` no longer absorbs labels, so its challenges, and so
   its proofs, differ from 0.4.2. It still draws every challenge at full
   width.
+- The `Transcript` docs, the `prove` and `verify` docs, and the README now
+  state that Dory does not absorb the commitment, the evaluation, the point,
+  or `nu`/`sigma`, so callers must absorb them before proving or verifying.
+  The README example now does. This was already true in 0.4.2; Dory's
+  transcript bytes are unchanged by this note.
 
 ### Added
 
