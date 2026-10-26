@@ -45,5 +45,25 @@ fn concurrent_setup_agrees_on_one_file() {
         assert_eq!(setup.h1, saved.h1);
     }
 
+    // Losing writers and the winner's link both remove their temporary files.
+    let leftovers: Vec<_> = walk(&home)
+        .into_iter()
+        .filter(|path| path.extension().is_some_and(|ext| ext == "tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "temporary files left: {leftovers:?}");
+
     std::fs::remove_dir_all(&home).unwrap();
+}
+
+fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            files.extend(walk(&path));
+        } else {
+            files.push(path);
+        }
+    }
+    files
 }

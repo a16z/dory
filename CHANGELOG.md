@@ -17,7 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after `setup` found none. It returns the saved setup instead. Before,
   processes that started together each kept their own random setup, and
   the last writer replaced the file, so a later `setup` call in the same
-  process could load a different setup.
+  process could load a different setup. If the file saved first is removed
+  before `setup` can load it, `setup` tries to save its own setup again
+  instead of panicking.
+- Temporary setup files have random names and are created exclusively, so
+  writers that share a cache directory across containers or hosts (where
+  process IDs can repeat) never write the same temporary file. A write that
+  fails removes its temporary file. On Unix, the directory is synced after
+  the file is published, so the published file survives a power loss.
 
 ## [0.4.2] - 2026-08-20
 

@@ -149,7 +149,9 @@ pub use setup::{ProverSetup, VerifierSetup};
 /// `init_cache(&prover_setup.g1_vec, &prover_setup.g2_vec)` after setup.
 ///
 /// # Panics
-/// Panics if the setup file exists on disk but is corrupted or cannot be deserialized.
+/// Panics if the setup file exists on disk but is corrupted or cannot be deserialized,
+/// if writing the setup file fails, or if another process keeps removing the setup
+/// file between this call's attempts to save and load it.
 pub fn setup<E: PairingCurve>(max_log_n: usize) -> (ProverSetup<E>, VerifierSetup<E>)
 where
     ProverSetup<E>: DorySerialize + DoryDeserialize,
@@ -180,12 +182,25 @@ where
 
         // Another process may have saved its own setup since the load above.
         // Keep the first one saved, so that every process uses the same one.
-        if !setup::save_setup_if_absent(&prover_setup, &verifier_setup, max_log_n) {
-            return setup::load_setup::<E>(max_log_n)
-                .unwrap_or_else(|e| panic!("Failed to load setup from disk: {e}"));
+        // If that file is removed before we can load it, nothing has used
+        // our setup yet, so try to save ours again.
+        const MAX_ATTEMPTS: usize = 8;
+        for _ in 0..MAX_ATTEMPTS {
+            if setup::save_setup_if_absent(&prover_setup, &verifier_setup, max_log_n) {
+                return (prover_setup, verifier_setup);
+            }
+            match setup::load_setup::<E>(max_log_n) {
+                Ok(saved) => return saved,
+                Err(DoryError::InvalidURS(msg)) if msg.contains("not found") => {
+                    tracing::debug!("Setup file saved first was removed, saving again");
+                }
+                Err(e) => panic!("Failed to load setup from disk: {e}"),
+            }
         }
-
-        (prover_setup, verifier_setup)
+        panic!(
+            "Setup file for max_log_n={max_log_n} kept disappearing \
+             after {MAX_ATTEMPTS} attempts to save or load it"
+        );
     }
 
     #[cfg(any(not(feature = "disk-persistence"), target_arch = "wasm32"))]
