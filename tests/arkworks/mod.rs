@@ -11,6 +11,7 @@ use dory_pcs::setup::{ProverSetup, VerifierSetup};
 
 pub mod cache;
 pub mod commitment;
+pub mod draw_schedule;
 pub mod evaluation;
 pub mod homomorphic;
 pub mod integration;

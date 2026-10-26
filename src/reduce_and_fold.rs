@@ -16,7 +16,7 @@ use crate::setup::{ProverSetup, VerifierSetup};
 use std::marker::PhantomData;
 
 #[cfg(feature = "zk")]
-use crate::primitives::transcript::Transcript;
+use crate::primitives::transcript::{Challenge, Transcript};
 
 type Scalar<E> = <<E as PairingCurve>::G1 as Group>::Scalar;
 
@@ -120,11 +120,11 @@ pub enum FinalCheck<'a, E: PairingCurve> {
     Zk {
         /// Σ-proof for the scalar-product relation over the folded statement.
         scalar_product: &'a ScalarProductProof<E::G1, E::G2, Scalar<E>, E::GT>,
-        /// Fiat-Shamir challenge for the Σ-proof (label `sigma_c`).
+        /// Fiat-Shamir challenge for the Σ-proof ([`Challenge::ScalarProduct`]).
         sigma_c: Scalar<E>,
         /// Σ₂ proof of the VMV constraint, batched in at the `d²` slot.
         sigma2: &'a Sigma2Proof<Scalar<E>, E::GT>,
-        /// Fiat-Shamir challenge for the Σ₂ proof (label `sigma2_c`).
+        /// Fiat-Shamir challenge for the Σ₂ proof ([`Challenge::Sigma2`]).
         sigma2_c: Scalar<E>,
     },
 }
@@ -447,15 +447,10 @@ where
         let p2 = E::pair(&g1, &d2) + ht.scale(&rp2);
         let q = E::pair(&d1, &v2) + E::pair(&v1, &d2) + ht.scale(&rq);
         let rr_val = E::pair(&d1, &d2) + ht.scale(&rr);
-        for (label, val) in [
-            (b"sigma_p1" as &[u8], &p1),
-            (b"sigma_p2", &p2),
-            (b"sigma_q", &q),
-            (b"sigma_r", &rr_val),
-        ] {
-            transcript.append_serde(label, val);
+        for val in [&p1, &p2, &q, &rr_val] {
+            transcript.append_serde(val);
         }
-        let c = transcript.challenge_scalar(b"sigma_c");
+        let c = transcript.challenge_scalar(Challenge::ScalarProduct);
         let proof = ScalarProductProof {
             p1,
             p2,
@@ -467,11 +462,11 @@ where
             r2: rp2 + c * self.r_d2,
             r3: rr + c * rq + c * c * self.r_c,
         };
-        transcript.append_serde(b"sigma_e1", &proof.e1);
-        transcript.append_serde(b"sigma_e2", &proof.e2);
-        transcript.append_serde(b"sigma_r1", &proof.r1);
-        transcript.append_serde(b"sigma_r2", &proof.r2);
-        transcript.append_serde(b"sigma_r3", &proof.r3);
+        transcript.append_serde(&proof.e1);
+        transcript.append_serde(&proof.e2);
+        transcript.append_serde(&proof.r1);
+        transcript.append_serde(&proof.r2);
+        transcript.append_serde(&proof.r3);
         proof
     }
 }
@@ -491,20 +486,15 @@ where
     E::G2: Group<Scalar = Scalar<E>>,
     E::GT: Group<Scalar = Scalar<E>>,
 {
-    for (label, value) in [
-        (b"sigma_p1" as &[u8], &proof.p1),
-        (b"sigma_p2", &proof.p2),
-        (b"sigma_q", &proof.q),
-        (b"sigma_r", &proof.r),
-    ] {
-        transcript.append_serde(label, value);
+    for value in [&proof.p1, &proof.p2, &proof.q, &proof.r] {
+        transcript.append_serde(value);
     }
-    let c = transcript.challenge_scalar(b"sigma_c");
-    transcript.append_serde(b"sigma_e1", &proof.e1);
-    transcript.append_serde(b"sigma_e2", &proof.e2);
-    transcript.append_serde(b"sigma_r1", &proof.r1);
-    transcript.append_serde(b"sigma_r2", &proof.r2);
-    transcript.append_serde(b"sigma_r3", &proof.r3);
+    let c = transcript.challenge_scalar(Challenge::ScalarProduct);
+    transcript.append_serde(&proof.e1);
+    transcript.append_serde(&proof.e2);
+    transcript.append_serde(&proof.r1);
+    transcript.append_serde(&proof.r2);
+    transcript.append_serde(&proof.r3);
     c
 }
 
@@ -531,9 +521,9 @@ where
     );
     let a1 = g2_fin.scale(&k1) + setup.h2.scale(&k2);
     let a2 = k1 * g1_fin + k3 * setup.h1;
-    transcript.append_serde(b"sigma1_a1", &a1);
-    transcript.append_serde(b"sigma1_a2", &a2);
-    let c = transcript.challenge_scalar(b"sigma1_c");
+    transcript.append_serde(&a1);
+    transcript.append_serde(&a2);
+    let c = transcript.challenge_scalar(Challenge::Sigma1);
     Sigma1Proof {
         a1,
         a2,
@@ -556,9 +546,9 @@ where
     Scalar<E>: Field,
     E::G2: Group<Scalar = Scalar<E>>,
 {
-    transcript.append_serde(b"sigma1_a1", &proof.a1);
-    transcript.append_serde(b"sigma1_a2", &proof.a2);
-    let c = transcript.challenge_scalar(b"sigma1_c");
+    transcript.append_serde(&proof.a1);
+    transcript.append_serde(&proof.a2);
+    let c = transcript.challenge_scalar(Challenge::Sigma1);
     if setup.g2_0.scale(&proof.z1) + setup.h2.scale(&proof.z2) != proof.a1 + e2.scale(&c) {
         return Err(DoryError::InvalidProof);
     }
@@ -595,15 +585,15 @@ where
         &setup.h1,
         &(setup.g2_vec[0].scale(&k1) + setup.h2.scale(&k2)),
     );
-    transcript.append_serde(b"sigma2_a", &a);
-    let c = transcript.challenge_scalar(b"sigma2_c");
+    transcript.append_serde(&a);
+    let c = transcript.challenge_scalar(Challenge::Sigma2);
     let proof = Sigma2Proof {
         a,
         z1: k1 + c * t1,
         z2: k2 + c * t2,
     };
-    transcript.append_serde(b"sigma2_z1", &proof.z1);
-    transcript.append_serde(b"sigma2_z2", &proof.z2);
+    transcript.append_serde(&proof.z1);
+    transcript.append_serde(&proof.z2);
     proof
 }
 
@@ -622,10 +612,10 @@ where
     E::G2: Group<Scalar = Scalar<E>>,
     E::GT: Group<Scalar = Scalar<E>>,
 {
-    transcript.append_serde(b"sigma2_a", &proof.a);
-    let c = transcript.challenge_scalar(b"sigma2_c");
-    transcript.append_serde(b"sigma2_z1", &proof.z1);
-    transcript.append_serde(b"sigma2_z2", &proof.z2);
+    transcript.append_serde(&proof.a);
+    let c = transcript.challenge_scalar(Challenge::Sigma2);
+    transcript.append_serde(&proof.z1);
+    transcript.append_serde(&proof.z2);
     c
 }
 

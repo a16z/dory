@@ -31,7 +31,7 @@ use crate::messages::VMVMessage;
 use crate::mode::Mode;
 use crate::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 use crate::primitives::poly::MultilinearLagrange;
-use crate::primitives::transcript::Transcript;
+use crate::primitives::transcript::{Challenge, Transcript};
 use crate::proof::DoryProof;
 use crate::proof::ProofMode;
 use crate::reduce_and_fold::{DoryProverState, DoryVerifierState, FinalCheck};
@@ -155,9 +155,9 @@ where
 
     let vmv_message = VMVMessage { c, d2, e1 };
 
-    transcript.append_serde(b"vmv_c", &vmv_message.c);
-    transcript.append_serde(b"vmv_d2", &vmv_message.d2);
-    transcript.append_serde(b"vmv_e1", &vmv_message.e1);
+    transcript.append_serde(&vmv_message.c);
+    transcript.append_serde(&vmv_message.d2);
+    transcript.append_serde(&vmv_message.e1);
 
     #[cfg(feature = "zk")]
     let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2, zk_r_y) = if Mo::BLINDING {
@@ -166,8 +166,8 @@ where
         let r_y: F = Mo::sample();
         let e2 = Mo::mask(g2_fin.scale(&y), &setup.h2, &r_e2);
         let y_com = setup.g1_vec[0].scale(&y) + setup.h1.scale(&r_y);
-        transcript.append_serde(b"vmv_e2", &e2);
-        transcript.append_serde(b"vmv_y_com", &y_com);
+        transcript.append_serde(&e2);
+        transcript.append_serde(&y_com);
         let s1 = generate_sigma1_proof::<E, T>(&y, &r_e2, &r_y, setup, transcript);
         let s2 = generate_sigma2_proof::<E, T>(&r_e1, &-r_d2, setup, transcript);
         (Some(e2), Some(y_com), Some(s1), Some(s2), Some(r_y))
@@ -202,32 +202,32 @@ where
     for _round in 0..num_rounds {
         let first_msg = prover_state.compute_first_message::<M1, M2>();
 
-        transcript.append_serde(b"d1_left", &first_msg.d1_left);
-        transcript.append_serde(b"d1_right", &first_msg.d1_right);
-        transcript.append_serde(b"d2_left", &first_msg.d2_left);
-        transcript.append_serde(b"d2_right", &first_msg.d2_right);
-        transcript.append_serde(b"e1_beta", &first_msg.e1_beta);
-        transcript.append_serde(b"e2_beta", &first_msg.e2_beta);
+        transcript.append_serde(&first_msg.d1_left);
+        transcript.append_serde(&first_msg.d1_right);
+        transcript.append_serde(&first_msg.d2_left);
+        transcript.append_serde(&first_msg.d2_right);
+        transcript.append_serde(&first_msg.e1_beta);
+        transcript.append_serde(&first_msg.e2_beta);
 
-        let beta = transcript.challenge_scalar(b"beta");
+        let beta = transcript.challenge_scalar(Challenge::Beta);
         prover_state.apply_first_challenge::<M1, M2>(&beta);
         first_messages.push(first_msg);
 
         let second_msg = prover_state.compute_second_message::<M1, M2>();
 
-        transcript.append_serde(b"c_plus", &second_msg.c_plus);
-        transcript.append_serde(b"c_minus", &second_msg.c_minus);
-        transcript.append_serde(b"e1_plus", &second_msg.e1_plus);
-        transcript.append_serde(b"e1_minus", &second_msg.e1_minus);
-        transcript.append_serde(b"e2_plus", &second_msg.e2_plus);
-        transcript.append_serde(b"e2_minus", &second_msg.e2_minus);
+        transcript.append_serde(&second_msg.c_plus);
+        transcript.append_serde(&second_msg.c_minus);
+        transcript.append_serde(&second_msg.e1_plus);
+        transcript.append_serde(&second_msg.e1_minus);
+        transcript.append_serde(&second_msg.e2_plus);
+        transcript.append_serde(&second_msg.e2_minus);
 
-        let alpha = transcript.challenge_scalar(b"alpha");
+        let alpha = transcript.challenge_scalar(Challenge::Alpha);
         prover_state.apply_second_challenge::<M1, M2>(&alpha);
         second_messages.push(second_msg);
     }
 
-    let gamma = transcript.challenge_scalar(b"gamma");
+    let gamma = transcript.challenge_scalar(Challenge::Gamma);
 
     // Fold-Scalars (Dory paper §4.1): absorb the folded public scalars s₁, s₂
     // into the witness.
@@ -246,12 +246,12 @@ where
         None
     } else {
         let msg = prover_state.compute_final_message();
-        transcript.append_serde(b"final_e1", &msg.e1);
-        transcript.append_serde(b"final_e2", &msg.e2);
+        transcript.append_serde(&msg.e1);
+        transcript.append_serde(&msg.e2);
         Some(msg)
     };
 
-    let _d = transcript.challenge_scalar(b"d");
+    let _d = transcript.challenge_scalar(Challenge::D);
 
     let proof = DoryProof {
         vmv_message,
@@ -358,9 +358,9 @@ where
     let mode = proof.mode()?;
 
     let vmv_message = &proof.vmv_message;
-    transcript.append_serde(b"vmv_c", &vmv_message.c);
-    transcript.append_serde(b"vmv_d2", &vmv_message.d2);
-    transcript.append_serde(b"vmv_e1", &vmv_message.e1);
+    transcript.append_serde(&vmv_message.c);
+    transcript.append_serde(&vmv_message.d2);
+    transcript.append_serde(&vmv_message.e1);
 
     // ZK mode: the Σ₁ proof is checked here; the Σ₂ proof (VMV constraint) is
     // only absorbed here — its check is batched into the final multi-pairing
@@ -375,8 +375,8 @@ where
             scalar_product,
         } => {
             use crate::reduce_and_fold::{absorb_sigma2_proof, verify_sigma1_proof};
-            transcript.append_serde(b"vmv_e2", e2);
-            transcript.append_serde(b"vmv_y_com", y_com);
+            transcript.append_serde(e2);
+            transcript.append_serde(y_com);
             verify_sigma1_proof::<E, T>(e2, y_com, sigma1, &setup, transcript)?;
             let sigma2_c = absorb_sigma2_proof::<E, T>(sigma2, transcript);
             (*e2, Some((scalar_product, sigma2, sigma2_c)))
@@ -426,26 +426,26 @@ where
         let first_msg = &proof.first_messages[round];
         let second_msg = &proof.second_messages[round];
 
-        transcript.append_serde(b"d1_left", &first_msg.d1_left);
-        transcript.append_serde(b"d1_right", &first_msg.d1_right);
-        transcript.append_serde(b"d2_left", &first_msg.d2_left);
-        transcript.append_serde(b"d2_right", &first_msg.d2_right);
-        transcript.append_serde(b"e1_beta", &first_msg.e1_beta);
-        transcript.append_serde(b"e2_beta", &first_msg.e2_beta);
-        let beta = transcript.challenge_scalar(b"beta");
+        transcript.append_serde(&first_msg.d1_left);
+        transcript.append_serde(&first_msg.d1_right);
+        transcript.append_serde(&first_msg.d2_left);
+        transcript.append_serde(&first_msg.d2_right);
+        transcript.append_serde(&first_msg.e1_beta);
+        transcript.append_serde(&first_msg.e2_beta);
+        let beta = transcript.challenge_scalar(Challenge::Beta);
 
-        transcript.append_serde(b"c_plus", &second_msg.c_plus);
-        transcript.append_serde(b"c_minus", &second_msg.c_minus);
-        transcript.append_serde(b"e1_plus", &second_msg.e1_plus);
-        transcript.append_serde(b"e1_minus", &second_msg.e1_minus);
-        transcript.append_serde(b"e2_plus", &second_msg.e2_plus);
-        transcript.append_serde(b"e2_minus", &second_msg.e2_minus);
-        let alpha = transcript.challenge_scalar(b"alpha");
+        transcript.append_serde(&second_msg.c_plus);
+        transcript.append_serde(&second_msg.c_minus);
+        transcript.append_serde(&second_msg.e1_plus);
+        transcript.append_serde(&second_msg.e1_minus);
+        transcript.append_serde(&second_msg.e2_plus);
+        transcript.append_serde(&second_msg.e2_minus);
+        let alpha = transcript.challenge_scalar(Challenge::Alpha);
 
         verifier_state.process_round(first_msg, second_msg, &alpha, &beta)?;
     }
 
-    let gamma = transcript.challenge_scalar(b"gamma");
+    let gamma = transcript.challenge_scalar(Challenge::Gamma);
 
     // ZK mode: absorb the scalar product proof into the transcript before
     // deriving d
@@ -453,7 +453,7 @@ where
     if let Some((sp, sigma2, sigma2_c)) = zk_final {
         use crate::reduce_and_fold::absorb_scalar_product_proof;
         let sigma_c = absorb_scalar_product_proof::<E, T>(sp, transcript);
-        let d = transcript.challenge_scalar(b"d");
+        let d = transcript.challenge_scalar(Challenge::D);
         return verifier_state.verify_final(
             FinalCheck::Zk {
                 scalar_product: sp,
@@ -472,9 +472,9 @@ where
         #[cfg(feature = "zk")]
         ProofMode::Zk { .. } => return Err(DoryError::InvalidProof),
     };
-    transcript.append_serde(b"final_e1", &msg.e1);
-    transcript.append_serde(b"final_e2", &msg.e2);
-    let d = transcript.challenge_scalar(b"d");
+    transcript.append_serde(&msg.e1);
+    transcript.append_serde(&msg.e2);
+    let d = transcript.challenge_scalar(Challenge::D);
 
     verifier_state.verify_final(FinalCheck::Transparent(msg), &gamma, &d)
 }

@@ -960,60 +960,60 @@ fn test_zk_wrong_point_rejected() {
 fn replay_zk_transcript(
     proof: &DoryProof<ArkG1, ArkG2, ArkGT>,
 ) -> (Vec<ArkFr>, ArkFr, ArkFr, ArkFr) {
-    use dory_pcs::primitives::transcript::Transcript;
+    use dory_pcs::primitives::transcript::{Challenge, Transcript};
 
     let mut t = fresh_transcript();
-    t.append_serde(b"vmv_c", &proof.vmv_message.c);
-    t.append_serde(b"vmv_d2", &proof.vmv_message.d2);
-    t.append_serde(b"vmv_e1", &proof.vmv_message.e1);
+    t.append_serde(&proof.vmv_message.c);
+    t.append_serde(&proof.vmv_message.d2);
+    t.append_serde(&proof.vmv_message.e1);
 
-    t.append_serde(b"vmv_e2", proof.e2.as_ref().unwrap());
-    t.append_serde(b"vmv_y_com", proof.y_com.as_ref().unwrap());
+    t.append_serde(proof.e2.as_ref().unwrap());
+    t.append_serde(proof.y_com.as_ref().unwrap());
 
     let s1p = proof.sigma1_proof.as_ref().unwrap();
-    t.append_serde(b"sigma1_a1", &s1p.a1);
-    t.append_serde(b"sigma1_a2", &s1p.a2);
-    let _ = t.challenge_scalar(b"sigma1_c");
+    t.append_serde(&s1p.a1);
+    t.append_serde(&s1p.a2);
+    let _ = t.challenge_scalar(Challenge::Sigma1);
 
     let s2p = proof.sigma2_proof.as_ref().unwrap();
-    t.append_serde(b"sigma2_a", &s2p.a);
-    let _ = t.challenge_scalar(b"sigma2_c");
-    t.append_serde(b"sigma2_z1", &s2p.z1);
-    t.append_serde(b"sigma2_z2", &s2p.z2);
+    t.append_serde(&s2p.a);
+    let _ = t.challenge_scalar(Challenge::Sigma2);
+    t.append_serde(&s2p.z1);
+    t.append_serde(&s2p.z2);
 
     let mut alphas = Vec::new();
     for (first, second) in proof.first_messages.iter().zip(&proof.second_messages) {
-        t.append_serde(b"d1_left", &first.d1_left);
-        t.append_serde(b"d1_right", &first.d1_right);
-        t.append_serde(b"d2_left", &first.d2_left);
-        t.append_serde(b"d2_right", &first.d2_right);
-        t.append_serde(b"e1_beta", &first.e1_beta);
-        t.append_serde(b"e2_beta", &first.e2_beta);
-        let _beta = t.challenge_scalar(b"beta");
+        t.append_serde(&first.d1_left);
+        t.append_serde(&first.d1_right);
+        t.append_serde(&first.d2_left);
+        t.append_serde(&first.d2_right);
+        t.append_serde(&first.e1_beta);
+        t.append_serde(&first.e2_beta);
+        let _beta = t.challenge_scalar(Challenge::Beta);
 
-        t.append_serde(b"c_plus", &second.c_plus);
-        t.append_serde(b"c_minus", &second.c_minus);
-        t.append_serde(b"e1_plus", &second.e1_plus);
-        t.append_serde(b"e1_minus", &second.e1_minus);
-        t.append_serde(b"e2_plus", &second.e2_plus);
-        t.append_serde(b"e2_minus", &second.e2_minus);
-        alphas.push(t.challenge_scalar(b"alpha"));
+        t.append_serde(&second.c_plus);
+        t.append_serde(&second.c_minus);
+        t.append_serde(&second.e1_plus);
+        t.append_serde(&second.e1_minus);
+        t.append_serde(&second.e2_plus);
+        t.append_serde(&second.e2_minus);
+        alphas.push(t.challenge_scalar(Challenge::Alpha));
     }
 
-    let gamma = t.challenge_scalar(b"gamma");
+    let gamma = t.challenge_scalar(Challenge::Gamma);
 
     let sp = proof.scalar_product_proof.as_ref().unwrap();
-    t.append_serde(b"sigma_p1", &sp.p1);
-    t.append_serde(b"sigma_p2", &sp.p2);
-    t.append_serde(b"sigma_q", &sp.q);
-    t.append_serde(b"sigma_r", &sp.r);
-    let sigma_c = t.challenge_scalar(b"sigma_c");
-    t.append_serde(b"sigma_e1", &sp.e1);
-    t.append_serde(b"sigma_e2", &sp.e2);
-    t.append_serde(b"sigma_r1", &sp.r1);
-    t.append_serde(b"sigma_r2", &sp.r2);
-    t.append_serde(b"sigma_r3", &sp.r3);
-    let d = t.challenge_scalar(b"d");
+    t.append_serde(&sp.p1);
+    t.append_serde(&sp.p2);
+    t.append_serde(&sp.q);
+    t.append_serde(&sp.r);
+    let sigma_c = t.challenge_scalar(Challenge::ScalarProduct);
+    t.append_serde(&sp.e1);
+    t.append_serde(&sp.e2);
+    t.append_serde(&sp.r1);
+    t.append_serde(&sp.r2);
+    t.append_serde(&sp.r3);
+    let d = t.challenge_scalar(Challenge::D);
 
     (alphas, gamma, sigma_c, d)
 }
