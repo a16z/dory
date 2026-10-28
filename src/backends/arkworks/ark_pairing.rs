@@ -4,7 +4,8 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::missing_panics_doc)]
 
-use super::ark_group::{ArkG1, ArkG2, ArkGT};
+use super::ark_field::ArkFr;
+use super::ark_group::{gt_multi_exp, ArkG1, ArkG2, ArkGT};
 use crate::primitives::arithmetic::{Group, PairingCurve};
 use ark_bn254::Bn254;
 use ark_ec::pairing::Pairing;
@@ -396,5 +397,10 @@ impl PairingCurve for BN254 {
         }
 
         pairing_helpers::multi_pair_g1_setup_optimized(ps, qs)
+    }
+
+    #[tracing::instrument(skip_all, name = "BN254::gt_msm", fields(len = ts.len()))]
+    fn gt_msm(ts: &[Self::GT], ks: &[ArkFr]) -> Self::GT {
+        gt_multi_exp(ts, ks)
     }
 }

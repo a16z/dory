@@ -126,6 +126,20 @@ pub trait PairingCurve: Clone {
     fn multi_pair_g1_setup(ps: &[Self::G1], qs: &[Self::G2]) -> Self::GT {
         Self::multi_pair(ps, qs)
     }
+
+    /// Σ k_i·t_i in GT (a product of powers, written additively).
+    ///
+    /// Backend implementations can share one squaring chain across all terms
+    /// (multi-exponentiation) instead of exponentiating each term separately.
+    ///
+    /// # Default Implementation
+    /// Scales each term independently.
+    fn gt_msm(ts: &[Self::GT], ks: &[<Self::GT as Group>::Scalar]) -> Self::GT {
+        assert_eq!(ts.len(), ks.len(), "gt_msm requires equal length vectors");
+        ts.iter()
+            .zip(ks.iter())
+            .fold(Self::GT::identity(), |acc, (t, k)| acc.add(&t.scale(k)))
+    }
 }
 
 /// Dory requires MSMs and vector scaling ops, hence we expose a trait for optimized versions of such routines.
