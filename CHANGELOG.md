@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `PairingCurve::gt_msm` computes `Σ kᵢ·tᵢ` in GT. The default implementation
+  scales each term; the BN254 backend runs an interleaved width-5 wNAF
+  multi-exponentiation that shares one cyclotomic squaring chain across all
+  terms, split into parallel chains for large inputs behind the `parallel`
+  feature.
+
+### Changed
+
+- `ArkGT` scaling (`Group::scale` and `ArkFr * ArkGT`) uses arkworks'
+  cyclotomic exponentiation instead of the generic `Fq12::pow`.
+- The verifier's multi-term GT updates (C, D₁ and D₂ in each round, and the
+  final right-hand side in both transparent and ZK modes) use `gt_msm`. Group
+  results are unchanged, so proofs are byte-identical.
+
 ## [0.4.2] - 2026-08-20
 
 ### Changed
