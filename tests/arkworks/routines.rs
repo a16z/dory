@@ -6,8 +6,8 @@
 //! identity points (batch normalization skips their zero z-coordinates),
 //! zero scalars, and empty inputs.
 
-use dory_pcs::backends::arkworks::{ArkFr, ArkG1, ArkG2, G1Routines, G2Routines};
-use dory_pcs::primitives::arithmetic::{DoryRoutines, Field, Group};
+use dory_pcs::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT, G1Routines, G2Routines, BN254};
+use dory_pcs::primitives::arithmetic::{DoryRoutines, Field, Group, PairingCurve};
 
 fn naive_msm<G: Group>(bases: &[G], scalars: &[G::Scalar]) -> G {
     bases
@@ -74,6 +74,24 @@ fn g2_msm_matches_naive() {
         G2Routines::msm(&bases, &scalars),
         naive_msm(&bases, &scalars)
     );
+}
+
+#[test]
+fn gt_msm_matches_naive() {
+    // 40 bases split into parallel chains; 3 and 5 stay on one chain.
+    for len in [3, 5, 40] {
+        let mut bases: Vec<ArkGT> = (0..len).map(|_| ArkGT::random()).collect();
+        let mut scalars: Vec<ArkFr> = (0..len).map(|_| ArkFr::random()).collect();
+        bases[len / 2] = ArkGT::identity();
+        scalars[len / 3] = ArkFr::zero();
+        scalars[len - 1] = -ArkFr::one();
+        assert_eq!(
+            BN254::gt_msm(&bases, &scalars),
+            naive_msm(&bases, &scalars),
+            "len {len}"
+        );
+    }
+    assert_eq!(BN254::gt_msm(&[], &[]), ArkGT::identity());
 }
 
 #[test]

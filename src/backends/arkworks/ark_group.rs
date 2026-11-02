@@ -9,7 +9,10 @@ use crate::primitives::arithmetic::{DoryRoutines, Group};
 use ark_bn254::{Bn254, Fq12, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{CurveGroup, VariableBaseMSM};
-use ark_ff::{Field as ArkField, One, PrimeField, UniformRand, Zero as ArkZero};
+use ark_ff::{
+    BigInteger, CyclotomicMultSubgroup, Field as ArkField, One, PrimeField, UniformRand,
+    Zero as ArkZero,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::{Add, Mul, Neg, Sub};
 
@@ -195,7 +198,7 @@ impl Group for ArkGT {
     }
 
     fn scale(&self, k: &Self::Scalar) -> Self {
-        ArkGT(PairingOutput(self.0 .0.pow(k.0.into_bigint())))
+        ArkGT(self.0 * k.0)
     }
 
     fn random() -> Self {
@@ -244,15 +247,94 @@ impl<'a> Sub<&'a ArkGT> for ArkGT {
 impl Mul<ArkGT> for ArkFr {
     type Output = ArkGT;
     fn mul(self, rhs: ArkGT) -> ArkGT {
-        ArkGT(PairingOutput(rhs.0 .0.pow(self.0.into_bigint())))
+        ArkGT(rhs.0 * self.0)
     }
 }
 
 impl<'a> Mul<&'a ArkGT> for ArkFr {
     type Output = ArkGT;
     fn mul(self, rhs: &'a ArkGT) -> ArkGT {
-        ArkGT(PairingOutput(rhs.0 .0.pow(self.0.into_bigint())))
+        ArkGT(rhs.0 * self.0)
     }
+}
+
+/// wNAF width for [`gt_multi_exp`]. Digits are odd in (−2^(W−1), 2^(W−1)), so
+/// each base gets a table of 2^(W−2) odd powers; W = 5 minimises table cost
+/// plus the ~254/(W+1) table multiplications per 254-bit exponent.
+const GT_WNAF_WINDOW: usize = 5;
+const GT_WNAF_TABLE_LEN: usize = 1 << (GT_WNAF_WINDOW - 2);
+
+/// Bases per independent chain when [`gt_multi_exp`] is split across threads;
+/// every chain repeats the ~254 shared squarings.
+#[cfg(feature = "parallel")]
+const GT_MSM_MIN_CHUNK: usize = 8;
+
+/// Π t_i^{k_i} by interleaved wNAF multi-exponentiation: all terms share one
+/// chain of cyclotomic squarings.
+///
+/// Cyclotomic squaring and conjugation-as-inverse are valid only in the
+/// cyclotomic subgroup of Fq12, which contains GT. `ArkGT` values are pairing
+/// outputs, products of them, or subgroup-checked on deserialization.
+pub(crate) fn gt_multi_exp(ts: &[ArkGT], ks: &[ArkFr]) -> ArkGT {
+    assert_eq!(ts.len(), ks.len(), "gt_msm requires equal length vectors");
+
+    #[cfg(feature = "parallel")]
+    {
+        use rayon::prelude::*;
+        let chunk = ts
+            .len()
+            .div_ceil(rayon::current_num_threads())
+            .max(GT_MSM_MIN_CHUNK);
+        if chunk < ts.len() {
+            return ts
+                .par_chunks(chunk)
+                .zip(ks.par_chunks(chunk))
+                .map(|(t, k)| gt_multi_exp_serial(t, k))
+                .reduce(ArkGT::identity, |a, b| a + b);
+        }
+    }
+    gt_multi_exp_serial(ts, ks)
+}
+
+fn gt_multi_exp_serial(ts: &[ArkGT], ks: &[ArkFr]) -> ArkGT {
+    let digits: Vec<Vec<i64>> = ks
+        .iter()
+        .map(|k| {
+            k.0.into_bigint()
+                .find_wnaf(GT_WNAF_WINDOW)
+                .expect("GT_WNAF_WINDOW is in 2..64")
+        })
+        .collect();
+    let tables: Vec<[Fq12; GT_WNAF_TABLE_LEN]> = ts
+        .iter()
+        .map(|t| {
+            let mut sq = t.0 .0;
+            sq.cyclotomic_square_in_place();
+            let mut table = [t.0 .0; GT_WNAF_TABLE_LEN];
+            for i in 1..GT_WNAF_TABLE_LEN {
+                table[i] = table[i - 1] * sq;
+            }
+            table
+        })
+        .collect();
+
+    let len = digits.iter().map(Vec::len).max().unwrap_or(0);
+    let mut acc = Fq12::one();
+    for j in (0..len).rev() {
+        acc.cyclotomic_square_in_place();
+        for (table, ds) in tables.iter().zip(&digits) {
+            match ds.get(j).copied() {
+                Some(d) if d > 0 => acc *= &table[(d >> 1) as usize],
+                Some(d) if d < 0 => {
+                    let mut inv = table[(-d >> 1) as usize];
+                    inv.conjugate_in_place();
+                    acc *= &inv;
+                }
+                _ => {}
+            }
+        }
+    }
+    ArkGT(PairingOutput(acc))
 }
 
 /// left\[i\] = left\[i\] * scalar + right\[i\], parallelized when the `parallel`

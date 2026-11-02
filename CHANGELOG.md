@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   return the prepared form of a prefix of the cached points.
 - `PreparedCache::g1_len` and `PreparedCache::g2_len` return the number of
   cached points.
+- `PairingCurve::gt_msm` computes `Σ kᵢ·tᵢ` in GT. The default implementation
+  scales each term; the BN254 backend runs an interleaved width-5 wNAF
+  multi-exponentiation that shares one cyclotomic squaring chain across all
+  terms, split into parallel chains for large inputs behind the `parallel`
+  feature.
 
 ### Changed
 
@@ -52,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prefix of the cached points, and read the cache size through `g1_len` and
   `g2_len`. Code outside the crate can no longer construct a
   `PreparedCache` with a struct literal. `init_cache` builds it.
+- `ArkGT` scaling (`Group::scale` and `ArkFr * ArkGT`) uses arkworks'
+  cyclotomic exponentiation instead of the generic `Fq12::pow`.
+- The verifier's multi-term GT updates (C, D₁ and D₂ in each round, and the
+  final right-hand side in both transparent and ZK modes) use `gt_msm`. Group
+  results are unchanged, so proofs are byte-identical.
 
 ## [0.4.2] - 2026-08-20
 

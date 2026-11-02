@@ -694,24 +694,34 @@ impl<E: PairingCurve> DoryVerifierState<E> {
         // C' ← C + χᵢ + β·D₂ + β⁻¹·D₁ + α·C₊ + α⁻¹·C₋
         self.c = self.c
             + self.setup.chi[self.num_rounds]
-            + self.d2.scale(beta)
-            + self.d1.scale(&beta_inv)
-            + second_msg.c_plus.scale(alpha)
-            + second_msg.c_minus.scale(&alpha_inv);
+            + E::gt_msm(
+                &[self.d2, self.d1, second_msg.c_plus, second_msg.c_minus],
+                &[*beta, beta_inv, *alpha, alpha_inv],
+            );
 
         // D₁' ← α·D₁L + D₁R + αβ·Δ₁L + β·Δ₁R
         let alpha_beta = *alpha * beta;
-        self.d1 = first_msg.d1_left.scale(alpha)
-            + first_msg.d1_right
-            + self.setup.delta_1l[self.num_rounds].scale(&alpha_beta)
-            + self.setup.delta_1r[self.num_rounds].scale(beta);
+        self.d1 = first_msg.d1_right
+            + E::gt_msm(
+                &[
+                    first_msg.d1_left,
+                    self.setup.delta_1l[self.num_rounds],
+                    self.setup.delta_1r[self.num_rounds],
+                ],
+                &[*alpha, alpha_beta, *beta],
+            );
 
         // D₂' ← α⁻¹·D₂L + D₂R + α⁻¹β⁻¹·Δ₂L + β⁻¹·Δ₂R
         let alpha_inv_beta_inv = alpha_inv * beta_inv;
-        self.d2 = first_msg.d2_left.scale(&alpha_inv)
-            + first_msg.d2_right
-            + self.setup.delta_2l[self.num_rounds].scale(&alpha_inv_beta_inv)
-            + self.setup.delta_2r[self.num_rounds].scale(&beta_inv);
+        self.d2 = first_msg.d2_right
+            + E::gt_msm(
+                &[
+                    first_msg.d2_left,
+                    self.setup.delta_2l[self.num_rounds],
+                    self.setup.delta_2r[self.num_rounds],
+                ],
+                &[alpha_inv, alpha_inv_beta_inv, beta_inv],
+            );
 
         // E₁' ← E₁ + β·E₁β + α·E₁₊ + α⁻¹·E₁₋
         self.e1 = self.e1
@@ -931,14 +941,32 @@ impl<E: PairingCurve> DoryVerifierState<E> {
             //      + d²·(A − c₂·D₂_init)
             // with the two HT terms merged into one exponentiation.
             let ht_scalar = sp.r3 + *d * sp.r2 + d_inv * sp.r1;
-            let mut rhs = self.setup.chi[0]
+            let rhs = self.setup.chi[0]
                 + sp.r
-                + sp.q.scale(&c)
-                + self.c.scale(&c_sq)
-                + self.setup.ht.scale(&(c_sq * s_product - ht_scalar));
-            rhs = rhs + sp.p2.scale(d) + self.d2.scale(&(*d * c));
-            rhs = rhs + sp.p1.scale(&d_inv) + self.d1.scale(&(d_inv * c));
-            rhs = rhs + (sigma2.a - self.d2_init.scale(&c2)).scale(&d_sq);
+                + E::gt_msm(
+                    &[
+                        sp.q,
+                        self.c,
+                        self.setup.ht,
+                        sp.p2,
+                        self.d2,
+                        sp.p1,
+                        self.d1,
+                        sigma2.a,
+                        self.d2_init,
+                    ],
+                    &[
+                        c,
+                        c_sq,
+                        c_sq * s_product - ht_scalar,
+                        *d,
+                        *d * c,
+                        d_inv,
+                        d_inv * c,
+                        d_sq,
+                        -(d_sq * c2),
+                    ],
+                );
 
             return if lhs == rhs {
                 Ok(())
@@ -959,11 +987,11 @@ impl<E: PairingCurve> DoryVerifierState<E> {
 
             let s_product = self.s1_acc * self.s2_acc;
             let rhs = self.c
-                + self.setup.ht.scale(&s_product)
                 + self.setup.chi[0]
-                + self.d2.scale(d)
-                + self.d1.scale(&d_inv)
-                + self.d2_init.scale(&d_sq);
+                + E::gt_msm(
+                    &[self.setup.ht, self.d2, self.d1, self.d2_init],
+                    &[s_product, *d, d_inv, d_sq],
+                );
 
             // Pair 1: e(E₁_final + d·Γ₁₀, E₂_final + d⁻¹·Γ₂₀)
             let p1_g1 = msg.e1 + self.setup.g1_0.scale(d);
