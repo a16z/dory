@@ -76,7 +76,9 @@ mod pairing_helpers {
         #[cfg(feature = "cache")]
         {
             if let Some(cache) = crate::backends::arkworks::ark_cache::get_prepared_cache() {
-                return multi_pair_with_prepared(ps_prep, &cache.g2_prepared[..qs.len()]);
+                if let Some(qs_prep) = cache.g2_prepared_for(qs) {
+                    return multi_pair_with_prepared(ps_prep, qs_prep);
+                }
             }
         }
 
@@ -108,12 +110,9 @@ mod pairing_helpers {
         #[cfg(feature = "cache")]
         {
             if let Some(cache) = crate::backends::arkworks::ark_cache::get_prepared_cache() {
-                let ps_prep: Vec<_> = ps
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| cache.g1_prepared[i].clone())
-                    .collect();
-                return multi_pair_with_prepared(ps_prep, &qs_prep);
+                if let Some(ps_prep) = cache.g1_prepared_for(ps) {
+                    return multi_pair_with_prepared(ps_prep.to_vec(), &qs_prep);
+                }
             }
         }
 
@@ -190,6 +189,8 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         let cache = crate::backends::arkworks::ark_cache::get_prepared_cache();
+        #[cfg(feature = "cache")]
+        let cached_qs = cache.as_deref().and_then(|c| c.g2_prepared_for(qs));
 
         let combined = ps
             .par_chunks(chunk_size)
@@ -207,8 +208,8 @@ mod pairing_helpers {
                     .collect();
 
                 #[cfg(feature = "cache")]
-                let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = if let Some(ref c) = cache {
-                    c.g2_prepared[start_idx..end_idx].to_vec()
+                let qs_prep: Vec<<Bn254 as Pairing>::G2Prepared> = if let Some(cached) = cached_qs {
+                    cached[start_idx..end_idx].to_vec()
                 } else {
                     use ark_bn254::G2Affine;
                     qs[start_idx..end_idx]
@@ -254,6 +255,8 @@ mod pairing_helpers {
 
         #[cfg(feature = "cache")]
         let cache = crate::backends::arkworks::ark_cache::get_prepared_cache();
+        #[cfg(feature = "cache")]
+        let cached_ps = cache.as_deref().and_then(|c| c.g1_prepared_for(ps));
 
         let combined = qs
             .par_chunks(chunk_size)
@@ -271,8 +274,8 @@ mod pairing_helpers {
                     .collect();
 
                 #[cfg(feature = "cache")]
-                let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = if let Some(ref c) = cache {
-                    c.g1_prepared[start_idx..end_idx].to_vec()
+                let ps_prep: Vec<<Bn254 as Pairing>::G1Prepared> = if let Some(cached) = cached_ps {
+                    cached[start_idx..end_idx].to_vec()
                 } else {
                     use ark_bn254::G1Affine;
                     ps[start_idx..end_idx]
