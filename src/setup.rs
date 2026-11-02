@@ -8,11 +8,11 @@ use crate::primitives::arithmetic::{Group, PairingCurve};
 use crate::primitives::serialization::{DoryDeserialize, DorySerialize};
 
 #[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 #[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
-use std::io::{BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter, Write};
 #[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Prover setup parameters
 ///
@@ -239,10 +239,142 @@ fn get_storage_path(max_log_n: usize) -> Option<PathBuf> {
     })
 }
 
+/// A temporary setup file, removed when dropped unless it was renamed into
+/// place.
+///
+/// Dropping it also runs while a panic unwinds, so a failed write does not
+/// leave a stray file behind. A process that is killed mid-write still
+/// leaves its `dory_*.urs.*.tmp` file.
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
+struct TempSetupFile {
+    path: PathBuf,
+    renamed: bool,
+}
+
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
+impl TempSetupFile {
+    /// Creates a new, empty temporary file next to `path`.
+    ///
+    /// The name carries 128 random bits and the file is opened with
+    /// exclusive creation, so two writers never share a temporary file, even
+    /// across processes, containers, or hosts that share the directory.
+    fn create_next_to(path: &Path) -> io::Result<(Self, File)> {
+        use rand_core::RngCore;
+
+        loop {
+            let mut suffix = [0u8; 16];
+            rand_core::OsRng.fill_bytes(&mut suffix);
+            let mut temp_path = path.as_os_str().to_owned();
+            temp_path.push(".");
+            for byte in suffix {
+                temp_path.push(format!("{byte:02x}"));
+            }
+            temp_path.push(".tmp");
+            let temp_path = PathBuf::from(temp_path);
+
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp_path)
+            {
+                Ok(file) => {
+                    let temp = Self {
+                        path: temp_path,
+                        renamed: false,
+                    };
+                    return Ok((temp, file));
+                }
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Renames the temporary file to `path`, replacing any file there.
+    fn rename_to(&mut self, path: &Path) -> io::Result<()> {
+        fs::rename(&self.path, path)?;
+        self.renamed = true;
+        Ok(())
+    }
+}
+
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
+impl Drop for TempSetupFile {
+    fn drop(&mut self) {
+        if !self.renamed {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// Makes a rename or link into `path`'s directory survive a power loss.
+///
+/// Failure is only logged: the file is already published for this boot.
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32"), unix))]
+fn sync_parent_dir(path: &Path) {
+    if let Some(parent) = path.parent() {
+        if let Err(e) = File::open(parent).and_then(|dir| dir.sync_all()) {
+            tracing::warn!("Failed to sync {}: {e}", parent.display());
+        }
+    }
+}
+
+/// Windows cannot open a directory as a `File` to sync it, so this does
+/// nothing there.
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32"), not(unix)))]
+fn sync_parent_dir(_path: &Path) {}
+
+/// Writes both setups to a new temporary file next to `path`.
+///
+/// The callers then move or link the complete file to `path` in one step,
+/// so a concurrent reader never sees a partly written setup file. The
+/// temporary file is removed when the returned guard is dropped, unless it
+/// was renamed into place.
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
+fn write_temp_setup<E: PairingCurve>(
+    prover: &ProverSetup<E>,
+    verifier: &VerifierSetup<E>,
+    path: &Path,
+) -> TempSetupFile
+where
+    ProverSetup<E>: DorySerialize,
+    VerifierSetup<E>: DorySerialize,
+{
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .unwrap_or_else(|e| panic!("Failed to create storage directory: {e}"));
+    }
+
+    let (temp, file) = TempSetupFile::create_next_to(path)
+        .unwrap_or_else(|e| panic!("Failed to create setup file: {e}"));
+    let mut writer = BufWriter::new(file);
+
+    DorySerialize::serialize_compressed(prover, &mut writer)
+        .unwrap_or_else(|e| panic!("Failed to serialize prover setup: {e}"));
+
+    DorySerialize::serialize_compressed(verifier, &mut writer)
+        .unwrap_or_else(|e| panic!("Failed to serialize verifier setup: {e}"));
+
+    writer
+        .flush()
+        .unwrap_or_else(|e| panic!("Failed to write setup file: {e}"));
+    writer
+        .get_ref()
+        .sync_all()
+        .unwrap_or_else(|e| panic!("Failed to write setup file: {e}"));
+    // The file is closed here, before the caller links or renames it.
+    drop(writer);
+
+    temp
+}
+
 /// Save prover and verifier setups to disk
 ///
-/// Serializes both setups to a `.urs` file in the storage directory.
-/// If the storage directory doesn't exist, it will be created.
+/// Serializes both setups to a `.urs` file in the storage directory,
+/// replacing any existing file. If the storage directory doesn't exist, it
+/// will be created. The file is written under a temporary name and then
+/// renamed, so a concurrent [`load_setup`] reads either the old file or the
+/// new one, never a partial file.
 ///
 /// # Panics
 /// Panics if:
@@ -261,28 +393,65 @@ pub fn save_setup<E: PairingCurve>(
 {
     let storage_path = get_storage_path(max_log_n).expect("Failed to determine storage directory");
 
-    if let Some(parent) = storage_path.parent() {
-        fs::create_dir_all(parent)
-            .unwrap_or_else(|e| panic!("Failed to create storage directory: {e}"));
-    }
-
     tracing::info!("Saving setup to {}", storage_path.display());
 
-    let file =
-        File::create(&storage_path).unwrap_or_else(|e| panic!("Failed to create setup file: {e}"));
-
-    let mut writer = BufWriter::new(file);
-
-    DorySerialize::serialize_compressed(prover, &mut writer)
-        .unwrap_or_else(|e| panic!("Failed to serialize prover setup: {e}"));
-
-    DorySerialize::serialize_compressed(verifier, &mut writer)
-        .unwrap_or_else(|e| panic!("Failed to serialize verifier setup: {e}"));
+    let mut temp = write_temp_setup(prover, verifier, &storage_path);
+    temp.rename_to(&storage_path)
+        .unwrap_or_else(|e| panic!("Failed to replace setup file: {e}"));
+    sync_parent_dir(&storage_path);
 
     #[cfg(feature = "cache")]
     crate::backends::arkworks::invalidate_cache();
 
     tracing::info!("Successfully saved setup to disk");
+}
+
+/// Saves both setups to disk unless a setup file for `max_log_n` exists.
+///
+/// Returns whether this call created the file. Processes that generate a
+/// setup at the same time thus all keep the first one saved: the others
+/// load it, so no process switches setups midway through a run.
+///
+/// # Panics
+/// Panics if the storage directory cannot be determined, or if writing or
+/// publishing the file fails.
+#[cfg(all(feature = "disk-persistence", not(target_arch = "wasm32")))]
+pub(crate) fn save_setup_if_absent<E: PairingCurve>(
+    prover: &ProverSetup<E>,
+    verifier: &VerifierSetup<E>,
+    max_log_n: usize,
+) -> bool
+where
+    ProverSetup<E>: DorySerialize,
+    VerifierSetup<E>: DorySerialize,
+{
+    let storage_path = get_storage_path(max_log_n).expect("Failed to determine storage directory");
+    let mut temp = write_temp_setup(prover, verifier, &storage_path);
+
+    // A hard link publishes the complete file, and fails if the file exists.
+    let created = match fs::hard_link(&temp.path, &storage_path) {
+        Ok(()) => true,
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => false,
+        // The file system has no hard links. Renaming is still atomic, but
+        // another process can save between the check and the rename.
+        Err(_) if storage_path.exists() => false,
+        Err(_) => {
+            temp.rename_to(&storage_path)
+                .unwrap_or_else(|e| panic!("Failed to create setup file: {e}"));
+            true
+        }
+    };
+    // After a link or a lost race, the temporary file is no longer needed.
+    drop(temp);
+
+    if created {
+        sync_parent_dir(&storage_path);
+        tracing::info!("Saved setup to {}", storage_path.display());
+        #[cfg(feature = "cache")]
+        crate::backends::arkworks::invalidate_cache();
+    }
+
+    created
 }
 
 /// Load prover and verifier setups from disk
@@ -316,8 +485,17 @@ where
 
     tracing::info!("Looking for saved setup at {}", storage_path.display());
 
-    let file = File::open(&storage_path)
-        .map_err(|e| crate::DoryError::InvalidURS(format!("Failed to open setup file: {e}")))?;
+    let file = File::open(&storage_path).map_err(|e| {
+        // The file can be removed between the check above and this open.
+        if e.kind() == io::ErrorKind::NotFound {
+            crate::DoryError::InvalidURS(format!(
+                "Setup file not found at {}",
+                storage_path.display()
+            ))
+        } else {
+            crate::DoryError::InvalidURS(format!("Failed to open setup file: {e}"))
+        }
+    })?;
 
     let mut reader = BufReader::new(file);
 

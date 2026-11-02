@@ -7,8 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `save_setup` (`disk-persistence` feature) writes the setup file under a
+  temporary name and renames it into place. A concurrent `load_setup` or
+  `setup` used to be able to read a partly written file and panic with
+  `Failed to deserialize prover setup`.
+- `setup` no longer overwrites a setup file that another process saved
+  after `setup` found none. It returns the saved setup instead. Before,
+  processes that started together each kept their own random setup, and
+  the last writer replaced the file, so a later `setup` call in the same
+  process could load a different setup. If the file saved first is removed
+  before `setup` can load it, `setup` tries to save its own setup again
+  instead of panicking.
+- Temporary setup files have random names and are created exclusively, so
+  writers that share a cache directory across containers or hosts (where
+  process IDs can repeat) never write the same temporary file. A write that
+  fails removes its temporary file. On Unix, the directory is synced after
+  the file is published, so the published file survives a power loss.
+- The prepared-point cache (`cache` feature) no longer pairs against the
+  wrong points. The setup multi-pairings used the cached prepared points
+  for any input of no greater length, without checking that the input was
+  the cached points. So a cache built from another setup, or from a larger
+  setup generated separately, gave wrong pairings. An input longer than
+  the cache panicked. The cache now keeps the points it prepared. It serves
+  an input only when the input is a prefix of those points, and otherwise
+  the pairing prepares the input itself. `init_cache` replaces a cache that
+  does not cover its input, instead of keeping any cache at least as large.
+  Under `cargo test`, the cache tests no longer break the proofs that later
+  tests verify in the same process.
+
 ### Added
 
+- `PreparedCache::g1_prepared_for` and `PreparedCache::g2_prepared_for`
+  return the prepared form of a prefix of the cached points.
+- `PreparedCache::g1_len` and `PreparedCache::g2_len` return the number of
+  cached points.
 - `PairingCurve::gt_msm` computes `Σ kᵢ·tᵢ` in GT. The default implementation
   scales each term; the BN254 backend runs an interleaved width-5 wNAF
   multi-exponentiation that shares one cyclotomic squaring chain across all
@@ -17,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** all of `PreparedCache`'s fields are private, including
+  `g1_prepared` and `g2_prepared`. Read prepared points through
+  `g1_prepared_for` and `g2_prepared_for`, which check that the input is a
+  prefix of the cached points, and read the cache size through `g1_len` and
+  `g2_len`. Code outside the crate can no longer construct a
+  `PreparedCache` with a struct literal. `init_cache` builds it.
 - `ArkGT` scaling (`Group::scale` and `ArkFr * ArkGT`) uses arkworks'
   cyclotomic exponentiation instead of the generic `Fq12::pow`.
 - The verifier's multi-term GT updates (C, D₁ and D₂ in each round, and the

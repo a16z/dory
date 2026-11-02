@@ -4,6 +4,48 @@ use dory_pcs::primitives::arithmetic::{Group, PairingCurve};
 #[cfg(feature = "cache")]
 use dory_pcs::backends::arkworks::ark_cache;
 
+/// Serializes the tests that write the global prepared-point cache, so
+/// their assertions hold when tests share a process (`cargo test`).
+#[cfg(feature = "cache")]
+static CACHE_WRITERS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(feature = "cache")]
+fn lock_cache() -> std::sync::MutexGuard<'static, ()> {
+    CACHE_WRITERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(feature = "cache")]
+fn random_points(n: usize) -> (Vec<ArkG1>, Vec<ArkG2>) {
+    (
+        (0..n).map(|_| ArkG1::random()).collect(),
+        (0..n).map(|_| ArkG2::random()).collect(),
+    )
+}
+
+/// Fills the cache with `g1`/`g2` and returns a snapshot of it. Other tests
+/// in this binary may invalidate the cache concurrently (for example through
+/// `setup()`), so retry until the snapshot is ours.
+#[cfg(feature = "cache")]
+fn cache_of(g1: &[ArkG1], g2: &[ArkG2]) -> std::sync::Arc<ark_cache::PreparedCache> {
+    loop {
+        ark_cache::init_cache(g1, g2);
+        if let Some(cache) = ark_cache::get_prepared_cache() {
+            if cache.g1_prepared_for(g1).is_some() && cache.g2_prepared_for(g2).is_some() {
+                return cache;
+            }
+        }
+    }
+}
+
+#[cfg(feature = "cache")]
+fn pair_naive(ps: &[ArkG1], qs: &[ArkG2]) -> ArkGT {
+    ps.iter()
+        .zip(qs)
+        .fold(ArkGT::identity(), |acc, (p, q)| acc.add(&BN254::pair(p, q)))
+}
+
 #[test]
 fn multi_pair_correctness() {
     let n = 10;
@@ -42,6 +84,7 @@ fn multi_pair_length_mismatch() {
 #[cfg(feature = "cache")]
 #[test]
 fn cache_initialization() {
+    let _guard = lock_cache();
     let g1_vec: Vec<ArkG1> = (0..10).map(|_| ArkG1::random()).collect();
     let g2_vec: Vec<ArkG2> = (0..10).map(|_| ArkG2::random()).collect();
 
@@ -49,25 +92,26 @@ fn cache_initialization() {
 
     assert!(ark_cache::is_cached());
     let cache = ark_cache::get_prepared_cache().unwrap();
-    assert_eq!(cache.g1_prepared.len(), 10);
-    assert_eq!(cache.g2_prepared.len(), 10);
+    assert_eq!(cache.g1_len(), 10);
+    assert_eq!(cache.g2_len(), 10);
 }
 
 #[cfg(feature = "cache")]
 #[test]
 fn cache_smart_reinit() {
+    let _guard = lock_cache();
     // Initialize with small size
     let g1_small: Vec<ArkG1> = (0..5).map(|_| ArkG1::random()).collect();
     let g2_small: Vec<ArkG2> = (0..5).map(|_| ArkG2::random()).collect();
     ark_cache::init_cache(&g1_small, &g2_small);
 
     let cache = ark_cache::get_prepared_cache().unwrap();
-    let small_len = cache.g1_prepared.len();
+    let small_len = cache.g1_len();
 
     // Re-init with same size — should be a no-op (reuses existing)
     ark_cache::init_cache(&g1_small, &g2_small);
     let cache = ark_cache::get_prepared_cache().unwrap();
-    assert_eq!(cache.g1_prepared.len(), small_len);
+    assert_eq!(cache.g1_len(), small_len);
 
     // Re-init with larger size — should replace cache
     let g1_large: Vec<ArkG1> = (0..20).map(|_| ArkG1::random()).collect();
@@ -75,13 +119,14 @@ fn cache_smart_reinit() {
     ark_cache::init_cache(&g1_large, &g2_large);
 
     let cache = ark_cache::get_prepared_cache().unwrap();
-    assert_eq!(cache.g1_prepared.len(), 20);
-    assert_eq!(cache.g2_prepared.len(), 20);
+    assert_eq!(cache.g1_len(), 20);
+    assert_eq!(cache.g2_len(), 20);
 }
 
 #[cfg(feature = "cache")]
 #[test]
 fn multi_pair_with_cache_optimization() {
+    let _guard = lock_cache();
     let n = 20;
 
     let g1_vec: Vec<ArkG1> = (0..n).map(|_| ArkG1::random()).collect();
@@ -102,4 +147,142 @@ fn multi_pair_with_cache_optimization() {
     }
 
     assert_eq!(result, expected);
+}
+
+/// A cache built from other points must not change setup pairings, whether
+/// the caller's points are shorter or longer than the cache.
+#[cfg(feature = "cache")]
+#[test]
+fn foreign_cache_falls_back() {
+    let _guard = lock_cache();
+    let (cached_g1, cached_g2) = random_points(20);
+    ark_cache::init_cache(&cached_g1, &cached_g2);
+
+    for n in [10, 30] {
+        let (ps, qs) = random_points(n);
+        let expected = pair_naive(&ps, &qs);
+        assert_eq!(BN254::multi_pair_g2_setup(&ps, &qs), expected, "n={n}");
+        assert_eq!(BN254::multi_pair_g1_setup(&ps, &qs), expected, "n={n}");
+    }
+}
+
+/// Setup pairings on prefixes of the cached points take the cache-hit path
+/// and agree with a naive pairing.
+#[cfg(feature = "cache")]
+#[test]
+fn cache_hit_matches_naive_pairing() {
+    let _guard = lock_cache();
+    let n = 16;
+    let (cached_g1, cached_g2) = random_points(n);
+    let cache = cache_of(&cached_g1, &cached_g2);
+
+    for k in [1, n / 2, n] {
+        let (ps, qs) = random_points(k);
+        let (setup_g1, setup_g2) = (&cached_g1[..k], &cached_g2[..k]);
+        assert!(cache.g1_prepared_for(setup_g1).is_some(), "k={k}");
+        assert!(cache.g2_prepared_for(setup_g2).is_some(), "k={k}");
+        assert_eq!(
+            BN254::multi_pair_g2_setup(&ps, setup_g2),
+            pair_naive(&ps, setup_g2),
+            "g2 k={k}"
+        );
+        assert_eq!(
+            BN254::multi_pair_g1_setup(setup_g1, &qs),
+            pair_naive(setup_g1, &qs),
+            "g1 k={k}"
+        );
+    }
+}
+
+/// Points drawn from the cached set but not as a prefix (an offset slice, or
+/// a prefix with its last point changed) miss the cache and still pair
+/// correctly.
+#[cfg(feature = "cache")]
+#[test]
+fn non_prefix_points_fall_back() {
+    let _guard = lock_cache();
+    let n = 16;
+    let (cached_g1, cached_g2) = random_points(n);
+    let cache = cache_of(&cached_g1, &cached_g2);
+
+    let k = n / 2;
+    let (ps, qs) = random_points(k);
+    let offset_g1 = &cached_g1[1..=k];
+    let offset_g2 = &cached_g2[1..=k];
+    let mut changed_g1 = cached_g1[..k].to_vec();
+    let mut changed_g2 = cached_g2[..k].to_vec();
+    changed_g1[k - 1] = ArkG1::random();
+    changed_g2[k - 1] = ArkG2::random();
+
+    for (setup_g1, setup_g2) in [(offset_g1, offset_g2), (&changed_g1[..], &changed_g2[..])] {
+        assert!(cache.g1_prepared_for(setup_g1).is_none());
+        assert!(cache.g2_prepared_for(setup_g2).is_none());
+        assert_eq!(
+            BN254::multi_pair_g2_setup(&ps, setup_g2),
+            pair_naive(&ps, setup_g2)
+        );
+        assert_eq!(
+            BN254::multi_pair_g1_setup(setup_g1, &qs),
+            pair_naive(setup_g1, &qs)
+        );
+    }
+}
+
+/// Re-initializing with other points of no larger size replaces the cache.
+#[cfg(feature = "cache")]
+#[test]
+fn reinit_with_other_points_replaces() {
+    let _guard = lock_cache();
+    let (large_g1, large_g2) = random_points(20);
+    ark_cache::init_cache(&large_g1, &large_g2);
+
+    let (small_g1, small_g2) = random_points(10);
+    ark_cache::init_cache(&small_g1, &small_g2);
+
+    let cache = ark_cache::get_prepared_cache().unwrap();
+    assert!(cache.g1_prepared_for(&small_g1).is_some());
+    assert!(cache.g2_prepared_for(&small_g2).is_some());
+    assert!(cache.g1_prepared_for(&large_g1).is_none());
+    assert!(cache.g2_prepared_for(&large_g2).is_none());
+}
+
+/// A proof verifies after the cache was filled with another setup's points.
+#[cfg(feature = "cache")]
+#[test]
+fn proof_verifies_after_foreign_cache() {
+    use super::*;
+    use dory_pcs::primitives::poly::Polynomial;
+    use dory_pcs::{prove, verify, Transparent};
+
+    let _guard = lock_cache();
+    let (cached_g1, cached_g2) = random_points(64);
+    ark_cache::init_cache(&cached_g1, &cached_g2);
+
+    let (prover_setup, verifier_setup) = test_setup_pair(8);
+    let (nu, sigma) = (4, 4);
+    let poly = random_polynomial(1 << (nu + sigma));
+    let point = random_point(nu + sigma);
+    let (commitment, row_commitments, commit_blind) = poly
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
+        .unwrap();
+    let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+        &poly,
+        &point,
+        row_commitments,
+        commit_blind,
+        nu,
+        sigma,
+        &prover_setup,
+        &mut fresh_transcript(),
+    )
+    .unwrap();
+    verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+        commitment,
+        poly.evaluate(&point),
+        &point,
+        &proof,
+        verifier_setup,
+        &mut fresh_transcript(),
+    )
+    .unwrap();
 }
