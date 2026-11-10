@@ -6,6 +6,7 @@ use dory_pcs::{prove, verify, Transparent};
 
 #[test]
 fn test_evaluation_proof_small() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -16,7 +17,7 @@ fn test_evaluation_proof_small() {
     let sigma = 2;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup, &mut prover_rng)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
@@ -29,6 +30,7 @@ fn test_evaluation_proof_small() {
         sigma,
         &setup,
         &mut prover_transcript,
+        &mut prover_rng,
     );
     assert!(result.is_ok());
 
@@ -50,6 +52,7 @@ fn test_evaluation_proof_small() {
 
 #[test]
 fn test_evaluation_proof_with_precomputed_commitment() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -60,7 +63,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
     let sigma = 2;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup, &mut prover_rng)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
@@ -73,6 +76,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
         sigma,
         &setup,
         &mut prover_transcript,
+        &mut prover_rng,
     );
     assert!(result.is_ok());
 
@@ -94,6 +98,7 @@ fn test_evaluation_proof_with_precomputed_commitment() {
 
 #[test]
 fn test_evaluation_proof_constant_polynomial() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -107,7 +112,7 @@ fn test_evaluation_proof_constant_polynomial() {
     assert_eq!(expected_eval, ArkFr::from_u64(7));
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup, &mut prover_rng)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
@@ -120,6 +125,7 @@ fn test_evaluation_proof_constant_polynomial() {
         sigma,
         &setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -141,6 +147,7 @@ fn test_evaluation_proof_constant_polynomial() {
 
 #[test]
 fn test_evaluation_proof_wrong_evaluation_fails() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -151,7 +158,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
     let sigma = 2;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup, &mut prover_rng)
         .unwrap();
 
     let mut prover_transcript = fresh_transcript();
@@ -164,6 +171,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
         sigma,
         &setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -185,6 +193,7 @@ fn test_evaluation_proof_wrong_evaluation_fails() {
 
 #[test]
 fn test_evaluation_proof_different_sizes() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     {
         let setup = test_setup(4);
         let verifier_setup = setup.to_verifier_setup();
@@ -193,7 +202,7 @@ fn test_evaluation_proof_different_sizes() {
         let point = random_point(2);
 
         let (tier_2, tier_1, commit_blind) = poly
-            .commit::<BN254, Transparent, TestG1Routines>(1, 1, &setup)
+            .commit::<BN254, Transparent, TestG1Routines>(1, 1, &setup, &mut prover_rng)
             .unwrap();
 
         let mut prover_transcript = fresh_transcript();
@@ -206,6 +215,7 @@ fn test_evaluation_proof_different_sizes() {
             1,
             &setup,
             &mut prover_transcript,
+            &mut prover_rng,
         )
         .unwrap();
         let evaluation = poly.evaluate(&point);
@@ -230,7 +240,7 @@ fn test_evaluation_proof_different_sizes() {
         let point = random_point(6);
 
         let (tier_2, tier_1, commit_blind) = poly
-            .commit::<BN254, Transparent, TestG1Routines>(3, 3, &setup)
+            .commit::<BN254, Transparent, TestG1Routines>(3, 3, &setup, &mut prover_rng)
             .unwrap();
 
         let mut prover_transcript = fresh_transcript();
@@ -243,6 +253,7 @@ fn test_evaluation_proof_different_sizes() {
             3,
             &setup,
             &mut prover_transcript,
+            &mut prover_rng,
         )
         .unwrap();
         let evaluation = poly.evaluate(&point);
@@ -262,6 +273,7 @@ fn test_evaluation_proof_different_sizes() {
 
 #[test]
 fn test_multiple_evaluations_same_commitment() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let setup = test_setup(4);
     let verifier_setup = setup.to_verifier_setup();
 
@@ -270,7 +282,7 @@ fn test_multiple_evaluations_same_commitment() {
     let sigma = 2;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &setup, &mut prover_rng)
         .unwrap();
 
     for _ in 0..3 {
@@ -286,6 +298,7 @@ fn test_multiple_evaluations_same_commitment() {
             sigma,
             &setup,
             &mut prover_transcript,
+            &mut prover_rng,
         )
         .unwrap();
 

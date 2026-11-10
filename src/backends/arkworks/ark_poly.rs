@@ -60,6 +60,7 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
         nu: usize,
         sigma: usize,
         setup: &ProverSetup<E>,
+        rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
     ) -> Result<(E::GT, Vec<E::G1>, ArkFr), DoryError>
     where
         E: PairingCurve,
@@ -91,7 +92,7 @@ impl Polynomial<ArkFr> for ArkworksPolynomial {
         let tier_2 = E::multi_pair_g2_setup(&row_commitments, &setup.g2_vec[..num_rows]);
 
         // Single GT-level blind: commitment += r_d1 * HT
-        let r_d1: ArkFr = Mo::sample();
+        let r_d1: ArkFr = Mo::sample(rng);
         let commitment = Mo::mask(tier_2, &setup.ht, &r_d1);
 
         Ok((commitment, row_commitments, r_d1))

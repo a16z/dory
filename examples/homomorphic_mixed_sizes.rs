@@ -11,6 +11,8 @@ use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify, Transparent};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Fixed seed for demonstration only; production needs fresh private entropy.
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     tracing_subscriber::fmt::init();
 
     let (prover_setup, verifier_setup) = setup::<BN254>(4);
@@ -27,10 +29,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let poly2 = ArkworksPolynomial::new(coeffs_poly2.clone());
 
     let commitment1 = poly1
-        .commit::<BN254, Transparent, G1Routines>(2, 2, &prover_setup)
+        .commit::<BN254, Transparent, G1Routines>(2, 2, &prover_setup, &mut prover_rng)
         .unwrap();
     let commitment2 = poly2
-        .commit::<BN254, Transparent, G1Routines>(1, 1, &prover_setup)
+        .commit::<BN254, Transparent, G1Routines>(1, 1, &prover_setup, &mut prover_rng)
         .unwrap();
 
     let coeff_scalars = [ArkFr::random(), ArkFr::random()];
@@ -91,6 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         2,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )?;
 
     let mut verifier_transcript = Blake2bTranscript::new(b"dory-homomorphic-mixed");
@@ -104,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let padded_poly_commitment = padded_poly2
-        .commit::<BN254, Transparent, G1Routines>(2, 2, &prover_setup)
+        .commit::<BN254, Transparent, G1Routines>(2, 2, &prover_setup, &mut prover_rng)
         .unwrap();
     assert_eq!(padded_poly_commitment.0, commitment2.0);
 

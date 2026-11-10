@@ -8,6 +8,7 @@ use dory_pcs::{prove, setup, verify, Transparent};
 
 #[test]
 fn test_homomorphic_combination_e2e() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let max_log_n = 10;
     let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
@@ -21,8 +22,13 @@ fn test_homomorphic_combination_e2e() {
     let commitments: Vec<_> = polys
         .iter()
         .map(|poly| {
-            poly.commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
-                .unwrap()
+            poly.commit::<BN254, Transparent, TestG1Routines>(
+                nu,
+                sigma,
+                &prover_setup,
+                &mut prover_rng,
+            )
+            .unwrap()
         })
         .collect();
 
@@ -95,6 +101,7 @@ fn test_homomorphic_combination_e2e() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -116,6 +123,7 @@ fn test_homomorphic_combination_e2e() {
 
 #[test]
 fn test_homomorphic_combination_small() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (prover_setup, verifier_setup) = setup::<BN254>(6);
 
     let nu = 2;
@@ -128,8 +136,13 @@ fn test_homomorphic_combination_small() {
     let commitments: Vec<_> = polys
         .iter()
         .map(|poly| {
-            poly.commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
-                .unwrap()
+            poly.commit::<BN254, Transparent, TestG1Routines>(
+                nu,
+                sigma,
+                &prover_setup,
+                &mut prover_rng,
+            )
+            .unwrap()
         })
         .collect();
 
@@ -185,6 +198,7 @@ fn test_homomorphic_combination_small() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 

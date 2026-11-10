@@ -11,12 +11,13 @@ fn make_transparent_proof() -> (
     dory_pcs::backends::arkworks::ArkGT,
     Vec<ArkFr>,
 ) {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (setup, verifier_setup) = test_setup_pair(4);
 
     let poly = random_polynomial(16);
     let point = random_point(4);
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup)
+        .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup, &mut prover_rng)
         .unwrap();
     let mut transcript = fresh_transcript();
     let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
@@ -28,6 +29,7 @@ fn make_transparent_proof() -> (
         2,
         &setup,
         &mut transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -73,12 +75,13 @@ fn test_transparent_proof_roundtrip_uncompressed() {
 
 #[test]
 fn test_transparent_proof_roundtrip_verifies() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (setup, verifier_setup) = test_setup_pair(4);
 
     let poly = random_polynomial(16);
     let point = random_point(4);
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup)
+        .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup, &mut prover_rng)
         .unwrap();
 
     let mut transcript = fresh_transcript();
@@ -91,6 +94,7 @@ fn test_transparent_proof_roundtrip_verifies() {
         2,
         &setup,
         &mut transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -123,12 +127,13 @@ mod zk_roundtrip {
         dory_pcs::backends::arkworks::ArkGT,
         Vec<ArkFr>,
     ) {
+        let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
         let (setup, verifier_setup) = test_setup_pair(4);
 
         let poly = random_polynomial(16);
         let point = random_point(4);
         let (tier_2, tier_1, commit_blind) = poly
-            .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup)
+            .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup, &mut prover_rng)
             .unwrap();
 
         let mut transcript = fresh_transcript();
@@ -141,6 +146,7 @@ mod zk_roundtrip {
             2,
             &setup,
             &mut transcript,
+            &mut prover_rng,
         )
         .unwrap();
 
@@ -180,12 +186,13 @@ mod zk_roundtrip {
 
     #[test]
     fn test_zk_proof_roundtrip_verifies() {
+        let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
         let (setup, verifier_setup) = test_setup_pair(4);
 
         let poly = random_polynomial(16);
         let point = random_point(4);
         let (tier_2, tier_1, commit_blind) = poly
-            .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup)
+            .commit::<BN254, Transparent, TestG1Routines>(2, 2, &setup, &mut prover_rng)
             .unwrap();
 
         let mut transcript = fresh_transcript();
@@ -198,6 +205,7 @@ mod zk_roundtrip {
             2,
             &setup,
             &mut transcript,
+            &mut prover_rng,
         )
         .unwrap();
 

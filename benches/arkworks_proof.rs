@@ -53,6 +53,7 @@ fn setup_benchmark_data() -> (
 }
 
 fn bench_commitment(c: &mut Criterion) {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (poly, _, prover_setup, _) = setup_benchmark_data();
     let nu = 13;
     let sigma = 13;
@@ -63,6 +64,7 @@ fn bench_commitment(c: &mut Criterion) {
                 black_box(nu),
                 black_box(sigma),
                 black_box(&prover_setup),
+                &mut prover_rng,
             )
             .unwrap()
         })
@@ -70,12 +72,13 @@ fn bench_commitment(c: &mut Criterion) {
 }
 
 fn bench_prove(c: &mut Criterion) {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (poly, point, prover_setup, _) = setup_benchmark_data();
     let nu = 13;
     let sigma = 13;
 
     let (_, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
 
     c.bench_function("prove_2^26_coefficients", |b| {
@@ -90,6 +93,7 @@ fn bench_prove(c: &mut Criterion) {
                 black_box(sigma),
                 black_box(&prover_setup),
                 black_box(&mut transcript),
+                &mut prover_rng,
             )
             .unwrap()
         })
@@ -97,12 +101,13 @@ fn bench_prove(c: &mut Criterion) {
 }
 
 fn bench_verify(c: &mut Criterion) {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (poly, point, prover_setup, verifier_setup) = setup_benchmark_data();
     let nu = 13;
     let sigma = 13;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
 
     let mut prover_transcript = Blake2bTranscript::new(b"dory-bench");
@@ -115,6 +120,7 @@ fn bench_verify(c: &mut Criterion) {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -137,6 +143,7 @@ fn bench_verify(c: &mut Criterion) {
 }
 
 fn bench_end_to_end(c: &mut Criterion) {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let max_log_n = 26;
     let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 
@@ -161,7 +168,7 @@ fn bench_end_to_end(c: &mut Criterion) {
 
             // Commit
             let (tier_2, tier_1, commit_blind) = poly
-                .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)
+                .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
                 .unwrap();
 
             // Evaluate
@@ -179,6 +186,7 @@ fn bench_end_to_end(c: &mut Criterion) {
                 sigma,
                 &prover_setup,
                 &mut prover_transcript,
+                &mut prover_rng,
             )
             .unwrap();
 

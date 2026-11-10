@@ -204,7 +204,10 @@ where
     ///
     /// Computes D1L, D1R, D2L, D2R, E1β, E2β based on current state.
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_first_message")]
-    pub fn compute_first_message<M1, M2>(&mut self) -> FirstReduceMessage<E::G1, E::G2, E::GT>
+    pub fn compute_first_message<M1, M2>(
+        &mut self,
+        rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
+    ) -> FirstReduceMessage<E::G1, E::G2, E::GT>
     where
         M1: DoryRoutines<E::G1>,
         M2: DoryRoutines<E::G2>,
@@ -225,8 +228,8 @@ where
         let g2_prime = &self.setup.g2_vec[..n2];
 
         // Sample round blinds (zero in Transparent mode)
-        self.round_d1 = [M::sample(), M::sample()];
-        self.round_d2 = [M::sample(), M::sample()];
+        self.round_d1 = [M::sample(rng), M::sample(rng)];
+        self.round_d2 = [M::sample(rng), M::sample(rng)];
 
         // D₁L = ⟨v₁L, Γ₂'⟩, D₁R = ⟨v₁R, Γ₂'⟩
         let ht = &self.setup.ht;
@@ -299,7 +302,10 @@ where
     ///
     /// Computes C+, C-, E1+, E1-, E2+, E2- based on current state.
     #[tracing::instrument(skip_all, name = "DoryProverState::compute_second_message")]
-    pub fn compute_second_message<M1, M2>(&mut self) -> SecondReduceMessage<E::G1, E::G2, E::GT>
+    pub fn compute_second_message<M1, M2>(
+        &mut self,
+        rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
+    ) -> SecondReduceMessage<E::G1, E::G2, E::GT>
     where
         M1: DoryRoutines<E::G1>,
         M2: DoryRoutines<E::G2>,
@@ -312,9 +318,9 @@ where
         let (s1_l, s1_r) = self.s1.split_at(n2);
         let (s2_l, s2_r) = self.s2.split_at(n2);
 
-        self.round_c = [M::sample(), M::sample()];
-        self.round_e1 = [M::sample(), M::sample()];
-        self.round_e2 = [M::sample(), M::sample()];
+        self.round_c = [M::sample(rng), M::sample(rng)];
+        self.round_e1 = [M::sample(rng), M::sample(rng)];
+        self.round_e2 = [M::sample(rng), M::sample(rng)];
 
         // C₊ = ⟨v₁L, v₂R⟩, C₋ = ⟨v₁R, v₂L⟩
         let ht = &self.setup.ht;
@@ -435,11 +441,12 @@ where
     pub fn scalar_product_proof<T: Transcript<Curve = E>>(
         &self,
         transcript: &mut T,
+        rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
     ) -> ScalarProductProof<E::G1, E::G2, Scalar<E>, E::GT> {
         let (v1, v2) = (self.v1[0], self.v2[0]);
         let (g1, g2) = (self.setup.g1_vec[0], self.setup.g2_vec[0]);
         let ht = &self.setup.ht;
-        let r = || Scalar::<E>::random();
+        let mut r = || Scalar::<E>::random_with_rng(rng);
         let (sd1, sd2) = (r(), r());
         let (d1, d2) = (sd1 * g1, g2.scale(&sd2));
         let (rp1, rp2, rq, rr) = (r(), r(), r(), r());
@@ -516,6 +523,7 @@ pub fn generate_sigma1_proof<E, T>(
     r_y: &Scalar<E>,
     setup: &ProverSetup<E>,
     transcript: &mut T,
+    rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
 ) -> Sigma1Proof<E::G1, E::G2, Scalar<E>>
 where
     E: PairingCurve,
@@ -525,9 +533,9 @@ where
 {
     let (g2_fin, g1_fin) = (&setup.g2_vec[0], &setup.g1_vec[0]);
     let (k1, k2, k3) = (
-        Scalar::<E>::random(),
-        Scalar::<E>::random(),
-        Scalar::<E>::random(),
+        Scalar::<E>::random_with_rng(rng),
+        Scalar::<E>::random_with_rng(rng),
+        Scalar::<E>::random_with_rng(rng),
     );
     let a1 = g2_fin.scale(&k1) + setup.h2.scale(&k2);
     let a2 = k1 * g1_fin + k3 * setup.h1;
@@ -582,6 +590,7 @@ pub fn generate_sigma2_proof<E, T>(
     t2: &Scalar<E>,
     setup: &ProverSetup<E>,
     transcript: &mut T,
+    rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
 ) -> Sigma2Proof<Scalar<E>, E::GT>
 where
     E: PairingCurve,
@@ -590,7 +599,10 @@ where
     E::G2: Group<Scalar = Scalar<E>>,
     E::GT: Group<Scalar = Scalar<E>>,
 {
-    let (k1, k2) = (Scalar::<E>::random(), Scalar::<E>::random());
+    let (k1, k2) = (
+        Scalar::<E>::random_with_rng(rng),
+        Scalar::<E>::random_with_rng(rng),
+    );
     let a = E::pair(
         &setup.h1,
         &(setup.g2_vec[0].scale(&k1) + setup.h2.scale(&k2)),

@@ -67,6 +67,10 @@ use crate::setup::{ProverSetup, VerifierSetup};
 /// - `setup`: Prover setup
 /// - `transcript`: Fiat-Shamir transcript for challenge generation
 ///
+/// The caller supplies all private blinding randomness through `rng`. Use a
+/// cryptographically secure RNG seeded with fresh private entropy for production.
+/// Transparent mode accepts the shared argument but does not consume it.
+///
 /// # Returns
 /// Complete Dory proof containing the VMV message, reduce messages, and the
 /// final message (transparent) or Σ-proofs (ZK)
@@ -89,6 +93,7 @@ pub fn create_evaluation_proof<F, E, M1, M2, T, P, Mo>(
     sigma: usize,
     setup: &ProverSetup<E>,
     transcript: &mut T,
+    rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
 ) -> Result<(DoryProof<E::G1, E::G2, E::GT>, Option<F>), DoryError>
 where
     F: Field,
@@ -120,7 +125,7 @@ where
     let (row_commitments, commit_blind) = match row_commitments {
         Some(rc) => (rc, commit_blind),
         None => {
-            let (_, rc, blind) = polynomial.commit::<E, Mo, M1>(nu, sigma, setup)?;
+            let (_, rc, blind) = polynomial.commit::<E, Mo, M1>(nu, sigma, setup, rng)?;
             (rc, blind)
         }
     };
@@ -134,8 +139,12 @@ where
     }
 
     // Sample VMV blinds (zero in Transparent, random in ZK)
-    let (r_c, r_d2, r_e1, r_e2): (F, F, F, F) =
-        (Mo::sample(), Mo::sample(), Mo::sample(), Mo::sample());
+    let (r_c, r_d2, r_e1, r_e2): (F, F, F, F) = (
+        Mo::sample(rng),
+        Mo::sample(rng),
+        Mo::sample(rng),
+        Mo::sample(rng),
+    );
 
     let g2_fin = &setup.g2_vec[0];
 
@@ -163,13 +172,13 @@ where
     let (zk_e2, zk_y_com, zk_sigma1, zk_sigma2, zk_r_y) = if Mo::BLINDING {
         use crate::reduce_and_fold::{generate_sigma1_proof, generate_sigma2_proof};
         let y = polynomial.evaluate(point);
-        let r_y: F = Mo::sample();
+        let r_y: F = Mo::sample(rng);
         let e2 = Mo::mask(g2_fin.scale(&y), &setup.h2, &r_e2);
         let y_com = setup.g1_vec[0].scale(&y) + setup.h1.scale(&r_y);
         transcript.append_serde(b"vmv_e2", &e2);
         transcript.append_serde(b"vmv_y_com", &y_com);
-        let s1 = generate_sigma1_proof::<E, T>(&y, &r_e2, &r_y, setup, transcript);
-        let s2 = generate_sigma2_proof::<E, T>(&r_e1, &-r_d2, setup, transcript);
+        let s1 = generate_sigma1_proof::<E, T>(&y, &r_e2, &r_y, setup, transcript, rng);
+        let s2 = generate_sigma2_proof::<E, T>(&r_e1, &-r_d2, setup, transcript, rng);
         (Some(e2), Some(y_com), Some(s1), Some(s2), Some(r_y))
     } else {
         (None, None, None, None, None)
@@ -200,7 +209,7 @@ where
     let mut second_messages = Vec::with_capacity(num_rounds);
 
     for _round in 0..num_rounds {
-        let first_msg = prover_state.compute_first_message::<M1, M2>();
+        let first_msg = prover_state.compute_first_message::<M1, M2>(rng);
 
         transcript.append_serde(b"d1_left", &first_msg.d1_left);
         transcript.append_serde(b"d1_right", &first_msg.d1_right);
@@ -213,7 +222,7 @@ where
         prover_state.apply_first_challenge::<M1, M2>(&beta);
         first_messages.push(first_msg);
 
-        let second_msg = prover_state.compute_second_message::<M1, M2>();
+        let second_msg = prover_state.compute_second_message::<M1, M2>(rng);
 
         transcript.append_serde(b"c_plus", &second_msg.c_plus);
         transcript.append_serde(b"c_minus", &second_msg.c_minus);
@@ -235,7 +244,7 @@ where
 
     #[cfg(feature = "zk")]
     let scalar_product_proof = if Mo::BLINDING {
-        Some(prover_state.scalar_product_proof(transcript))
+        Some(prover_state.scalar_product_proof(transcript, rng))
     } else {
         None
     };

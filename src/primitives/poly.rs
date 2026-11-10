@@ -77,6 +77,9 @@ pub trait Polynomial<F: Field> {
     /// - `sigma`: Log₂ of number of columns
     /// - `setup`: Prover setup containing generators
     ///
+    /// The caller supplies the private commitment blind through `rng`. Transparent
+    /// mode accepts the shared argument but does not consume it.
+    ///
     /// # Returns
     /// `(commitment, row_commitments, commit_blind)` where:
     /// - `commitment`: Final commitment in GT (blinded in ZK mode)
@@ -91,6 +94,7 @@ pub trait Polynomial<F: Field> {
         nu: usize,
         sigma: usize,
         setup: &ProverSetup<E>,
+        rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
     ) -> Result<(E::GT, Vec<E::G1>, F), DoryError>
     where
         E: PairingCurve,

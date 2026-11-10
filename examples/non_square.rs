@@ -12,6 +12,8 @@ use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify, Transparent};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Fixed seed for demonstration only; production needs fresh private entropy.
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     tracing_subscriber::fmt::init();
 
     let (prover_setup, verifier_setup) = setup::<BN254>(10);
@@ -25,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let poly = ArkworksPolynomial::new(coefficients);
 
     let (tier_2, tier_1, commit_blind) =
-        poly.commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
+        poly.commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup, &mut prover_rng)?;
 
     let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
     let evaluation = poly.evaluate(&point);
@@ -40,6 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )?;
 
     let mut verifier_transcript = Blake2bTranscript::new(b"dory-non-square-example");
