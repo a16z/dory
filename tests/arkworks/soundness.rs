@@ -23,13 +23,14 @@ fn create_valid_proof_components(
     ArkFr,
     DoryProof<ArkG1, ArkG2, ArkGT>,
 ) {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (prover_setup, verifier_setup) = test_setup_pair(nu + sigma + 2);
 
     let poly = random_polynomial(size);
     let point = random_point(nu + sigma);
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
     let mut prover_transcript = fresh_transcript();
     let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
@@ -41,6 +42,7 @@ fn create_valid_proof_components(
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);

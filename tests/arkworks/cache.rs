@@ -250,6 +250,7 @@ fn reinit_with_other_points_replaces() {
 #[cfg(feature = "cache")]
 #[test]
 fn proof_verifies_after_foreign_cache() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     use super::*;
     use dory_pcs::primitives::poly::Polynomial;
     use dory_pcs::{prove, verify, Transparent};
@@ -263,7 +264,7 @@ fn proof_verifies_after_foreign_cache() {
     let poly = random_polynomial(1 << (nu + sigma));
     let point = random_point(nu + sigma);
     let (commitment, row_commitments, commit_blind) = poly
-        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, Transparent, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
     let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
         &poly,
@@ -274,6 +275,7 @@ fn proof_verifies_after_foreign_cache() {
         sigma,
         &prover_setup,
         &mut fresh_transcript(),
+        &mut prover_rng,
     )
     .unwrap();
     verify::<_, BN254, TestG1Routines, TestG2Routines, _>(

@@ -10,6 +10,7 @@ use dory_pcs::{create_evaluation_proof, prove, setup, verify, ZK};
 
 #[test]
 fn test_zk_full_workflow() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let max_log_n = 10;
 
     let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
@@ -19,7 +20,7 @@ fn test_zk_full_workflow() {
     let sigma = 4;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
 
     let point = random_point(8);
@@ -35,6 +36,7 @@ fn test_zk_full_workflow() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
@@ -55,6 +57,7 @@ fn test_zk_full_workflow() {
 
 #[test]
 fn test_zk_small_polynomial() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (prover_setup, verifier_setup) = test_setup_pair(4);
 
     let poly = random_polynomial(4);
@@ -62,7 +65,7 @@ fn test_zk_small_polynomial() {
     let sigma = 1;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
 
     let point = random_point(2);
@@ -78,6 +81,7 @@ fn test_zk_small_polynomial() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -100,6 +104,7 @@ fn test_zk_small_polynomial() {
 
 #[test]
 fn test_zk_larger_polynomial() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (prover_setup, verifier_setup) = setup::<BN254>(12);
 
     let poly = random_polynomial(1024);
@@ -107,7 +112,7 @@ fn test_zk_larger_polynomial() {
     let sigma = 5;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
 
     let point = random_point(10);
@@ -123,6 +128,7 @@ fn test_zk_larger_polynomial() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -145,6 +151,7 @@ fn test_zk_larger_polynomial() {
 
 #[test]
 fn test_zk_non_square_matrix() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     // Non-square: nu=3, sigma=4 (8 rows, 16 columns = 128 coefficients)
@@ -153,7 +160,7 @@ fn test_zk_non_square_matrix() {
     let sigma = 4;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
 
     let point = random_point(7); // nu + sigma = 7
@@ -169,6 +176,7 @@ fn test_zk_non_square_matrix() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -191,6 +199,7 @@ fn test_zk_non_square_matrix() {
 
 #[test]
 fn test_zk_hidden_evaluation() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (prover_setup, verifier_setup) = test_setup_pair(6);
 
     let poly = random_polynomial(16);
@@ -198,7 +207,7 @@ fn test_zk_hidden_evaluation() {
     let sigma = 2;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
 
     let point = random_point(4);
@@ -215,6 +224,7 @@ fn test_zk_hidden_evaluation() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -241,6 +251,7 @@ fn test_zk_hidden_evaluation() {
 /// Test that tampered e2 in proof is rejected
 #[test]
 fn test_zk_tampered_e2_rejected() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     use dory_pcs::primitives::arithmetic::Group;
 
     let (prover_setup, verifier_setup) = test_setup_pair(6);
@@ -250,7 +261,7 @@ fn test_zk_tampered_e2_rejected() {
     let sigma = 2;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
 
     let point = random_point(4);
@@ -267,6 +278,7 @@ fn test_zk_tampered_e2_rejected() {
             sigma,
             &prover_setup,
             &mut prover_transcript,
+            &mut prover_rng,
         )
         .unwrap();
 
@@ -290,6 +302,7 @@ fn test_zk_tampered_e2_rejected() {
 /// Test full ZK with larger polynomial
 #[test]
 fn test_zk_hidden_evaluation_larger() {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (prover_setup, verifier_setup) = setup::<BN254>(10);
 
     let poly = random_polynomial(256);
@@ -297,7 +310,7 @@ fn test_zk_hidden_evaluation_larger() {
     let sigma = 4;
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
 
     let point = random_point(8);
@@ -313,6 +326,7 @@ fn test_zk_hidden_evaluation_larger() {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
 
@@ -349,13 +363,14 @@ fn create_valid_zk_proof_components(
     ArkFr,
     DoryProof<ArkG1, ArkG2, ArkGT>,
 ) {
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (prover_setup, verifier_setup) = test_setup_pair(nu + sigma + 2);
 
     let poly = random_polynomial(size);
     let point = random_point(nu + sigma);
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .unwrap();
     let mut prover_transcript = fresh_transcript();
     let (proof, _) = prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
@@ -367,6 +382,7 @@ fn create_valid_zk_proof_components(
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut prover_rng,
     )
     .unwrap();
     let evaluation = poly.evaluate(&point);
@@ -1229,4 +1245,86 @@ fn test_zk_soundness_unexpected_final_message() {
         result.is_err(),
         "Should fail when a ZK proof carries a clear final message"
     );
+}
+
+/// Fix the setup and statement, then vary commitment and proof RNG seeds
+/// independently. Also cover the entry point that commits internally.
+#[test]
+fn test_zk_seeded_randomness_reproduces_bytes() {
+    use dory_pcs::primitives::DorySerialize;
+    use rand::{rngs::StdRng, SeedableRng};
+
+    for (nu, sigma) in [(0, 0), (1, 1), (1, 2)] {
+        let (prover_setup, verifier_setup) = test_setup_pair(nu + sigma + 2);
+        let poly = constant_polynomial(7, nu + sigma);
+        let point = vec![ArkFr::from_u64(3); nu + sigma];
+
+        let run = |commit_seed, proof_seed, internal_commit| {
+            let mut commit_rng = StdRng::seed_from_u64(commit_seed);
+            let (commitment, rows, blind) = poly
+                .commit::<BN254, ZK, TestG1Routines>(nu, sigma, &prover_setup, &mut commit_rng)
+                .unwrap();
+            let mut proof_rng = StdRng::seed_from_u64(proof_seed);
+            let (proof, evaluation_blind) = if internal_commit {
+                // The internal commitment consumes the first coin from the
+                // same stream used for the explicit commitment above.
+                let mut rng = StdRng::seed_from_u64(commit_seed);
+                create_evaluation_proof::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
+                    &poly,
+                    &point,
+                    None,
+                    ArkFr::zero(),
+                    nu,
+                    sigma,
+                    &prover_setup,
+                    &mut fresh_transcript(),
+                    &mut rng,
+                )
+                .unwrap()
+            } else {
+                prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, ZK>(
+                    &poly,
+                    &point,
+                    rows,
+                    blind,
+                    nu,
+                    sigma,
+                    &prover_setup,
+                    &mut fresh_transcript(),
+                    &mut proof_rng,
+                )
+                .unwrap()
+            };
+            verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+                commitment,
+                poly.evaluate(&point),
+                &point,
+                &proof,
+                verifier_setup.clone(),
+                &mut fresh_transcript(),
+            )
+            .unwrap();
+            let mut commitment_bytes = Vec::new();
+            commitment
+                .serialize_compressed(&mut commitment_bytes)
+                .unwrap();
+            let mut proof_bytes = Vec::new();
+            ark_serialize::CanonicalSerialize::serialize_compressed(&proof, &mut proof_bytes)
+                .unwrap();
+            (commitment_bytes, proof_bytes, evaluation_blind)
+        };
+
+        let first = run(11, 22, false);
+        assert_eq!(first, run(11, 22, false));
+        let different_proof = run(11, 23, false);
+        assert_eq!(first.0, different_proof.0);
+        assert_ne!(first.1, different_proof.1);
+        assert_ne!(first.2, different_proof.2);
+        assert_ne!(first.0, run(12, 22, false).0);
+        let internal = run(11, 0, true);
+        assert_eq!(internal, run(11, 0, true));
+        let different_internal = run(12, 0, true);
+        assert_ne!(internal.0, different_internal.0);
+        assert_ne!(internal.1, different_internal.1);
+    }
 }

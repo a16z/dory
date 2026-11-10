@@ -177,6 +177,7 @@ fn collect_full_zk_proof_stats(proof: &ArkDoryProof, tracker: &mut BucketTracker
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn prove_verify_collect(
     poly: &ArkworksPolynomial,
     point: &[ArkFr],
@@ -185,9 +186,10 @@ fn prove_verify_collect(
     prover_setup: &dory_pcs::ProverSetup<BN254>,
     verifier_setup: &dory_pcs::VerifierSetup<BN254>,
     tracker: &mut BucketTracker,
+    prover_rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
 ) {
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, G1Routines>(nu, sigma, prover_setup)
+        .commit::<BN254, ZK, G1Routines>(nu, sigma, prover_setup, prover_rng)
         .unwrap();
 
     let evaluation = poly.evaluate(point);
@@ -201,6 +203,7 @@ fn prove_verify_collect(
         sigma,
         prover_setup,
         &mut transcript,
+        prover_rng,
     )
     .unwrap();
 
@@ -308,6 +311,8 @@ fn test_statistical_indistinguishability(
     prover_setup: &dory_pcs::ProverSetup<BN254>,
     verifier_setup: &dory_pcs::VerifierSetup<BN254>,
 ) {
+    // Fixed seed for demonstration only; production needs fresh private entropy.
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let nu = 2;
     let sigma = 2;
     let poly_size = 1 << (nu + sigma);
@@ -327,6 +332,7 @@ fn test_statistical_indistinguishability(
             prover_setup,
             verifier_setup,
             &mut tracker_zeros,
+            &mut prover_rng,
         );
 
         let ones = ArkworksPolynomial::new(vec![ArkFr::one(); poly_size]);
@@ -338,6 +344,7 @@ fn test_statistical_indistinguishability(
             prover_setup,
             verifier_setup,
             &mut tracker_ones,
+            &mut prover_rng,
         );
 
         let random = random_polynomial(poly_size);
@@ -349,6 +356,7 @@ fn test_statistical_indistinguishability(
             prover_setup,
             verifier_setup,
             &mut tracker_random,
+            &mut prover_rng,
         );
     }
 
@@ -367,6 +375,8 @@ fn test_statistical_indistinguishability_non_square(
     prover_setup: &dory_pcs::ProverSetup<BN254>,
     verifier_setup: &dory_pcs::VerifierSetup<BN254>,
 ) {
+    // Fixed seed for demonstration only; production needs fresh private entropy.
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let nu = 1;
     let sigma = 3;
     let poly_size = 1 << (nu + sigma);
@@ -386,6 +396,7 @@ fn test_statistical_indistinguishability_non_square(
             prover_setup,
             verifier_setup,
             &mut tracker_zeros,
+            &mut prover_rng,
         );
 
         let ones = ArkworksPolynomial::new(vec![ArkFr::one(); poly_size]);
@@ -397,6 +408,7 @@ fn test_statistical_indistinguishability_non_square(
             prover_setup,
             verifier_setup,
             &mut tracker_ones,
+            &mut prover_rng,
         );
 
         let random = random_polynomial(poly_size);
@@ -408,6 +420,7 @@ fn test_statistical_indistinguishability_non_square(
             prover_setup,
             verifier_setup,
             &mut tracker_random,
+            &mut prover_rng,
         );
     }
 
@@ -426,6 +439,8 @@ fn test_witness_independence(
     prover_setup: &dory_pcs::ProverSetup<BN254>,
     verifier_setup: &dory_pcs::VerifierSetup<BN254>,
 ) {
+    // Fixed seed for demonstration only; production needs fresh private entropy.
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let nu = 2;
     let sigma = 2;
     let poly_size = 1 << (nu + sigma);
@@ -446,6 +461,7 @@ fn test_witness_independence(
             prover_setup,
             verifier_setup,
             &mut tracker_zeros,
+            &mut prover_rng,
         );
 
         let ones = ArkworksPolynomial::new(vec![ArkFr::one(); poly_size]);
@@ -457,6 +473,7 @@ fn test_witness_independence(
             prover_setup,
             verifier_setup,
             &mut tracker_ones,
+            &mut prover_rng,
         );
 
         let mut skewed_coeffs = vec![ArkFr::zero(); poly_size];
@@ -470,6 +487,7 @@ fn test_witness_independence(
             prover_setup,
             verifier_setup,
             &mut tracker_skewed,
+            &mut prover_rng,
         );
 
         let uniform = random_polynomial(poly_size);
@@ -481,6 +499,7 @@ fn test_witness_independence(
             prover_setup,
             verifier_setup,
             &mut tracker_uniform,
+            &mut prover_rng,
         );
     }
 

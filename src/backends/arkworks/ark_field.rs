@@ -41,6 +41,10 @@ impl Field for ArkFr {
         ArkField::inverse(&self.0).map(ArkFr)
     }
 
+    fn random_with_rng<R: rand_core::RngCore + rand_core::CryptoRng>(rng: &mut R) -> Self {
+        ArkFr(Fr::rand(rng))
+    }
+
     fn random() -> Self {
         ArkFr(Fr::rand(&mut rand_core::OsRng))
     }

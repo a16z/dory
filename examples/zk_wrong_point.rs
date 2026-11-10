@@ -17,6 +17,8 @@ use dory_pcs::primitives::poly::Polynomial;
 use dory_pcs::{prove, setup, verify, ZK};
 
 fn run(nu: usize, sigma: usize) -> (bool, bool) {
+    // Fixed seed for demonstration only; production needs fresh private entropy.
+    let mut prover_rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
     let (prover_setup, verifier_setup) = setup::<BN254>(10);
     let num_vars = nu + sigma;
     let poly_size = 1 << num_vars;
@@ -25,7 +27,7 @@ fn run(nu: usize, sigma: usize) -> (bool, bool) {
     let poly = ArkworksPolynomial::new(coefficients);
 
     let (tier_2, tier_1, commit_blind) = poly
-        .commit::<BN254, ZK, G1Routines>(nu, sigma, &prover_setup)
+        .commit::<BN254, ZK, G1Routines>(nu, sigma, &prover_setup, &mut prover_rng)
         .expect("commit");
 
     let point: Vec<ArkFr> = (0..num_vars).map(|_| ArkFr::random()).collect();
@@ -41,6 +43,7 @@ fn run(nu: usize, sigma: usize) -> (bool, bool) {
         sigma,
         &prover_setup,
         &mut pt,
+        &mut prover_rng,
     )
     .expect("prove");
 

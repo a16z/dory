@@ -29,6 +29,9 @@ pub trait Field:
 
     fn inv(self) -> Option<Self>;
 
+    /// Sample uniformly using caller-provided cryptographic randomness.
+    fn random_with_rng<R: rand_core::RngCore + rand_core::CryptoRng>(rng: &mut R) -> Self;
+
     fn random() -> Self;
 
     fn from_u64(val: u64) -> Self;

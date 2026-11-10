@@ -119,9 +119,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nu = 4;     // log₂(rows) = 4 → 16 rows
     let sigma = 4;  // log₂(cols) = 4 → 16 columns
 
+    // Fixed seed for this example only; use fresh private entropy in production.
+    let mut rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
+
     // 4. Commit to polynomial to get tier-2 commitment and row commitments
     let (tier_2, row_commitments, commit_blind) = polynomial
-        .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
+        .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup, &mut rng)?;
 
     // 5. Create evaluation proof using row commitments
     let mut prover_transcript = Blake2bTranscript::new(b"dory-example");
@@ -134,6 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sigma,
         &prover_setup,
         &mut prover_transcript,
+        &mut rng,
     )?;
 
     // 6. Verify: check that the proof is valid

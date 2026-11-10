@@ -46,15 +46,18 @@
 //! // 1. Generate setup (automatically loads from/saves to disk)
 //! let (prover_setup, verifier_setup) = setup::<BN254>(max_log_n);
 //!
+//! // Fixed seed for this example only; use fresh private entropy in production.
+//! let mut rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(42);
+//!
 //! // 2. Commit to polynomial
 //! let (tier_2_commitment, tier_1_commitments, commit_blind) = polynomial
-//!     .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup)?;
+//!     .commit::<BN254, Transparent, G1Routines>(nu, sigma, &prover_setup, &mut rng)?;
 //!
 //! // 3. Generate evaluation proof
 //! let mut prover_transcript = Blake2bTranscript::new(b"domain-separation");
-//! let proof = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
+//! let (proof, _) = prove::<_, BN254, G1Routines, G2Routines, _, _, Transparent>(
 //!     &polynomial, &point, tier_1_commitments, commit_blind, nu, sigma,
-//!     &prover_setup, &mut prover_transcript
+//!     &prover_setup, &mut prover_transcript, &mut rng
 //! )?;
 //!
 //! // 4. Verify
@@ -254,7 +257,7 @@ where
 /// tier-1 commitments (row commitments).
 ///
 /// # Workflow
-/// 1. Call `polynomial.commit(nu, sigma, setup)` to get `(tier_2, row_commitments, commit_blind)`
+/// 1. Call `polynomial.commit(nu, sigma, setup, rng)` to get `(tier_2, row_commitments, commit_blind)`
 /// 2. Call this function with the `row_commitments` and `commit_blind` to create the proof
 /// 3. Use `tier_2` for verification via the `verify()` function
 ///
@@ -267,6 +270,10 @@ where
 /// - `sigma`: Log₂ of number of columns
 /// - `setup`: Prover setup
 /// - `transcript`: Fiat-Shamir transcript
+///
+/// The caller supplies all private blinding randomness through `rng`. Use a
+/// cryptographically secure RNG seeded with fresh private entropy for production.
+/// Transparent mode accepts the shared argument but does not consume it.
 ///
 /// # Returns
 /// The evaluation proof containing the VMV message, reduce messages, and the
@@ -299,6 +306,7 @@ pub fn prove<F, E, M1, M2, P, T, Mo>(
     sigma: usize,
     setup: &ProverSetup<E>,
     transcript: &mut T,
+    rng: &mut (impl rand_core::RngCore + rand_core::CryptoRng),
 ) -> Result<(DoryProof<E::G1, E::G2, E::GT>, Option<F>), DoryError>
 where
     F: Field,
@@ -321,6 +329,7 @@ where
         sigma,
         setup,
         transcript,
+        rng,
     )
 }
 
