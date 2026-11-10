@@ -316,3 +316,42 @@ fn test_multiple_evaluations_same_commitment() {
         assert!(result.is_ok());
     }
 }
+
+#[test]
+fn test_transparent_proving_does_not_consume_rng() {
+    use rand::{rngs::StdRng, RngCore, SeedableRng};
+
+    let (prover_setup, verifier_setup) = test_setup_pair(4);
+    let poly = constant_polynomial(7, 2);
+    let point = vec![ArkFr::from_u64(3); 2];
+    let mut rng = StdRng::seed_from_u64(11);
+    let mut untouched = rng.clone();
+    let (commitment, rows, blind) = poly
+        .commit::<BN254, Transparent, TestG1Routines>(1, 1, &prover_setup, &mut rng)
+        .unwrap();
+    let (proof, evaluation_blind) =
+        prove::<_, BN254, TestG1Routines, TestG2Routines, _, _, Transparent>(
+            &poly,
+            &point,
+            rows,
+            blind,
+            1,
+            1,
+            &prover_setup,
+            &mut fresh_transcript(),
+            &mut rng,
+        )
+        .unwrap();
+    assert_eq!(blind, ArkFr::zero());
+    assert!(evaluation_blind.is_none());
+    assert_eq!(rng.next_u64(), untouched.next_u64());
+    verify::<_, BN254, TestG1Routines, TestG2Routines, _>(
+        commitment,
+        poly.evaluate(&point),
+        &point,
+        &proof,
+        verifier_setup,
+        &mut fresh_transcript(),
+    )
+    .unwrap();
+}
